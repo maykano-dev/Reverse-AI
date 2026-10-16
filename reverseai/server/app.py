@@ -183,10 +183,12 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send(413, {"error": f"file too large (> {_UPLOAD_MAX} bytes)"})
         raw_name = self.headers.get("X-Filename", "upload.bin")
         safe = _SAFE_NAME.sub("_", Path(raw_name).name)[:200] or "upload.bin"
-        uploads = Path(self.store.dir) / "uploads"
-        uploads.mkdir(parents=True, exist_ok=True)
         import uuid
-        dest = uploads / f"{uuid.uuid4().hex[:12]}_{safe}"
+        # Store under a per-upload subdir so the original filename is preserved
+        # (and never leaks an id prefix into a delivered artifact's name).
+        uploads = Path(self.store.dir) / "uploads" / uuid.uuid4().hex[:12]
+        uploads.mkdir(parents=True, exist_ok=True)
+        dest = uploads / safe
         written = 0
         try:
             with open(dest, "wb") as fh:

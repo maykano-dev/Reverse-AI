@@ -61,7 +61,19 @@ document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () 
 const input = $("#input");
 function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, Math.round(window.innerHeight * 0.45)) + "px"; }
 input.addEventListener("input", autosize);
-input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } });
+input.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  if (e.ctrlKey || e.metaKey) {       // Ctrl/Cmd+Enter -> newline at cursor
+    e.preventDefault();
+    const s = input.selectionStart, en = input.selectionEnd;
+    input.value = input.value.slice(0, s) + "\n" + input.value.slice(en);
+    input.selectionStart = input.selectionEnd = s + 1;
+    autosize();
+  } else if (!e.shiftKey) {            // Enter -> send (Shift+Enter = newline, default)
+    e.preventDefault();
+    submit();
+  }
+});
 $("#send").addEventListener("click", () => { if (busy) stopRun(); else submit(); });
 let currentSrc = null, currentUI = null;
 function stopRun() { if (currentSrc) currentSrc.close(); if (currentUI) finishError(currentUI, "stopped"); }

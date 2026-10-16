@@ -181,7 +181,8 @@
   .ctools .lbl{ font-size:11px; color:var(--faint); }
   .cinput{ display:flex; align-items:flex-end; gap:6px; padding:2px 4px; }
   .cinput textarea{ flex:1; font-family:var(--font-ui); font-size:15px; color:var(--text); background:none;
-    border:none; outline:none; resize:none; padding:9px 6px; max-height:45vh; line-height:1.5; overflow-y:auto; }
+    border:none; outline:none; resize:none; padding:9px 6px; max-height:45vh; line-height:1.5;
+    overflow-y:auto; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap; }
   .attach{ width:36px; height:36px; border-radius:50%; border:none; background:none; color:var(--dim);
     cursor:pointer; flex:none; display:flex; align-items:center; justify-content:center; transition:.12s; }
   .attach:hover{ background:var(--sunken); color:var(--text); }
@@ -338,7 +339,7 @@
           <button class="send" id="send" title="Send">↑</button>
         </div>
       </div>
-      <div class="hint">Drop a file anywhere · ReverseAI runs untrusted code only in an isolated sandbox</div>
+      <div class="hint">Enter to send · Shift+Enter or Ctrl+Enter for a new line · drop a file anywhere</div>
     </div>
     <div id="dropOverlay" class="drop-overlay"><div class="drop-inner">Drop a binary or archive to analyze</div></div>
   <div class="sheet" id="artSheet">
