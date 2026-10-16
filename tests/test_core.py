@@ -5,6 +5,7 @@ Run from the repo root:  python3 -m unittest discover -s tests -v
 
 from __future__ import annotations
 
+import shutil
 import struct
 import subprocess
 import sys
@@ -230,6 +231,54 @@ class ELFDynamicTests(unittest.TestCase):
         needed = [ln for ln in out.splitlines() if "NEEDED" in ln]
         # readelf shows one NEEDED line per dependency
         self.assertEqual(len(needed), len(self.report.needed_libraries))
+
+
+class FunctionRecoveryTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        src = Path(cls.tmp.name) / "m.c"
+        src.write_text("#include <stdio.h>\n"
+                       "int helper(int x){return x*2;}\n"
+                       "int main(){printf(\"%d\", helper(21));return 0;}\n")
+        cls.bin = Path(cls.tmp.name) / "m"
+        try:
+            subprocess.run(["cc", "-no-pie", "-O0", str(src), "-o", str(cls.bin)],
+                           check=True, capture_output=True)
+            cls.ok = True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            cls.ok = False
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def setUp(self):
+        if not self.ok:
+            self.skipTest("cc unavailable")
+        from reverseai.core import analyze_file as _af
+
+        self.report = _af(self.bin)
+
+    def test_finds_user_functions(self):
+        names = {f["name"] for f in self.report.functions}
+        self.assertIn("main", names)
+        self.assertIn("helper", names)
+
+    def test_functions_have_addresses(self):
+        main = next(f for f in self.report.functions if f["name"] == "main")
+        self.assertGreater(main["address"], 0)
+        self.assertGreater(main["size"], 0)
+
+    def test_stripped_binary_yields_none_honestly(self):
+        if not shutil.which("strip"):
+            self.skipTest("strip unavailable")
+        from reverseai.core import analyze_file as _af
+
+        sp = Path(self.tmp.name) / "m_stripped"
+        shutil.copy(self.bin, sp)
+        subprocess.run(["strip", str(sp)], check=True, capture_output=True)
+        self.assertEqual(_af(sp).functions, [])
 
 
 class HeuristicsTests(unittest.TestCase):

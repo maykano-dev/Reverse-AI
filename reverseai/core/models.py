@@ -70,6 +70,7 @@ class AnalysisReport:
     exports: list[str] = field(default_factory=list)             # exported symbol names
     needed_libraries: list[str] = field(default_factory=list)    # ELF DT_NEEDED / PE libs
     dynamic_symbols: list[str] = field(default_factory=list)     # ELF imported (undefined) syms
+    functions: list[dict[str, Any]] = field(default_factory=list)  # {name,address,size}
 
     strings_sample: list[str] = field(default_factory=list)
     string_count: int = 0

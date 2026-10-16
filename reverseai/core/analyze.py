@@ -45,6 +45,7 @@ def analyze_bytes(data: bytes, path: str = "<memory>") -> AnalysisReport:
         report.needed_libraries = info.needed_libraries
         report.dynamic_symbols = info.dynamic_symbols
         report.exports = info.exports
+        report.functions = info.functions
         report.warnings.extend(info.warnings)
 
     all_strings = extract_strings(data, min_len=5)

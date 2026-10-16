@@ -21,6 +21,9 @@ No dependencies required for the core — Python 3.11+ and standard binutils.
 # Static analysis of any PE / ELF / Mach-O binary
 python3 -m reverseai analyze /usr/bin/objdump
 
+# Structural diff between two binaries
+python3 -m reverseai diff ./app ./app.patched
+
 # What can this host do (sandbox backends, emulators, optional libs)?
 python3 -m reverseai caps
 
@@ -33,9 +36,22 @@ python3 -m reverseai agent run \
   --goal "Explain what this program does and verify it by running it." \
   --target ./sample --save ./jobs
 
+# Run the capability benchmark
+python3 -m reverseai bench run
+
+# Start the local control API (http://127.0.0.1:8077)
+python3 -m reverseai serve
+
 # Tests (no network / no API key needed — uses the mock provider)
 python3 -m unittest discover -s tests -v
 ```
+
+### Control API
+
+`serve` exposes a localhost JSON API: `GET /health`, `GET /caps`,
+`GET /jobs`, `GET /jobs/<id>`, `POST /analyze {path}`, `POST /diff {a,b}`,
+`POST /jobs {goal,target,provider,permission}`. It is a single-user control
+surface — keep it bound to localhost.
 
 ## Layers
 

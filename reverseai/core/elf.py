@@ -40,6 +40,7 @@ class ELFInfo:
     needed_libraries: list[str] = field(default_factory=list)
     dynamic_symbols: list[str] = field(default_factory=list)
     exports: list[str] = field(default_factory=list)
+    functions: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -88,6 +89,10 @@ def parse_elf(data: bytes) -> ELFInfo:
             _parse_dynamic(data, en, info)
         except (struct.error, ValueError) as exc:
             info.warnings.append(f"dynamic parse failed: {exc}")
+        try:
+            _parse_functions(data, en, info)
+        except (struct.error, ValueError) as exc:
+            info.warnings.append(f"symbol parse failed: {exc}")
     return info
 
 
@@ -155,6 +160,45 @@ def _parse_dynamic(data: bytes, en: str, info: ELFInfo) -> None:
             elif st_type in (1, 2):  # defined func/object -> exported
                 if name not in info.exports:
                     info.exports.append(name)
+
+
+def _parse_functions(data: bytes, en: str, info: ELFInfo) -> None:
+    """Recover defined functions (name/address/size) from the symbol table.
+
+    Prefers .symtab/.strtab (full symbols); falls back to .dynsym/.dynstr.
+    Stripped binaries may yield nothing — that is reported honestly, not faked.
+    """
+    pairs = [(".symtab", ".strtab"), (".dynsym", ".dynstr")]
+    seen: set[str] = set()
+    sym_size = 24 if info.bits == 64 else 16
+    for sym_name, str_name in pairs:
+        symtab = _section_by_name(info, sym_name)
+        strtab = _section_by_name(info, str_name)
+        if not symtab or not strtab:
+            continue
+        count = symtab.raw_size // sym_size
+        for i in range(count):
+            pos = symtab.raw_offset + i * sym_size
+            if pos + sym_size > len(data):
+                break
+            if info.bits == 64:
+                st_name, st_info_b, _o, st_shndx, st_value, st_sz = \
+                    struct.unpack_from(en + "IBBHQQ", data, pos)
+            else:
+                st_name, st_value, st_sz, st_info_b, _o, st_shndx = \
+                    struct.unpack_from(en + "IIIBBH", data, pos)
+            if (st_info_b & 0xF) != 2:  # STT_FUNC
+                continue
+            if st_shndx == 0 or st_value == 0:  # undefined / no address
+                continue
+            name = _cstr(data, strtab.raw_offset + st_name)
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            info.functions.append({"name": name, "address": st_value, "size": st_sz})
+        if info.functions:
+            break  # .symtab gave us real functions; no need for .dynsym fallback
+    info.functions.sort(key=lambda f: f["address"])
 
 
 def _parse_sections(data, en, bits, shoff, shentsize, shnum, shstrndx, warnings) -> list[Section]:

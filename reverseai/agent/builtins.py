@@ -253,6 +253,38 @@ class RunInSandboxTool(Tool):
                           error=res.error)
 
 
+class ListFunctionsTool(Tool):
+    name = "list_functions"
+    description = (
+        "List functions recovered from the target's symbol table (name, address, "
+        "size), optionally filtered by a name substring. Stripped binaries may "
+        "return none — that is reported honestly."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "contains": {"type": "string"},
+            "limit": {"type": "integer", "minimum": 1, "default": 100},
+        },
+    }
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        target = _require_target(ctx)
+        report = analyze_file(target)
+        funcs = report.functions
+        needle = args.get("contains")
+        if needle:
+            funcs = [f for f in funcs if needle in f["name"]]
+        limit = int(args.get("limit", 100))
+        shown = funcs[:limit]
+        if not report.functions:
+            return ToolResult.success(
+                "no functions recovered (binary may be stripped)", total=0)
+        body = "\n".join(f"0x{f['address']:x}  {f['size']:>6}  {f['name']}" for f in shown)
+        return ToolResult.success(body, total=len(funcs), shown=len(shown))
+
+
 class AssessHeuristicsTool(Tool):
     name = "assess_heuristics"
     description = (
@@ -316,6 +348,7 @@ def default_tools() -> list[Tool]:
         ReadBytesTool(),
         ListStringsTool(),
         DisassembleTool(),
+        ListFunctionsTool(),
         AssessHeuristicsTool(),
         RunInSandboxTool(),
         RecordFindingTool(),
