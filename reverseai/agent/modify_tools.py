@@ -227,9 +227,53 @@ class AddSectionTool(Tool):
                                   output_path=out)
 
 
+class ExtractArchiveTool(Tool):
+    name = "extract_archive"
+    description = (
+        "Safely extract an archive target (zip/tar/tar.gz/…) into the workspace "
+        "with decompression-bomb and path-traversal protection. If the archive "
+        "looks like a bomb, extraction is refused and reported — it never takes "
+        "the system down. Use before analyzing the contents of a dropped archive."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string",
+                     "description": "archive path; defaults to the target"},
+        },
+    }
+    permission = Permission.WRITE
+
+    def run(self, args, ctx) -> ToolResult:
+        from pathlib import Path
+
+        from ..security.archive import ArchiveError, BombDetected, safe_extract
+
+        src = args.get("path") or ctx.target_path
+        if not src:
+            return ToolResult.failure("no archive path")
+        dest = str(Path(ctx.workspace) / "extracted")
+        try:
+            res = safe_extract(src, dest)
+        except BombDetected as exc:
+            if ctx.evidence is not None:
+                ctx.evidence.observed(f"archive refused as bomb: {exc}", source=self.name)
+            return ToolResult.failure(
+                f"refused: decompression bomb detected ({exc}). Nothing was "
+                "extracted; the system is unaffected.")
+        except (ArchiveError, OSError) as exc:
+            return ToolResult.failure(f"extraction failed: {exc}")
+        ctx.extra["extracted_dir"] = res.dest
+        preview = ", ".join(res.members[:12])
+        return ToolResult.success(
+            f"extracted {res.files} files ({res.total_bytes} bytes) to {res.dest}\n"
+            f"members: {preview}", **res.to_dict())
+
+
 def modification_tools() -> list[Tool]:
     tools: list[Tool] = [
         ApplyBytePatchTool(), VerifyAgainstOriginalTool(), StructuralDiffTool(),
+        ExtractArchiveTool(),
     ]
     # LIEF-backed structural edits only when the library is present.
     from ..modify.lief_ops import lief_available

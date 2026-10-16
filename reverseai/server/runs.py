@@ -7,6 +7,7 @@ web UI show the agent working step by step instead of blocking on a result.
 
 from __future__ import annotations
 
+import os
 import queue
 import threading
 import time
@@ -52,11 +53,14 @@ class RunManager:
             conv = self._convos.get(cid) if cid else None
 
         if conv is None:
-            perm = _PERM.get(body.get("permission", "execute"))
+            # The AI decides its own mode, so it gets the full toolset (WRITE
+            # ceiling). The model/provider is server-chosen and never exposed.
+            perm = _PERM.get(body.get("permission", "write"))
             if perm is None:
                 return None, None, "permission must be read|execute|write"
             try:
-                provider = get_provider(body.get("provider", "deepseek"))
+                provider = get_provider(os.environ.get("REVERSEAI_PROVIDER",
+                                                        body.get("provider", "deepseek")))
             except Exception as exc:
                 return None, None, f"provider error: {exc}"
             agent = Agent(provider, max_permission=perm,
@@ -93,6 +97,23 @@ class RunManager:
     def get(self, job_id: str) -> Run | None:
         with self._lock:
             return self._runs.get(job_id)
+
+    def conversation(self, cid: str):
+        with self._lock:
+            return self._convos.get(cid)
+
+    def artifact_path(self, cid: str) -> str | None:
+        """Path of the final modified file a conversation produced, if any."""
+        conv = self.conversation(cid)
+        if conv is None:
+            return None
+        path = conv.ctx.extra.get("modified_path")
+        # Only serve a file that lives inside this conversation's workspace.
+        if path and os.path.commonpath([os.path.realpath(path),
+                                        os.path.realpath(conv.workspace)]) == \
+                os.path.realpath(conv.workspace):
+            return path if os.path.isfile(path) else None
+        return None
 
     def stream(self, job_id: str, heartbeat: float = 15.0):
         """Yield SSE-encoded bytes for a run until a terminal event.

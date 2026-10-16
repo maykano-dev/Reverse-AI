@@ -119,6 +119,21 @@ class ServerTests(unittest.TestCase):
         status, body = _get(f"{self.base}/nope")
         self.assertEqual(status, 404)
 
+    def test_upload_and_kind(self):
+        data = b"\x7fELF" + b"\x00" * 200
+        req = urllib.request.Request(f"{self.base}/upload", data=data,
+                                     headers={"X-Filename": "mal ware!.bin"}, method="PUT")
+        with urllib.request.urlopen(req, timeout=10) as r:
+            body = json.loads(r.read())
+        self.assertEqual(body["kind"], "elf")
+        self.assertTrue(body["path"].endswith(".bin"))
+        self.assertEqual(body["filename"], "mal_ware_.bin")  # sanitized
+        self.assertTrue(Path(body["path"]).exists())
+
+    def test_artifact_404_without_one(self):
+        status, body = _get(f"{self.base}/conversations/conv_none/artifact")
+        self.assertEqual(status, 404)
+
     def test_serves_ui(self):
         with urllib.request.urlopen(f"{self.base}/", timeout=5) as r:
             html = r.read().decode()

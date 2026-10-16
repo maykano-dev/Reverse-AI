@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import tempfile
 import time
+from pathlib import Path
 
 from ..security.validate import ValidationError, read_target
 from .context import compact_messages
@@ -102,9 +103,11 @@ class Conversation:
         job.status = "running"
         self._loop(job, emit)
         job = self._finish(job)
+        artifact = self.ctx.extra.get("modified_path")
+        artifact_name = Path(artifact).name if artifact else None
         emit({"type": "final", "status": job.status, "answer": job.final_answer,
               "evidence_summary": self.evidence.summary(), "steps": job.steps,
-              "usage": job.usage})
+              "usage": job.usage, "artifact": artifact_name})
         return job
 
     def _loop(self, job: Job, emit) -> None:

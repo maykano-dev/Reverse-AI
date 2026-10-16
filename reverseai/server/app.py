@@ -36,10 +36,13 @@ from .runs import RunManager
 _log = get_logger("reverseai.server")
 
 _MAX_BODY = 1 * 1024 * 1024
+_UPLOAD_MAX = 4 * 1024 * 1024 * 1024  # 4 GiB — large binaries/archives accepted
 _PERM = {"read": Permission.READ, "execute": Permission.EXECUTE, "write": Permission.WRITE}
 _JOB_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)$")
 _EVENTS_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/events$")
+_ARTIFACT_PATH = re.compile(r"^/conversations/(conv_[A-Za-z0-9]+)/artifact$")
 _STATIC_DIR = Path(__file__).parent / "static"
+_SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -99,6 +102,9 @@ class _Handler(BaseHTTPRequestHandler):
         em = _EVENTS_PATH.match(path)
         if em:
             return self._stream_events(em.group(1))
+        am = _ARTIFACT_PATH.match(path)
+        if am:
+            return self._download_artifact(am.group(1))
         m = _JOB_PATH.match(path)
         if m:
             rec = self.store.get(m.group(1))
@@ -121,6 +127,12 @@ class _Handler(BaseHTTPRequestHandler):
             return self._start_run(body)
         return self._send(404, {"error": "not found"})
 
+    def do_PUT(self):  # noqa: N802
+        # File upload: raw bytes with X-Filename header, streamed to disk.
+        if self.path == "/upload":
+            return self._upload()
+        return self._send(404, {"error": "not found"})
+
     # --- static + streaming ---
     def _send_static(self, name: str, content_type: str) -> None:
         path = _STATIC_DIR / name
@@ -141,6 +153,63 @@ class _Handler(BaseHTTPRequestHandler):
         if error:
             return self._send(400, {"error": error})
         return self._send(200, {"job_id": stream_id, "conversation_id": conversation_id})
+
+    def _upload(self) -> None:
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length <= 0:
+            return self._send(400, {"error": "empty upload"})
+        if length > _UPLOAD_MAX:
+            return self._send(413, {"error": f"file too large (> {_UPLOAD_MAX} bytes)"})
+        raw_name = self.headers.get("X-Filename", "upload.bin")
+        safe = _SAFE_NAME.sub("_", Path(raw_name).name)[:200] or "upload.bin"
+        uploads = Path(self.store.dir) / "uploads"
+        uploads.mkdir(parents=True, exist_ok=True)
+        import uuid
+        dest = uploads / f"{uuid.uuid4().hex[:12]}_{safe}"
+        written = 0
+        try:
+            with open(dest, "wb") as fh:
+                remaining = length
+                while remaining > 0:
+                    chunk = self.rfile.read(min(1024 * 256, remaining))
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > _UPLOAD_MAX:
+                        raise OSError("exceeded limit")
+                    fh.write(chunk)
+                    remaining -= len(chunk)
+        except OSError as exc:
+            dest.unlink(missing_ok=True)
+            return self._send(400, {"error": f"upload failed: {exc}"})
+        # Identify the uploaded file (format or archive type) for the UI.
+        kind = None
+        try:
+            from ..core.identify import detect_format
+            from ..security.archive import is_archive
+            head = dest.open("rb").read(512)
+            fmt = detect_format(head)
+            kind = fmt.value if fmt.value != "unknown" else (is_archive(head) or "unknown")
+        except Exception:
+            kind = "unknown"
+        return self._send(200, {"path": str(dest), "filename": safe,
+                                "size": written, "kind": kind})
+
+    def _download_artifact(self, cid: str) -> None:
+        path = self.runs.artifact_path(cid)
+        if not path:
+            return self._send(404, {"error": "no artifact for this conversation"})
+        try:
+            data = Path(path).read_bytes()
+        except OSError as exc:
+            return self._send(404, {"error": str(exc)})
+        name = Path(path).name
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def _stream_events(self, job_id: str) -> None:
         self.send_response(200)
