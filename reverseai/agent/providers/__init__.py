@@ -25,4 +25,11 @@ def get_provider(name: str = "deepseek", **kwargs):
         from .deepseek import DeepSeekProvider
 
         return DeepSeekProvider(**kwargs)
+    if name in ("openai", "openai-compatible"):
+        from .openai_compat import OpenAICompatibleProvider
+
+        kwargs.setdefault("api_key_env", "OPENAI_API_KEY")
+        kwargs.setdefault("base_url", "https://api.openai.com/v1")
+        kwargs.setdefault("model", "gpt-4o-mini")
+        return OpenAICompatibleProvider(**kwargs)
     raise ValueError(f"unknown provider: {name}")
