@@ -28,6 +28,9 @@ from ..core import analyze_file
 from ..core.diff import diff_files
 from ..sandbox import detect_capabilities
 from ..security.validate import ValidationError
+from ..util.logging import get_logger
+
+_log = get_logger("reverseai.server")
 
 _MAX_BODY = 1 * 1024 * 1024
 _PERM = {"read": Permission.READ, "execute": Permission.EXECUTE, "write": Permission.WRITE}
@@ -44,6 +47,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     # --- helpers ---
     def _send(self, code: int, payload: dict[str, Any]) -> None:
+        _log.info("%s %s -> %s", self.command, self.path, code)
         body = json.dumps(payload).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")

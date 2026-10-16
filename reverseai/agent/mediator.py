@@ -14,8 +14,11 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
 
+from ..util.logging import get_logger
 from .registry import ToolRegistry
 from .tools import Permission, ToolContext, ToolResult
+
+_log = get_logger("reverseai.agent")
 
 # confirm(tool_name, permission, args, ctx) -> bool
 ConfirmFn = Callable[[str, Permission, dict[str, Any], ToolContext], bool]
@@ -96,6 +99,9 @@ class ToolMediator:
         return result
 
     def _record(self, tool, perm, *, allowed, ok, duration, error=None, note=""):
+        _log.info("tool=%s perm=%s allowed=%s ok=%s %s",
+                  tool, perm.label if isinstance(perm, Permission) else perm,
+                  allowed, ok, f"err={error}" if error else "")
         self.audit.append(
             AuditEntry(
                 tool=tool,
