@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reverseai"
+version = "0.0.1"
+description = "An autonomous reverse-engineering engineer: understand, modify, rebuild."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+dependencies = []
+
+[project.optional-dependencies]
+# Optional analysis backends — enhance the core, never required to run it.
+enhanced = ["lief>=0.14", "capstone>=5.0", "pyelftools>=0.31"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+reverseai = "reverseai.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["reverseai*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
