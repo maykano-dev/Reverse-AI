@@ -20,18 +20,30 @@ try { const s = localStorage.getItem("rvai-theme"); if (s) applyTheme(s); } catc
 $("#themeBtn").addEventListener("click", () => { const c = document.documentElement.getAttribute("data-theme") || "auto"; applyTheme(c === "auto" ? "light" : c === "light" ? "dark" : "auto"); });
 
 // editor + canvas
-let editor; const views = {};
+let editor; const views = {}; const viewOrder = [];
 window.addEventListener("load", () => {
   editor = CodeMirror.fromTextArea($("#editor"), { lineNumbers: true, mode: "gas", lineWrapping: false });
-  editor.setValue("// Tool outputs (disassembly, hex, strings, files) load here.\n");
 });
 function addView(label, content) {
-  const key = "v" + Object.keys(views).length; views[key] = content;
-  const sel = $("#viewSelect"); const o = el("option", null, label); o.value = key; sel.appendChild(o);
+  const key = "v" + viewOrder.length; views[key] = content; viewOrder.push({ key, label });
+  const menu = $("#vdropMenu");
+  const o = el("div", "vopt", label); o.dataset.key = key;
+  o.onclick = () => { showView(key); $("#vdrop").classList.remove("open"); };
+  menu.appendChild(o);
   return key;
 }
-function showView(key) { if (editor && views[key] != null) { openCanvas("editor"); $("#viewSelect").value = key; editor.setValue(views[key]); setTimeout(() => editor.refresh(), 30); } }
-$("#viewSelect").addEventListener("change", (e) => showView(e.target.value));
+function showView(key) {
+  if (editor && views[key] != null) {
+    openCanvas("editor");
+    $("#editorEmpty").style.display = "none"; $("#editorHolder").style.display = "flex";
+    const lbl = (viewOrder.find((v) => v.key === key) || {}).label || "tool output";
+    $("#vdropLabel").textContent = lbl;
+    document.querySelectorAll(".vopt").forEach((o) => o.classList.toggle("sel", o.dataset.key === key));
+    editor.setValue(views[key]); setTimeout(() => editor.refresh(), 30);
+  }
+}
+$("#vdropBtn").addEventListener("click", (e) => { e.stopPropagation(); $("#vdrop").classList.toggle("open"); });
+document.addEventListener("click", () => $("#vdrop").classList.remove("open"));
 function openCanvas(pane) {
   $("#canvas").classList.add("open");
   if (pane) document.querySelector(`.tab[data-pane="${pane}"]`).click();
@@ -122,8 +134,14 @@ let conversationId = null;  // continues the same investigation across messages
 function scrollDown() { thread.scrollTop = thread.scrollHeight; }
 function removeWelcome() { const w = $("#welcome"); if (w) w.remove(); }
 
+function resetCanvas() {
+  viewOrder.length = 0; for (const k in views) delete views[k];
+  $("#vdropMenu").innerHTML = ""; $("#vdropLabel").textContent = "tool output";
+  $("#editorEmpty").style.display = ""; $("#editorHolder").style.display = "none";
+  $("#reportPane").innerHTML = '<div class="canvas-empty"><div class="ce-big">✦</div>The plain-language report and evidence appear here when a turn completes.</div>';
+}
 function newChat() {
-  conversationId = null; clearAttachment(); queue.length = 0; renderQueue();
+  conversationId = null; clearAttachment(); queue.length = 0; renderQueue(); resetCanvas();
   inner.innerHTML = "";
   const w = el("div", "welcome"); w.id = "welcome";
   w.innerHTML = `<div class="big">✦</div><h1>What should we reverse-engineer?</h1>

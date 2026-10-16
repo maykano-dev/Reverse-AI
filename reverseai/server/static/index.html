@@ -211,8 +211,24 @@
   #editorPane.active{ display:flex; }
   .CodeMirror{ height:100% !important; font-family:var(--font-mono) !important; font-size:12.5px;
     background:var(--sunken) !important; }
-  .vsel{ margin:10px 12px; font-family:var(--font-ui); font-size:12.5px; background:var(--sunken);
-    color:var(--text); border:1px solid var(--border); border-radius:9px; padding:7px 9px; }
+  .vbar{ padding:10px 12px 4px; }
+  .vdrop{ position:relative; display:inline-block; }
+  .vdrop-btn{ display:flex; align-items:center; gap:8px; font-family:var(--font-ui); font-size:12.5px;
+    color:var(--text); background:var(--sunken); border:1px solid var(--border); border-radius:9px;
+    padding:7px 11px; cursor:pointer; min-width:170px; }
+  .vdrop-btn:hover{ border-color:var(--border-strong); }
+  .vchev{ margin-left:auto; color:var(--faint); font-size:11px; }
+  .vdrop-menu{ position:absolute; top:calc(100% + 5px); left:0; min-width:220px; max-height:300px;
+    overflow-y:auto; background:var(--elev); border:1px solid var(--border); border-radius:11px;
+    box-shadow:var(--shadow); padding:5px; display:none; z-index:30; }
+  .vdrop.open .vdrop-menu{ display:block; }
+  .vopt{ font-size:12.5px; padding:8px 10px; border-radius:8px; cursor:pointer; color:var(--text);
+    font-family:var(--font-mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .vopt:hover{ background:var(--accent-weak); color:var(--accent); }
+  .vopt.sel{ background:var(--sunken); }
+  .canvas-empty{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; color:var(--dim); font-size:13.5px; padding:0 40px; line-height:1.5; }
+  .canvas-empty .ce-big{ font-size:30px; margin-bottom:12px; opacity:.5; color:var(--accent); }
   .report{ padding:20px; }
   .report h3{ font-size:16px; margin:0 0 12px; }
   .report .kv{ font-size:13px; color:var(--dim); margin-bottom:5px; }
@@ -293,10 +309,19 @@
     </div>
     <div class="canvas-body">
       <div class="pane active" id="editorPane">
-        <select class="vsel" id="viewSelect"><option value="">— tool outputs appear here —</option></select>
-        <div style="flex:1; min-height:0;"><textarea id="editor"></textarea></div>
+        <div class="vbar">
+          <div class="vdrop" id="vdrop">
+            <button class="vdrop-btn" id="vdropBtn"><span id="vdropLabel">tool output</span>
+              <span class="vchev">▾</span></button>
+            <div class="vdrop-menu" id="vdropMenu"></div>
+          </div>
+        </div>
+        <div id="editorEmpty" class="canvas-empty"><div class="ce-big">⌁</div>
+          Tool outputs — disassembly, hex, strings, files — show up here as the agent works.</div>
+        <div id="editorHolder" style="flex:1; min-height:0; display:none;"><textarea id="editor"></textarea></div>
       </div>
-      <div class="pane report" id="reportPane"></div>
+      <div class="pane report" id="reportPane"><div class="canvas-empty"><div class="ce-big">✦</div>
+        The plain-language report and evidence appear here when a turn completes.</div></div>
       <div class="pane caps" id="capsPane"><div class="caps-grid" id="capsGrid"></div></div>
     </div>
   </aside>
