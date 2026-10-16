@@ -161,5 +161,80 @@ class StructuralDiffTool(Tool):
         return ToolResult.success(f"diff: {d.summary}", **d.to_dict())
 
 
+class AddImportTool(Tool):
+    name = "add_imported_library"
+    description = (
+        "Add an imported library (and optional functions) to a PE binary using "
+        "LIEF, writing a modified copy. Experimental structural edit toward "
+        "adding capability. Requires LIEF installed."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "library": {"type": "string"},
+            "functions": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["library"],
+    }
+    permission = Permission.WRITE
+
+    def run(self, args, ctx) -> ToolResult:
+        from ..modify.lief_ops import LiefOpError, LiefUnavailable, add_imported_library
+
+        target = _require_target(ctx)
+        try:
+            out = add_imported_library(target, ctx.workspace, args["library"],
+                                       args.get("functions"))
+        except (LiefUnavailable, LiefOpError) as exc:
+            return ToolResult.failure(str(exc))
+        ctx.extra["modified_path"] = out
+        if ctx.evidence is not None:
+            ctx.evidence.observed(f"added import {args['library']}", source=self.name)
+        return ToolResult.success(f"wrote {out} with import {args['library']}",
+                                  output_path=out)
+
+
+class AddSectionTool(Tool):
+    name = "add_section"
+    description = (
+        "Add a new named section with given content (hex) to the binary using "
+        "LIEF, writing a modified copy. Requires LIEF installed."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "content_hex": {"type": "string"},
+        },
+        "required": ["name", "content_hex"],
+    }
+    permission = Permission.WRITE
+
+    def run(self, args, ctx) -> ToolResult:
+        from ..modify.lief_ops import LiefOpError, LiefUnavailable, add_section
+
+        target = _require_target(ctx)
+        try:
+            content = bytes.fromhex(args["content_hex"])
+        except ValueError as exc:
+            return ToolResult.failure(f"bad content_hex: {exc}")
+        try:
+            out = add_section(target, ctx.workspace, args["name"], content)
+        except (LiefUnavailable, LiefOpError) as exc:
+            return ToolResult.failure(str(exc))
+        ctx.extra["modified_path"] = out
+        return ToolResult.success(f"wrote {out} with section {args['name']}",
+                                  output_path=out)
+
+
 def modification_tools() -> list[Tool]:
-    return [ApplyBytePatchTool(), VerifyAgainstOriginalTool(), StructuralDiffTool()]
+    tools: list[Tool] = [
+        ApplyBytePatchTool(), VerifyAgainstOriginalTool(), StructuralDiffTool(),
+    ]
+    # LIEF-backed structural edits only when the library is present.
+    from ..modify.lief_ops import lief_available
+
+    if lief_available():
+        tools += [AddImportTool(), AddSectionTool()]
+    return tools
+
