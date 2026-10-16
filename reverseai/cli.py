@@ -162,6 +162,32 @@ def _cmd_sandbox_run(args: argparse.Namespace) -> int:
     return 0 if res.ok else 1
 
 
+def _cmd_bench(args: argparse.Namespace) -> int:
+    from .agent import Agent, Permission, get_provider
+    from .agent.providers.deepseek import ProviderError
+    from .bench import builtin_tasks, run_suite
+
+    try:
+        get_provider(args.provider)  # fail fast on missing config
+    except (ProviderError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    def factory(perm):
+        return Agent(get_provider(args.provider), max_permission=perm,
+                     max_steps=args.max_steps)
+
+    tasks = builtin_tasks()
+    if args.only:
+        tasks = [t for t in tasks if t.id in set(args.only)]
+    report = run_suite(factory, tasks)
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2))
+    else:
+        print(report.render())
+    return 0 if report.passed == report.total else 1
+
+
 def _cmd_serve(args: argparse.Namespace) -> int:
     from .server import serve
 
@@ -224,6 +250,13 @@ def build_parser() -> argparse.ArgumentParser:
     sbx_run.add_argument("argv", nargs=argparse.REMAINDER,
                          help="-- then the command to run")
     sbx_run.set_defaults(func=_cmd_sandbox_run)
+
+    bench = sub.add_parser("bench", help="run the capability benchmark")
+    bench.add_argument("--provider", default="deepseek")
+    bench.add_argument("--only", action="append", help="run only these task ids")
+    bench.add_argument("--max-steps", type=int, default=24, dest="max_steps")
+    bench.add_argument("--json", action="store_true")
+    bench.set_defaults(func=_cmd_bench)
 
     serve = sub.add_parser("serve", help="run the local control API")
     serve.add_argument("--host", default="127.0.0.1")
