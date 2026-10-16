@@ -3,6 +3,14 @@
 const $ = (s) => document.querySelector(s);
 const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
 const esc = (s) => { const d = el("div"); d.textContent = s == null ? "" : s; return d.innerHTML; };
+function md(text) {
+  // Render markdown, sanitized. Falls back to escaped plain text if libs missing.
+  try {
+    if (window.marked && window.DOMPurify)
+      return DOMPurify.sanitize(marked.parse(text || "", { breaks: true }));
+  } catch (_) {}
+  return esc(text).replace(/\n/g, "<br>");
+}
 async function getJSON(u) { const r = await fetch(u); return r.json(); }
 async function postJSON(u, b) { const r = await fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }); return { status: r.status, body: await r.json() }; }
 
@@ -40,8 +48,10 @@ document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () 
 // composer autosize
 const input = $("#input");
 input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px"; });
-input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
-$("#send").addEventListener("click", send);
+input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!busy) send(); } });
+$("#send").addEventListener("click", () => { if (busy) stopRun(); else send(); });
+let currentSrc = null, currentUI = null;
+function stopRun() { if (currentSrc) currentSrc.close(); if (currentUI) finishError(currentUI, "stopped"); }
 $("#newChat").addEventListener("click", newChat);
 document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => { input.value = c.dataset.g; input.focus(); input.dispatchEvent(new Event("input")); }));
 
@@ -86,19 +96,27 @@ function act(wbody, icon, html) {
   wbody.appendChild(a); scrollDown(); return a;
 }
 
+function setBusy(on) {
+  busy = on;
+  const b = $("#send");
+  b.classList.toggle("stop", on);
+  b.innerHTML = on ? "■" : "↑";
+  b.title = on ? "Stop" : "Send";
+}
+
 async function send() {
   if (busy) return;
   const goal = input.value.trim(); if (!goal) return;
-  busy = true; $("#send").disabled = true;
+  setBusy(true);
   userTurn(goal);
   input.value = ""; input.style.height = "auto";
   const payload = { goal, target: $("#target").value.trim() || null, provider: $("#provider").value, permission: $("#permission").value };
-  const ui = aiTurn();
+  const ui = aiTurn(); currentUI = ui;
 
   const { status, body } = await postJSON("/jobs/start", payload);
   if (status !== 200) { finishError(ui, body.error || "failed to start"); return; }
   const jobId = body.job_id;
-  const src = new EventSource(`/jobs/${jobId}/events`);
+  const src = new EventSource(`/jobs/${jobId}/events`); currentSrc = src;
   let steps = 0;
   src.onmessage = (m) => {
     let ev; try { ev = JSON.parse(m.data); } catch (_) { return; }
@@ -128,7 +146,7 @@ function finishFinal(ui, jobId, ev, steps) {
   const ic = el("span", null, "✓"); ic.style.color = "var(--verified)"; ic.style.width = "14px"; ic.style.textAlign = "center";
   ui.head.insertBefore(ic, ui.head.firstChild);
   ui.label.textContent = `Worked through ${ev.steps || steps} step${(ev.steps || steps) === 1 ? "" : "s"}`;
-  const ans = el("div", "answer"); ans.textContent = ev.answer || "(no conclusion)";
+  const ans = el("div", "answer"); ans.innerHTML = md(ev.answer || "_(no conclusion)_");
   ui.body.appendChild(ans);
   const es = ev.evidence_summary || {};
   if ((es.verified || es.observed || es.believed)) {
@@ -150,7 +168,7 @@ function finishError(ui, msg) {
   const e = el("div", "answer"); e.innerHTML = `<span style="color:#ff453a">✗ ${esc(msg)}</span>`; ui.body.appendChild(e);
   scrollDown(); done();
 }
-function done() { busy = false; $("#send").disabled = false; }
+function done() { setBusy(false); currentSrc = null; currentUI = null; }
 
 // report + caps
 async function showReport(jobId) {
