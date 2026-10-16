@@ -45,15 +45,76 @@ document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () 
   if (t.dataset.pane === "editor" && editor) setTimeout(() => editor.refresh(), 30);
 }));
 
-// composer autosize
+// composer autosize (grows as you type, like Claude)
 const input = $("#input");
-input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px"; });
-input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!busy) send(); } });
-$("#send").addEventListener("click", () => { if (busy) stopRun(); else send(); });
+function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, Math.round(window.innerHeight * 0.45)) + "px"; }
+input.addEventListener("input", autosize);
+input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } });
+$("#send").addEventListener("click", () => { if (busy) stopRun(); else submit(); });
 let currentSrc = null, currentUI = null;
 function stopRun() { if (currentSrc) currentSrc.close(); if (currentUI) finishError(currentUI, "stopped"); }
+
+// ---- attachment (upload + drag/drop) ----
+let attached = null; // { path, filename, size, kind }
+const ARCHIVE_KINDS = new Set(["zip", "gzip", "bzip2", "xz", "tar", "7z"]);
+$("#attach").addEventListener("click", () => $("#fileInput").click());
+$("#fileInput").addEventListener("change", (e) => { if (e.target.files[0]) uploadFile(e.target.files[0]); e.target.value = ""; });
+function fmtSize(n) { if (n < 1024) return n + " B"; if (n < 1048576) return (n / 1024).toFixed(1) + " KB"; if (n < 1073741824) return (n / 1048576).toFixed(1) + " MB"; return (n / 1073741824).toFixed(2) + " GB"; }
+async function uploadFile(file) {
+  removeWelcome();
+  const chip = $("#fileChip"); attached = null;
+  chip.style.display = "flex"; chip.classList.add("uploading");
+  chip.innerHTML = `<span class="fi">📄</span><span><span class="fname">${esc(file.name)}</span> <span class="fmeta">${fmtSize(file.size)}</span></span>`;
+  try {
+    const r = await fetch("/upload", { method: "PUT", headers: { "X-Filename": file.name }, body: file });
+    const b = await r.json();
+    if (!r.ok) throw new Error(b.error || "upload failed");
+    attached = b; renderChip();
+  } catch (err) {
+    chip.classList.remove("uploading");
+    chip.innerHTML = `<span class="fi">⚠︎</span><span><span class="fname">${esc(file.name)}</span> <span class="fmeta" style="color:#ff453a">${esc(err.message)}</span></span><span class="rm" onclick="clearAttachment()">✕</span>`;
+  }
+}
+function renderChip() {
+  const chip = $("#fileChip"); chip.classList.remove("uploading");
+  const warn = ARCHIVE_KINDS.has(attached.kind);
+  const kindLbl = attached.kind === "unknown" ? "file" : attached.kind;
+  chip.innerHTML = `<span class="fi">${warn ? "🗜️" : "📄"}</span>
+    <span><span class="fname">${esc(attached.filename)}</span> <span class="fmeta">${fmtSize(attached.size)}</span></span>
+    <span class="kind ${warn ? "warn" : ""}">${esc(kindLbl)}</span>
+    <span class="rm" onclick="clearAttachment()">✕</span>`;
+}
+function clearAttachment() { attached = null; const c = $("#fileChip"); c.style.display = "none"; c.innerHTML = ""; }
+window.clearAttachment = clearAttachment;
+
+// drag & drop
+let dragDepth = 0;
+const overlay = $("#dropOverlay");
+window.addEventListener("dragenter", (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { dragDepth++; overlay.classList.add("show"); } });
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) overlay.classList.remove("show"); });
+window.addEventListener("drop", (e) => { e.preventDefault(); dragDepth = 0; overlay.classList.remove("show"); const f = e.dataTransfer.files[0]; if (f) uploadFile(f); });
+
+// ---- message queue ----
+const queue = [];
+function renderQueue() {
+  const q = $("#queued"); q.innerHTML = "";
+  queue.forEach((m, i) => { const d = el("div", "qmsg"); d.innerHTML = `<span>⏎ queued:</span> <span>${esc(m.goal.slice(0, 70))}</span><span class="qx">✕</span>`; d.querySelector(".qx").onclick = () => { queue.splice(i, 1); renderQueue(); }; q.appendChild(d); });
+}
+function submit() {
+  if (busy) { // queue it
+    const goal = input.value.trim(); if (!goal) return;
+    queue.push({ goal, attached }); input.value = ""; autosize(); renderQueue();
+    return;
+  }
+  send();
+}
+function drainQueue() { if (queue.length && !busy) { const next = queue.shift(); renderQueue(); input.value = next.goal; if (next.attached) { attached = next.attached; renderChip(); $("#fileChip").style.display = "flex"; } send(); } }
 $("#newChat").addEventListener("click", newChat);
-document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => { input.value = c.dataset.g; input.focus(); input.dispatchEvent(new Event("input")); }));
+function wireChips() {
+  document.querySelectorAll(".chip").forEach((c) => c.onclick = () => { input.value = c.dataset.g; input.focus(); autosize(); });
+}
+wireChips();
 
 const thread = $("#thread"); const inner = $("#threadInner");
 let busy = false;
@@ -62,12 +123,17 @@ function scrollDown() { thread.scrollTop = thread.scrollHeight; }
 function removeWelcome() { const w = $("#welcome"); if (w) w.remove(); }
 
 function newChat() {
-  conversationId = null;
+  conversationId = null; clearAttachment(); queue.length = 0; renderQueue();
   inner.innerHTML = "";
   const w = el("div", "welcome"); w.id = "welcome";
   w.innerHTML = `<div class="big">✦</div><h1>What should we reverse-engineer?</h1>
-    <p>Hand me a binary (Windows PE, Linux ELF, or macOS/iOS Mach-O) and a goal. I'll investigate it, work in an isolated sandbox, and show you every step.</p>`;
-  inner.appendChild(w);
+    <p>Drop a binary (Windows PE, Linux ELF, or macOS/iOS Mach-O) or archive and tell me what you want. I'll investigate it, work in an isolated sandbox, and deliver the result.</p>
+    <div class="suggest">
+      <div class="chip" data-g="Analyze this binary and tell me what it does, in plain language.">Analyze a binary</div>
+      <div class="chip" data-g="Run this program safely in the sandbox and tell me what it does.">Run it safely</div>
+      <div class="chip" data-g="Change this program's behavior and give me back a working modified file.">Modify &amp; deliver</div>
+    </div>`;
+  inner.appendChild(w); wireChips();
   document.querySelectorAll(".convo").forEach((c) => c.classList.remove("active"));
 }
 
@@ -112,7 +178,8 @@ async function send() {
   setBusy(true);
   userTurn(goal);
   input.value = ""; input.style.height = "auto";
-  const payload = { goal, target: $("#target").value.trim() || null, provider: $("#provider").value, permission: $("#permission").value };
+  const payload = { goal };
+  if (attached) { payload.target = attached.path; clearAttachment(); }
   if (conversationId) payload.conversation_id = conversationId;
   const ui = aiTurn(); currentUI = ui;
 
@@ -138,7 +205,7 @@ async function send() {
     else if (ev.type === "finding") {
       const a = act(ui.wbody, "", `<span class="tier ${ev.tier}">${ev.tier}</span> ${esc(ev.claim)}`);
     }
-    else if (ev.type === "final") { src.close(); finishFinal(ui, jobId, ev, steps); }
+    else if (ev.type === "final") { src.close(); finishFinal(ui, jobId, ev, steps); if (ev.artifact) addArtifact(ui, ev.artifact); }
     else if (ev.type === "error") { src.close(); finishError(ui, ev.error); }
   };
   src.onerror = () => { src.close(); if (busy) finishError(ui, "connection lost"); };
@@ -172,7 +239,16 @@ function finishError(ui, msg) {
   const e = el("div", "answer"); e.innerHTML = `<span style="color:#ff453a">✗ ${esc(msg)}</span>`; ui.body.appendChild(e);
   scrollDown(); done();
 }
-function done() { setBusy(false); currentSrc = null; currentUI = null; }
+function done() { setBusy(false); currentSrc = null; currentUI = null; setTimeout(drainQueue, 150); }
+
+function addArtifact(ui, name) {
+  if (!conversationId) return;
+  const a = document.createElement("a");
+  a.className = "artifact"; a.href = `/conversations/${conversationId}/artifact`;
+  a.setAttribute("download", name);
+  a.innerHTML = `<span class="ai">↓</span><span class="at"><b>${esc(name)}</b><span>Delivered file · click to download</span></span>`;
+  ui.body.appendChild(a); scrollDown();
+}
 
 // report + caps
 async function showReport(jobId) {
