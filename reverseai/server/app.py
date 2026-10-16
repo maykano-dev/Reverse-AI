@@ -42,6 +42,7 @@ _JOB_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)$")
 _EVENTS_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/events$")
 _JOB_ARTIFACT_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/artifact$")
 _ARTIFACT_PATH = re.compile(r"^/conversations/(conv_[A-Za-z0-9]+)/artifact$")
+_FILES_PATH = re.compile(r"^/files/([a-f0-9]{12})/([A-Za-z0-9._-]+)$")
 _STATIC_DIR = Path(__file__).parent / "static"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
@@ -111,6 +112,9 @@ class _Handler(BaseHTTPRequestHandler):
         jam = _JOB_ARTIFACT_PATH.match(path)
         if jam:
             return self._download_job_artifact(jam.group(1))
+        fm = _FILES_PATH.match(path)
+        if fm:
+            return self._download_output(fm.group(1), fm.group(2))
         m = _JOB_PATH.match(path)
         if m:
             rec = self.store.get(m.group(1))
@@ -127,6 +131,12 @@ class _Handler(BaseHTTPRequestHandler):
             return self._analyze(body)
         if self.path == "/diff":
             return self._diff(body)
+        if self.path == "/modify":
+            return self._api_modify(body)
+        if self.path == "/verify":
+            return self._api_verify(body)
+        if self.path == "/clone":
+            return self._api_clone(body)
         if self.path == "/jobs":
             return self._run_job(body)
         if self.path == "/jobs/start":
@@ -281,6 +291,78 @@ class _Handler(BaseHTTPRequestHandler):
         except (ValidationError, OSError) as exc:
             return self._send(400, {"error": str(exc)})
         return self._send(200, d.to_dict())
+
+    # --- engine REST endpoints (binary modification / verification / clone) ---
+
+    def _api_out(self) -> tuple[Path, str]:
+        import uuid
+
+        token = uuid.uuid4().hex[:12]
+        out = Path(self.store.dir) / "api_outputs" / token
+        out.mkdir(parents=True, exist_ok=True)
+        return out, token
+
+    def _api_modify(self, body):
+        from ..modify import BytePatch, PatchError, apply_byte_patches
+
+        target = body.get("target")
+        patches_in = body.get("patches")
+        if not target or not isinstance(patches_in, list) or not patches_in:
+            return self._send(400, {"error": "need 'target' and non-empty 'patches'"})
+        try:
+            patches = [
+                BytePatch(offset=int(p["offset"]), data=bytes.fromhex(p["hex"]),
+                          expected_original=bytes.fromhex(p["expect_hex"]) if p.get("expect_hex") else None)
+                for p in patches_in
+            ]
+        except (KeyError, ValueError) as exc:
+            return self._send(400, {"error": f"bad patch spec: {exc}"})
+        out, token = self._api_out()
+        try:
+            res = apply_byte_patches(target, patches, out)
+        except (PatchError, ValidationError, OSError) as exc:
+            return self._send(400, {"error": str(exc)})
+        d = res.to_dict()
+        d["download"] = f"/files/{token}/{Path(res.output_path).name}"
+        return self._send(200, d)
+
+    def _api_verify(self, body):
+        from ..verify import compare_execution
+
+        original, modified = body.get("original"), body.get("modified")
+        if not original or not modified:
+            return self._send(400, {"error": "need 'original' and 'modified'"})
+        report = compare_execution(original, modified, body.get("args", []))
+        return self._send(200 if report.ran else 400, report.to_dict())
+
+    def _api_clone(self, body):
+        import shutil
+
+        from ..clone import CloneError, clone_site
+
+        url = body.get("url")
+        if not url:
+            return self._send(400, {"error": "need 'url'"})
+        out, token = self._api_out()
+        try:
+            res = clone_site(url, out / "site",
+                             rename_from=body.get("rename_from"),
+                             rename_to=body.get("rename_to"))
+        except (CloneError, OSError) as exc:
+            return self._send(400, {"error": str(exc)})
+        zip_path = shutil.make_archive(str(out / "site_clone"), "zip", str(out / "site"))
+        d = res.to_dict()
+        d["download"] = f"/files/{token}/{Path(zip_path).name}"
+        return self._send(200, d)
+
+    def _download_output(self, token: str, name: str) -> None:
+        base = (Path(self.store.dir) / "api_outputs" / token).resolve()
+        target = (base / name).resolve()
+        try:
+            target.relative_to(base)
+        except ValueError:
+            return self._send(404, {"error": "not found"})
+        self._serve_file(str(target) if target.is_file() else None, "not found")
 
     def _run_job(self, body):
         goal = body.get("goal")

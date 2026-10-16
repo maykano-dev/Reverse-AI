@@ -72,6 +72,32 @@ class ServerTests(unittest.TestCase):
         self.assertIn("ready", body)
         self.assertIsInstance(body["ready"], bool)
 
+    def test_api_modify_and_download(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / "data.bin"
+            src.write_bytes(b"HELLO")
+            s, b = _post(f"{self.base}/modify", {"target": str(src),
+                         "patches": [{"offset": 0, "hex": "4a"}]})  # H -> J
+            self.assertEqual(s, 200, b)
+            self.assertIn("download", b)
+            self.assertEqual(b["bytes_changed"], 1)
+            # download the modified file
+            with urllib.request.urlopen(f"{self.base}{b['download']}", timeout=5) as r:
+                self.assertEqual(r.read()[0:1], b"J")
+
+    def test_api_modify_bad_request(self):
+        s, b = _post(f"{self.base}/modify", {"target": "/x"})
+        self.assertEqual(s, 400)
+
+    def test_api_verify_requires_both(self):
+        s, b = _post(f"{self.base}/verify", {"original": "/a"})
+        self.assertEqual(s, 400)
+
+    def test_api_clone_refuses_internal(self):
+        s, b = _post(f"{self.base}/clone", {"url": "http://127.0.0.1:1/"})
+        self.assertEqual(s, 400)
+        self.assertIn("error", b)
+
     def test_analyze(self):
         status, body = _post(f"{self.base}/analyze", {"path": "/usr/bin/objdump"})
         self.assertEqual(status, 200)

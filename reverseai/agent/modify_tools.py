@@ -270,10 +270,63 @@ class ExtractArchiveTool(Tool):
             f"members: {preview}", **res.to_dict())
 
 
+class CloneWebsiteTool(Tool):
+    name = "clone_website"
+    description = (
+        "Clone a public website into a self-contained static folder: fetch the "
+        "page and its same-origin assets (CSS/JS/images/fonts), rewrite links to "
+        "local copies, and optionally rename a brand throughout. Produces an "
+        "offline-renderable replica of the front-end (exact markup, styling, and "
+        "CSS/JS animations) delivered as a zip. It does NOT reproduce the server "
+        "behind the site. Refuses non-public/internal hosts."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "description": "the page URL to clone"},
+            "rename_from": {"type": "string", "description": "brand text to replace"},
+            "rename_to": {"type": "string", "description": "new brand text"},
+        },
+        "required": ["url"],
+    }
+    permission = Permission.WRITE
+
+    def run(self, args, ctx) -> ToolResult:
+        import shutil
+        from pathlib import Path
+
+        from ..clone import CloneError, clone_site
+
+        site_dir = Path(ctx.workspace) / "clone"
+        try:
+            res = clone_site(args["url"], site_dir,
+                             rename_from=args.get("rename_from"),
+                             rename_to=args.get("rename_to"))
+        except (CloneError, OSError) as exc:
+            return ToolResult.failure(f"clone failed: {exc}")
+
+        # Package the replica as a delivered artifact.
+        base = Path(ctx.workspace) / "site_clone"
+        zip_path = shutil.make_archive(str(base), "zip", str(site_dir))
+        ctx.extra["modified_path"] = zip_path
+        if ctx.evidence is not None:
+            ctx.evidence.verified(
+                f"cloned {args['url']}: {res.pages} page, {res.assets} assets, "
+                f"{res.renamed} renames", source=self.name)
+        summary = (
+            f"cloned {args['url']}\n"
+            f"assets: {res.assets}  bytes: {res.total_bytes}  renames: {res.renamed}\n"
+            f"packaged: {zip_path}"
+        )
+        if res.skipped:
+            summary += f"\nskipped (off-site/failed): {len(res.skipped)}"
+        return ToolResult.success(summary, **res.to_dict(), zip=zip_path)
+
+
 def modification_tools() -> list[Tool]:
     tools: list[Tool] = [
         ApplyBytePatchTool(), VerifyAgainstOriginalTool(), StructuralDiffTool(),
-        ExtractArchiveTool(),
+        ExtractArchiveTool(), CloneWebsiteTool(),
     ]
     # LIEF-backed structural edits only when the library is present.
     from ..modify.lief_ops import lief_available
