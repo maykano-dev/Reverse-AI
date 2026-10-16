@@ -162,6 +162,13 @@ def _cmd_sandbox_run(args: argparse.Namespace) -> int:
     return 0 if res.ok else 1
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    from .server import serve
+
+    serve(host=args.host, port=args.port, store_dir=args.store)
+    return 0
+
+
 def _cmd_agent_run(args: argparse.Namespace) -> int:
     from .agent import Agent, Permission, get_provider
     from .agent.providers.deepseek import ProviderError
@@ -217,6 +224,12 @@ def build_parser() -> argparse.ArgumentParser:
     sbx_run.add_argument("argv", nargs=argparse.REMAINDER,
                          help="-- then the command to run")
     sbx_run.set_defaults(func=_cmd_sandbox_run)
+
+    serve = sub.add_parser("serve", help="run the local control API")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8077)
+    serve.add_argument("--store", default="./jobs", help="job store directory")
+    serve.set_defaults(func=_cmd_serve)
 
     agent = sub.add_parser("agent", help="autonomous investigation agent")
     agent_sub = agent.add_subparsers(dest="agent_cmd", required=True)
