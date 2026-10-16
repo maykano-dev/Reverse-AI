@@ -66,6 +66,55 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(p.model, "m")
 
 
+class AnthropicTests(unittest.TestCase):
+    def test_message_translation(self):
+        from reverseai.agent.providers.anthropic import AnthropicProvider
+        from reverseai.agent.providers.base import ToolCall
+
+        msgs = [
+            Message(Role.SYSTEM, "be good"),
+            Message(Role.USER, "analyze it"),
+            Message(Role.ASSISTANT, content=None,
+                    tool_calls=[ToolCall("t1", "analyze_binary", {})]),
+            Message(Role.TOOL, content="format: elf", tool_call_id="t1",
+                    name="analyze_binary"),
+        ]
+        system, converted = AnthropicProvider._to_anthropic(msgs)
+        self.assertEqual(system, "be good")
+        # assistant tool_use block present
+        self.assertEqual(converted[1]["content"][0]["type"], "tool_use")
+        # tool result mapped to a user turn with tool_result block
+        self.assertEqual(converted[2]["content"][0]["type"], "tool_result")
+        self.assertEqual(converted[2]["content"][0]["tool_use_id"], "t1")
+
+    def test_parse_tool_use(self):
+        from reverseai.agent.providers.anthropic import AnthropicProvider
+
+        data = {
+            "content": [
+                {"type": "text", "text": "let me check"},
+                {"type": "tool_use", "id": "u1", "name": "read_bytes",
+                 "input": {"offset": 0, "length": 16}},
+            ],
+            "stop_reason": "tool_use",
+            "usage": {"input_tokens": 10, "output_tokens": 5},
+        }
+        resp = AnthropicProvider._parse(data)
+        self.assertTrue(resp.wants_tools)
+        self.assertEqual(resp.tool_calls[0].name, "read_bytes")
+        self.assertEqual(resp.tool_calls[0].arguments["length"], 16)
+        self.assertEqual(resp.usage.total_tokens, 15)
+
+    def test_tool_spec_conversion(self):
+        from reverseai.agent.providers.anthropic import AnthropicProvider
+
+        spec = {"type": "function", "function": {
+            "name": "x", "description": "d", "parameters": {"type": "object"}}}
+        a = AnthropicProvider._tool_to_anthropic(spec)
+        self.assertEqual(a["name"], "x")
+        self.assertIn("input_schema", a)
+
+
 class MessageTests(unittest.TestCase):
     def test_assistant_with_tool_calls_serializes(self):
         from reverseai.agent.providers.base import ToolCall

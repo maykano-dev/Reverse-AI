@@ -32,4 +32,8 @@ def get_provider(name: str = "deepseek", **kwargs):
         kwargs.setdefault("base_url", "https://api.openai.com/v1")
         kwargs.setdefault("model", "gpt-4o-mini")
         return OpenAICompatibleProvider(**kwargs)
+    if name in ("anthropic", "claude"):
+        from .anthropic import AnthropicProvider
+
+        return AnthropicProvider(**kwargs)
     raise ValueError(f"unknown provider: {name}")
