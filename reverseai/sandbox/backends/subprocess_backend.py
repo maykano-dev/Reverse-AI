@@ -41,7 +41,7 @@ class SubprocessSandbox(Sandbox):
         return run_process(
             list(argv),
             env=dict(policy.env),
-            cwd=cwd,
+            cwd=cwd or policy.workdir,
             timeout=policy.timeout_seconds,
             limits=policy.limits,
             max_output=policy.max_output_bytes,

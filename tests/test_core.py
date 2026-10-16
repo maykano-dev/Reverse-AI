@@ -204,5 +204,43 @@ class ELFAnalysisTests(unittest.TestCase):
             self.assertIs(self.report.arch, Arch.ARM64)
 
 
+class HeuristicsTests(unittest.TestCase):
+    def _report(self, **kw):
+        from reverseai.core.models import AnalysisReport, BinaryFormat
+
+        r = AnalysisReport(path="x", size=kw.get("size", 100_000),
+                           fmt=kw.get("fmt", BinaryFormat.PE))
+        r.entropy = kw.get("entropy", 5.0)
+        r.sections = kw.get("sections", [])
+        r.imports = kw.get("imports", {})
+        return r
+
+    def test_clean_binary_low(self):
+        from reverseai.core.heuristics import assess
+        from reverseai.core.models import Section
+
+        rep = self._report(
+            entropy=5.5,
+            sections=[Section(name=".text", flags="rx", entropy=6.0)],
+            imports={"KERNEL32.dll": ["CreateFileW", "ReadFile", "WriteFile",
+                                      "CloseHandle", "GetLastError", "ExitProcess"]},
+        )
+        self.assertEqual(assess(rep).packing_likelihood, "low")
+
+    def test_upx_sections_flagged(self):
+        from reverseai.core.heuristics import assess
+        from reverseai.core.models import Section
+
+        rep = self._report(
+            entropy=7.4,
+            sections=[Section(name="UPX0", flags="rwx", entropy=7.5),
+                      Section(name="UPX1", flags="rx", entropy=7.8)],
+            imports={"KERNEL32.dll": ["LoadLibraryA"]},
+        )
+        a = assess(rep)
+        self.assertEqual(a.packing_likelihood, "high")
+        self.assertTrue(any("UPX" in s for s in a.signals))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

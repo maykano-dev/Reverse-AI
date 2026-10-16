@@ -8,13 +8,17 @@ hostile code on the host.
 from __future__ import annotations
 
 from .backends.bubblewrap import BubblewrapSandbox
+from .backends.qiling_backend import QilingSandbox
 from .backends.subprocess_backend import SubprocessSandbox
 from .base import Sandbox, SandboxUnavailable
 from .policy import SandboxPolicy
 
-# Registered backends, strongest first. Emulation/VM backends register here as
-# they come online (qiling, qemu).
+# Registered backends. Ordered by isolation strength at selection time.
+# Emulation (qiling) outranks namespaces for untrusted *foreign-platform* code;
+# it is only "available" when installed and configured, so it stays dormant
+# otherwise.
 _BACKENDS: list[type[Sandbox]] = [
+    QilingSandbox,
     BubblewrapSandbox,
     SubprocessSandbox,
 ]

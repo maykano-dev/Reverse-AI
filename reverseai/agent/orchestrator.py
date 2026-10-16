@@ -37,16 +37,17 @@ class Agent:
         sandbox_policy: SandboxPolicy | None = None,
         confirm: ConfirmFn | None = None,
         temperature: float = 0.0,
+        enable_coding: bool = True,
     ) -> None:
         self.provider = provider
-        self.registry = registry or self._default_registry(max_permission)
+        self.registry = registry or self._default_registry(max_permission, enable_coding)
         self.mediator = ToolMediator(self.registry, max_permission=max_permission, confirm=confirm)
         self.max_steps = max_steps
         self.sandbox_policy = sandbox_policy or SandboxPolicy()
         self.temperature = temperature
 
     @staticmethod
-    def _default_registry(max_permission: Permission) -> ToolRegistry:
+    def _default_registry(max_permission: Permission, enable_coding: bool = True) -> ToolRegistry:
         reg = ToolRegistry()
         reg.register_all(default_tools())
         # Only expose modification tools when the job may actually write.
@@ -54,9 +55,14 @@ class Agent:
             from .modify_tools import modification_tools
 
             reg.register_all(modification_tools())
+        if enable_coding:
+            from .coding_tools import coding_tools
+
+            reg.register_all(coding_tools())
         return reg
 
-    def run(self, goal: str, target_path: str | None = None) -> Job:
+    def run(self, goal: str, target_path: str | None = None,
+            project_dir: str | None = None) -> Job:
         job = Job(goal=goal, target_path=target_path)
         job.workspace = tempfile.mkdtemp(prefix=f"reverseai-{job.id}-")
         job.status = "running"
@@ -78,6 +84,7 @@ class Agent:
             target_path=target_path,
             sandbox_policy=self.sandbox_policy,
             evidence=evidence,
+            extra={"project_dir": project_dir or job.workspace},
         )
 
         messages = [

@@ -250,6 +250,31 @@ class RunInSandboxTool(Tool):
                           error=res.error)
 
 
+class AssessHeuristicsTool(Tool):
+    name = "assess_heuristics"
+    description = (
+        "Run heuristic checks over the target (packing, self-modifying sections, "
+        "suspicious import tables, high entropy). Returns INFERENCES, not facts — "
+        "treat results as hypotheses to investigate, not conclusions."
+    )
+    parameters = {"type": "object", "properties": {}}
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        from ..core.heuristics import assess
+
+        target = _require_target(ctx)
+        report = analyze_file(target)
+        a = assess(report)
+        if ctx.evidence is not None and a.signals:
+            ctx.evidence.believed(
+                f"packing likelihood {a.packing_likelihood}", source=self.name,
+                detail="; ".join(a.signals))
+        body = f"packing likelihood: {a.packing_likelihood}\n" + (
+            "\n".join(f"- {s}" for s in a.signals) or "- no notable signals")
+        return ToolResult.success(body, assessment=a.to_dict())
+
+
 class RecordFindingTool(Tool):
     name = "record_finding"
     description = (
@@ -288,6 +313,7 @@ def default_tools() -> list[Tool]:
         ReadBytesTool(),
         ListStringsTool(),
         DisassembleTool(),
+        AssessHeuristicsTool(),
         RunInSandboxTool(),
         RecordFindingTool(),
     ]

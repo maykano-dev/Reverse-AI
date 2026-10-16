@@ -37,6 +37,11 @@ class SandboxPolicy:
 
     # Extra host paths to expose read-only inside the sandbox (absolute paths).
     ro_binds: list[str] = field(default_factory=list)
+    # Host paths exposed read-WRITE (e.g. a project dir for a build/test run).
+    rw_binds: list[str] = field(default_factory=list)
+    # If set, bind this dir read-write and chdir into it instead of a fresh
+    # tmpfs. Used by the coding tools to operate on a real project.
+    workdir: str | None = None
 
     def trusted_only(self) -> "SandboxPolicy":
         """Return a copy that forbids untrusted execution (for running our own tools)."""

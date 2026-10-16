@@ -112,13 +112,23 @@ class BubblewrapSandbox(Sandbox):
             for path in _SYSTEM_ROBIND_FILES:
                 args += ["--ro-bind-try", path, path]
 
-        # Writable scratch space inside the sandbox.
-        args += ["--bind", workdir, "/work", "--chdir", "/work"]
+        # Writable working directory. Either a real project dir (coding runs)
+        # bound at its own path, or a fresh ephemeral tmpfs-backed scratch dir.
+        if policy.workdir and os.path.isdir(policy.workdir):
+            real = os.path.realpath(policy.workdir)
+            args += ["--bind", real, real, "--chdir", real]
+        else:
+            args += ["--bind", workdir, "/work", "--chdir", "/work"]
 
         # Caller-requested read-only exposures (e.g. the target binary).
         for path in policy.ro_binds:
             if os.path.isabs(path) and os.path.exists(path):
                 args += ["--ro-bind", path, path]
+
+        # Caller-requested read-write exposures.
+        for path in policy.rw_binds:
+            if os.path.isabs(path) and os.path.exists(path):
+                args += ["--bind", path, path]
 
         for key, value in policy.env.items():
             args += ["--setenv", key, value]

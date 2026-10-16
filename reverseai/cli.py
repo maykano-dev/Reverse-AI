@@ -135,7 +135,7 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
         return 2
 
     agent = Agent(provider, max_permission=perm, max_steps=args.max_steps)
-    job = agent.run(args.goal, target_path=args.target)
+    job = agent.run(args.goal, target_path=args.target, project_dir=args.project_dir)
 
     print(job.report())
     print(f"\n[usage] {job.usage}  steps={job.steps}  status={job.status}")
@@ -177,6 +177,8 @@ def build_parser() -> argparse.ArgumentParser:
     agent_run = agent_sub.add_parser("run", help="run an investigation")
     agent_run.add_argument("--goal", required=True)
     agent_run.add_argument("--target", help="path to the target binary")
+    agent_run.add_argument("--project-dir", dest="project_dir",
+                           help="project directory for coding tasks")
     agent_run.add_argument("--provider", default="deepseek",
                            help="llm provider (deepseek|mock)")
     agent_run.add_argument("--permission", default="execute",
