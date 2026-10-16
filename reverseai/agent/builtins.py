@@ -253,6 +253,42 @@ class RunInSandboxTool(Tool):
                           error=res.error)
 
 
+class AnalyzeApkTool(Tool):
+    name = "analyze_apk"
+    description = (
+        "Analyze an Android APK (the target): package name, requested "
+        "permissions, DEX bytecode files, supported ABIs, and bundled native "
+        "libraries analyzed as ELF binaries (arch + import counts). Use for "
+        "mobile-app investigations. Full decompile/modify/resign needs external "
+        "tooling; this is the structure + native-code analysis."
+    )
+    parameters = {"type": "object", "properties": {}}
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        from ..mobile import analyze_apk
+
+        target = _require_target(ctx)
+        rep = analyze_apk(target)
+        if not rep.is_apk:
+            return ToolResult.failure("target is not a recognizable APK")
+        if ctx.evidence is not None:
+            ctx.evidence.observed(
+                f"APK package={rep.package}, abis={rep.abis}, "
+                f"{len(rep.dex_files)} dex, {len(rep.native_libs)} native libs",
+                source=self.name)
+        lines = [
+            f"package: {rep.package}",
+            f"permissions ({len(rep.permissions)}): {', '.join(rep.permissions[:10])}",
+            f"dex files: {len(rep.dex_files)}  abis: {', '.join(rep.abis) or 'none'}",
+            f"assets: {rep.asset_count}  resources: {rep.resource_count}",
+            f"native libs ({len(rep.native_libs)}):",
+        ]
+        for lib in rep.native_libs:
+            lines.append(f"  {lib.name} — {lib.arch} {lib.bits}-bit, {lib.imports} imports")
+        return ToolResult.success("\n".join(lines), report=rep.to_dict())
+
+
 class ListFunctionsTool(Tool):
     name = "list_functions"
     description = (
@@ -362,6 +398,7 @@ def default_tools() -> list[Tool]:
         ListStringsTool(),
         DisassembleTool(),
         ListFunctionsTool(),
+        AnalyzeApkTool(),
         AssessHeuristicsTool(),
         RunInSandboxTool(),
         RecordFindingTool(),
