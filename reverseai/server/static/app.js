@@ -382,4 +382,17 @@ async function checkReady() {
     }
   } catch (_) {}
 }
+
+autosize();  // size the composer correctly on first paint (no stray scrollbar)
+
+// If opened as a file:// (no backend), say so clearly instead of silently failing.
+if (location.protocol === "file:") {
+  const w = $("#welcome");
+  if (w) {
+    const n = el("div");
+    n.style.cssText = "margin:18px auto 0;max-width:470px;font-size:13px;color:#ff453a;background:rgba(255,69,58,.1);border:1px solid rgba(255,69,58,.28);border-radius:12px;padding:12px 15px;line-height:1.5";
+    n.innerHTML = "You've opened this file directly, so there's no server to chat with. Run <b>python3 -m reverseai serve</b> and open <b>http://localhost:8077</b>.";
+    w.appendChild(n);
+  }
+}
 checkReady(); loadCaps(); loadHistory();
