@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "reverseai-web",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "reverseai", "serve", "--port", "8077", "--store", "./jobs"],
+      "port": 8077
+    }
+  ]
+}

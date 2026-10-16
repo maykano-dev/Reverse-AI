@@ -89,7 +89,11 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/health":
             return self._send(200, {"status": "ok", "version": __version__})
         if path == "/caps":
-            return self._send(200, detect_capabilities().to_dict())
+            caps = detect_capabilities()
+            payload = caps.to_dict()
+            payload["can_run_untrusted"] = caps.can_run_untrusted()
+            payload["best_isolation"] = caps.best_isolation()
+            return self._send(200, payload)
         if path == "/jobs":
             return self._send(200, {"jobs": self.store.list_summaries()})
         em = _EVENTS_PATH.match(path)
@@ -128,6 +132,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 
