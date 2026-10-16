@@ -79,6 +79,17 @@ def build_macho_with_symbols() -> bytes:
     return header + seg + symtab_cmd + sym_printf + sym_main + strtab
 
 
+def build_fat(slice_bytes: bytes, slice_offset: int = 4096) -> bytes:
+    """Wrap a thin Mach-O in a 32-bit fat/universal header (one arm64 slice)."""
+    CPU_ARM64 = 0x0100000C
+    header = struct.pack(">II", 0xCAFEBABE, 1)  # magic, nfat_arch
+    fat_arch = struct.pack(">iIIII", CPU_ARM64, 0x0, slice_offset,
+                           len(slice_bytes), 12)
+    blob = header + fat_arch
+    blob += b"\x00" * (slice_offset - len(blob)) + slice_bytes
+    return blob
+
+
 class MachOTests(unittest.TestCase):
     def setUp(self):
         self.blob = build_minimal_macho64()
@@ -121,6 +132,28 @@ class MachOSymbolTests(unittest.TestCase):
 
     def test_export(self):
         self.assertIn("_main", self.info.exports)
+
+
+class MachOFatTests(unittest.TestCase):
+    def test_fat_selects_slice_and_parses(self):
+        fat = build_fat(build_macho_with_symbols())
+        info = parse_macho(fat)
+        self.assertTrue(info.is_fat)
+        self.assertEqual(info.slice_count, 1)
+        self.assertIs(info.arch, Arch.ARM64)
+        self.assertIn("_main", {f["name"] for f in info.functions})
+
+    def test_fat_detected_as_macho_by_analyzer(self):
+        fat = build_fat(build_macho_with_symbols())
+        report = analyze_bytes(fat, "universal.bin")
+        self.assertIs(report.fmt, BinaryFormat.MACHO)
+        self.assertIn("_main", {f["name"] for f in report.functions})
+
+    def test_java_class_not_mistaken_for_fat(self):
+        # Java .class also starts 0xCAFEBABE; absurd nfat_arch must be rejected.
+        java = b"\xca\xfe\xba\xbe" + struct.pack(">I", 0x00340000) + b"\x00" * 40
+        info = parse_macho(java)
+        self.assertTrue(any("Java" in w or "not a Mach-O" in w for w in info.warnings))
 
 
 if __name__ == "__main__":

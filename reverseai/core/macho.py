@@ -42,12 +42,21 @@ _N_UNDF = 0x0
 _N_SECT = 0xE
 
 
+_FAT_MAGIC = b"\xca\xfe\xba\xbe"   # 32-bit fat (offsets are u32)
+_FAT_MAGIC_64 = b"\xca\xfe\xba\xbf"  # 64-bit fat (offsets are u64)
+
+# Preference order when a fat binary carries multiple slices.
+_ARCH_PREFERENCE = [Arch.ARM64, Arch.X86_64, Arch.ARM, Arch.X86]
+
+
 @dataclass
 class MachOInfo:
     arch: Arch = Arch.UNKNOWN
     bits: int = 0
     endian: str = "little"
     binary_type: str | None = None
+    is_fat: bool = False
+    slice_count: int = 0
     sections: list[Section] = field(default_factory=list)
     dynamic_symbols: list[str] = field(default_factory=list)  # imported (undefined)
     exports: list[str] = field(default_factory=list)
@@ -61,9 +70,12 @@ def parse_macho(data: bytes) -> MachOInfo:
         info.warnings.append("file too small for Mach-O header")
         return info
 
+    if data[:4] in (_FAT_MAGIC, _FAT_MAGIC_64):
+        return _parse_fat(data)
+
     magic = _MAGIC.get(data[:4])
     if magic is None:
-        info.warnings.append("not a thin Mach-O (fat binary or unknown magic)")
+        info.warnings.append("not a thin Mach-O (unknown magic)")
         return info
     en, is64 = magic
     info.endian = "little" if en == "<" else "big"
@@ -86,6 +98,63 @@ def parse_macho(data: bytes) -> MachOInfo:
         _parse_load_commands(data, en, is64, offset, ncmds, info)
     except struct.error as exc:
         info.warnings.append(f"load-command parse failed: {exc}")
+    return info
+
+
+def _parse_fat(data: bytes) -> MachOInfo:
+    """Parse a fat/universal binary: pick the preferred slice and analyze it.
+
+    Fat headers are always big-endian. iOS/macOS universal binaries ship this
+    way (e.g. arm64 + arm64e, or arm64 + x86_64).
+    """
+    is64 = data[:4] == _FAT_MAGIC_64
+    nfat = struct.unpack_from(">I", data, 4)[0]
+    # Sanity bound: a Java .class also starts 0xCAFEBABE; reject absurd counts.
+    if not (1 <= nfat <= 64):
+        out = MachOInfo()
+        out.warnings.append("CAFEBABE header is not a Mach-O fat binary "
+                            "(possibly a Java class file)")
+        return out
+
+    arch_size = 32 if is64 else 20
+    slices: list[tuple[Arch, int, int]] = []  # (arch, offset, size)
+    pos = 8
+    for _ in range(nfat):
+        if pos + arch_size > len(data):
+            break
+        cputype = struct.unpack_from(">i", data, pos)[0]
+        if is64:
+            offset, size = struct.unpack_from(">QQ", data, pos + 8)
+        else:
+            offset, size = struct.unpack_from(">II", data, pos + 8)
+        arch, _bits = _CPU.get(cputype & 0xFFFFFFFF, (Arch.UNKNOWN, 0))
+        slices.append((arch, offset, size))
+        pos += arch_size
+
+    chosen = None
+    for pref in _ARCH_PREFERENCE:
+        for arch, off, size in slices:
+            if arch == pref:
+                chosen = (arch, off, size)
+                break
+        if chosen:
+            break
+    if chosen is None and slices:
+        chosen = slices[0]
+
+    if chosen is None:
+        out = MachOInfo(is_fat=True, slice_count=len(slices))
+        out.warnings.append("fat binary has no recognizable slices")
+        return out
+
+    _arch, off, size = chosen
+    slice_bytes = data[off:off + size]
+    info = parse_macho(slice_bytes)
+    info.is_fat = True
+    info.slice_count = len(slices)
+    info.warnings.append(
+        f"fat binary: {len(slices)} slices "
+        f"({', '.join(a.value for a, _, _ in slices)}); analyzed {info.arch.value}")
     return info
 
 
