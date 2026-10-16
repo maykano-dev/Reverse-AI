@@ -39,16 +39,21 @@ class Agent:
         temperature: float = 0.0,
     ) -> None:
         self.provider = provider
-        self.registry = registry or self._default_registry()
+        self.registry = registry or self._default_registry(max_permission)
         self.mediator = ToolMediator(self.registry, max_permission=max_permission, confirm=confirm)
         self.max_steps = max_steps
         self.sandbox_policy = sandbox_policy or SandboxPolicy()
         self.temperature = temperature
 
     @staticmethod
-    def _default_registry() -> ToolRegistry:
+    def _default_registry(max_permission: Permission) -> ToolRegistry:
         reg = ToolRegistry()
         reg.register_all(default_tools())
+        # Only expose modification tools when the job may actually write.
+        if max_permission >= Permission.WRITE:
+            from .modify_tools import modification_tools
+
+            reg.register_all(modification_tools())
         return reg
 
     def run(self, goal: str, target_path: str | None = None) -> Job:
