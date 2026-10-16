@@ -59,8 +59,15 @@ document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () 
 
 // composer autosize (grows as you type, like Claude)
 const input = $("#input");
-function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, Math.round(window.innerHeight * 0.45)) + "px"; }
+function autosize() {
+  input.style.height = "auto";
+  const max = Math.round(window.innerHeight * 0.45);
+  const full = input.scrollHeight;
+  input.style.height = Math.min(full, max) + "px";
+  input.style.overflowY = full > max ? "auto" : "hidden";
+}
 input.addEventListener("input", autosize);
+window.addEventListener("resize", autosize);
 input.addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   if (e.ctrlKey || e.metaKey) {       // Ctrl/Cmd+Enter -> newline at cursor
