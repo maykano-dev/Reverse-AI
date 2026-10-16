@@ -13,7 +13,19 @@ modification engine and web UI are next. See [CLAUDE.md](CLAUDE.md),
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and
 [docs/SECURITY.md](docs/SECURITY.md).
 
-## Quick start
+## The app
+
+```bash
+export DEEPSEEK_API_KEY=sk-...        # the model is configured server-side only
+python3 -m reverseai serve           # then open http://127.0.0.1:8077
+```
+
+A premium chat UI: drop a binary (PE / ELF / Mach-O) or archive, say what you
+want, and watch ReverseAI investigate live in an isolated sandbox — then it
+hands back the finished, verified file. The model behind it is never exposed to
+users; set `REVERSEAI_PROVIDER` (deepseek · openai · anthropic) to choose it.
+
+## Quick start (CLI)
 
 No dependencies required for the core — Python 3.11+ and standard binutils.
 

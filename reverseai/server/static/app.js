@@ -356,4 +356,18 @@ document.addEventListener("keydown", (e) => {
 });
 
 if (window.innerWidth < 900) $("#app").classList.add("collapsed");
-loadCaps(); loadHistory();
+async function checkReady() {
+  try {
+    const c = await getJSON("/config");
+    if (!c.ready) {
+      const w = $("#welcome");
+      if (w && !$("#readyNote")) {
+        const n = el("div"); n.id = "readyNote";
+        n.style.cssText = "margin:18px auto 0;max-width:460px;font-size:13px;color:var(--believed);background:rgba(208,133,0,.1);border:1px solid rgba(208,133,0,.25);border-radius:12px;padding:11px 14px;line-height:1.5";
+        n.textContent = "Almost ready — connect a model by setting the provider API key on the server, then reload.";
+        w.appendChild(n);
+      }
+    }
+  } catch (_) {}
+}
+checkReady(); loadCaps(); loadHistory();

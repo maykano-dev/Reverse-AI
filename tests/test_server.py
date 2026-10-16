@@ -66,6 +66,12 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("bubblewrap", body)
 
+    def test_config_ready_flag(self):
+        status, body = _get(f"{self.base}/config")
+        self.assertEqual(status, 200)
+        self.assertIn("ready", body)
+        self.assertIsInstance(body["ready"], bool)
+
     def test_analyze(self):
         status, body = _post(f"{self.base}/analyze", {"path": "/usr/bin/objdump"})
         self.assertEqual(status, 200)

@@ -92,6 +92,8 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send_static("app.js", "application/javascript; charset=utf-8")
         if path == "/health":
             return self._send(200, {"status": "ok", "version": __version__})
+        if path == "/config":
+            return self._send(200, {"ready": self._provider_ready()})
         if path == "/caps":
             caps = detect_capabilities()
             payload = caps.to_dict()
@@ -151,6 +153,21 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
+
+    @staticmethod
+    def _provider_ready() -> bool:
+        """True if the server-configured model provider can be constructed
+        (its API key is present). Never reveals which provider it is."""
+        import os
+
+        from ..agent import get_provider
+
+        name = os.environ.get("REVERSEAI_PROVIDER", "deepseek")
+        try:
+            get_provider(name)
+            return True
+        except Exception:
+            return False
 
     def _start_run(self, body) -> None:
         stream_id, conversation_id, error = self.runs.start(body)
