@@ -53,6 +53,19 @@ python3 -m unittest discover -s tests -v
 `POST /jobs {goal,target,provider,permission}`. It is a single-user control
 surface — keep it bound to localhost.
 
+## Supported targets
+
+Cross-platform by design — not Windows-only:
+
+| Platform | Format | Analysis depth |
+|---|---|---|
+| Windows | PE (.exe/.dll) | header, sections, imports, **exports**, entropy, heuristics |
+| Linux | ELF | header, sections, **dynamic imports + DT_NEEDED**, **function recovery**, native sandboxed execution |
+| macOS / iOS | Mach-O (arm64/x86_64) | header, segments/sections, **imported/exported symbols**, functions |
+
+ELF runs natively in the sandbox; PE and other foreign-platform binaries run via
+the Qiling emulation backend (when installed) or a QEMU VM.
+
 ## Layers
 
 - **Analysis** (`reverseai/core`) — format/arch/bits, hashes, per-section

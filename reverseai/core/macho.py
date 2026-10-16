@@ -32,6 +32,14 @@ _MAGIC = {
 
 _LC_SEGMENT = 0x1
 _LC_SEGMENT_64 = 0x19
+_LC_SYMTAB = 0x2
+
+# nlist n_type masks
+_N_STAB = 0xE0
+_N_TYPE = 0x0E
+_N_EXT = 0x01
+_N_UNDF = 0x0
+_N_SECT = 0xE
 
 
 @dataclass
@@ -41,6 +49,9 @@ class MachOInfo:
     endian: str = "little"
     binary_type: str | None = None
     sections: list[Section] = field(default_factory=list)
+    dynamic_symbols: list[str] = field(default_factory=list)  # imported (undefined)
+    exports: list[str] = field(default_factory=list)
+    functions: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -72,13 +83,77 @@ def parse_macho(data: bytes) -> MachOInfo:
 
     offset = 32 if is64 else 28
     try:
-        info.sections = _parse_segments(data, en, is64, offset, ncmds, info.warnings)
+        _parse_load_commands(data, en, is64, offset, ncmds, info)
     except struct.error as exc:
         info.warnings.append(f"load-command parse failed: {exc}")
     return info
 
 
+def _parse_load_commands(data, en, is64, offset, ncmds, info) -> None:
+    from .identify import shannon_entropy
+
+    pos = offset
+    for _ in range(min(ncmds, 4096)):
+        if pos + 8 > len(data):
+            break
+        cmd, cmdsize = struct.unpack_from(en + "II", data, pos)
+        if cmdsize == 0:
+            break
+        if cmd in (_LC_SEGMENT, _LC_SEGMENT_64):
+            info.sections.extend(_parse_segment(data, en, is64, pos, shannon_entropy))
+        elif cmd == _LC_SYMTAB:
+            _parse_symtab(data, en, is64, pos, info)
+        pos += cmdsize
+
+
+def _parse_symtab(data, en, is64, pos, info) -> None:
+    """Parse LC_SYMTAB: imported (undefined), exported, and defined functions."""
+    symoff, nsyms, stroff, strsize = struct.unpack_from(en + "IIII", data, pos + 8)
+    nlist_size = 16 if is64 else 12
+    str_end = min(stroff + strsize, len(data))
+
+    def _name(n_strx: int) -> str:
+        if n_strx == 0:
+            return ""
+        start = stroff + n_strx
+        if start >= str_end:
+            return ""
+        end = data.find(b"\x00", start, str_end)
+        if end == -1:
+            end = str_end
+        return data[start:end].decode("utf-8", "replace")
+
+    seen_exp: set[str] = set()
+    for i in range(min(nsyms, 200_000)):
+        p = symoff + i * nlist_size
+        if p + nlist_size > len(data):
+            break
+        if is64:
+            n_strx, n_type, _n_sect, _n_desc, n_value = struct.unpack_from(
+                en + "IBBHQ", data, p)
+        else:
+            n_strx, n_type, _n_sect, _n_desc, n_value = struct.unpack_from(
+                en + "IBBHI", data, p)
+        if n_type & _N_STAB:  # debug symbol, skip
+            continue
+        name = _name(n_strx)
+        if not name:
+            continue
+        type_field = n_type & _N_TYPE
+        is_ext = n_type & _N_EXT
+        if type_field == _N_UNDF:
+            if name not in info.dynamic_symbols:
+                info.dynamic_symbols.append(name)
+        elif type_field == _N_SECT and n_value:
+            info.functions.append({"name": name, "address": n_value, "size": 0})
+            if is_ext and name not in seen_exp:
+                seen_exp.add(name)
+                info.exports.append(name)
+    info.functions.sort(key=lambda f: f["address"])
+
+
 def _parse_segments(data, en, is64, offset, ncmds, warnings) -> list[Section]:
+    """Back-compat helper: sections only."""
     from .identify import shannon_entropy
 
     sections: list[Section] = []

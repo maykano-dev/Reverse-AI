@@ -54,6 +54,9 @@ def analyze_bytes(data: bytes, path: str = "<memory>") -> AnalysisReport:
         report.endian = info.endian
         report.binary_type = info.binary_type
         report.sections = info.sections
+        report.dynamic_symbols = info.dynamic_symbols
+        report.exports = info.exports
+        report.functions = info.functions
         report.warnings.extend(info.warnings)
 
     all_strings = extract_strings(data, min_len=5)

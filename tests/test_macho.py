@@ -50,6 +50,35 @@ def build_minimal_macho64() -> bytes:
     return blob
 
 
+def build_macho_with_symbols() -> bytes:
+    """64-bit Mach-O with LC_SEGMENT_64 (0 sections) + LC_SYMTAB (2 symbols)."""
+    MH_MAGIC_64 = 0xFEEDFACF
+    CPU_ARM64 = 0x0100000C  # iOS/Apple-silicon arch
+    MH_EXECUTE = 0x2
+    LC_SEGMENT_64 = 0x19
+    LC_SYMTAB = 0x2
+
+    seg_size = 72  # no sections
+    symtab_size = 24
+    sizeofcmds = seg_size + symtab_size
+    header = struct.pack("<IiiIIIII", MH_MAGIC_64, CPU_ARM64, 0x0, MH_EXECUTE,
+                         2, sizeofcmds, 0, 0)
+    seg = struct.pack("<II16sQQQQiiII", LC_SEGMENT_64, seg_size, b"__TEXT",
+                      0x100000000, 0x1000, 0, 0x1000, 7, 5, 0, 0)
+
+    symoff = 32 + sizeofcmds           # right after load commands
+    nsyms = 2
+    stroff = symoff + nsyms * 16
+    strtab = b"\x00_printf\x00_main\x00"
+    symtab_cmd = struct.pack("<IIIIII", LC_SYMTAB, symtab_size,
+                             symoff, nsyms, stroff, len(strtab))
+
+    # nlist_64: n_strx(I), n_type(B), n_sect(B), n_desc(H), n_value(Q)
+    sym_printf = struct.pack("<IBBHQ", 1, 0x01, 0, 0, 0)            # undefined ext
+    sym_main = struct.pack("<IBBHQ", 9, 0x0F, 1, 0, 0x100001000)   # defined ext
+    return header + seg + symtab_cmd + sym_printf + sym_main + strtab
+
+
 class MachOTests(unittest.TestCase):
     def setUp(self):
         self.blob = build_minimal_macho64()
@@ -72,6 +101,26 @@ class MachOTests(unittest.TestCase):
     def test_fat_or_unknown_degrades(self):
         info = parse_macho(b"\xca\xfe\xba\xbe" + b"\x00" * 60)  # fat magic
         self.assertTrue(info.warnings)
+
+
+class MachOSymbolTests(unittest.TestCase):
+    def setUp(self):
+        self.info = parse_macho(build_macho_with_symbols())
+
+    def test_arm64_arch(self):
+        self.assertIs(self.info.arch, Arch.ARM64)
+
+    def test_imported_symbol(self):
+        self.assertIn("_printf", self.info.dynamic_symbols)
+
+    def test_defined_function(self):
+        names = {f["name"] for f in self.info.functions}
+        self.assertIn("_main", names)
+        main = next(f for f in self.info.functions if f["name"] == "_main")
+        self.assertEqual(main["address"], 0x100001000)
+
+    def test_export(self):
+        self.assertIn("_main", self.info.exports)
 
 
 if __name__ == "__main__":

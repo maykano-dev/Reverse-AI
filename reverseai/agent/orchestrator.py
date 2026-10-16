@@ -18,6 +18,7 @@ from pathlib import Path
 from ..sandbox import SandboxPolicy
 from ..security.validate import ValidationError, read_target
 from .builtins import default_tools
+from .context import DEFAULT_MAX_CHARS, compact_messages
 from .evidence import EvidenceLog
 from .job import Job
 from .mediator import ConfirmFn, ToolMediator
@@ -38,6 +39,7 @@ class Agent:
         confirm: ConfirmFn | None = None,
         temperature: float = 0.0,
         enable_coding: bool = True,
+        max_context_chars: int = DEFAULT_MAX_CHARS,
     ) -> None:
         self.provider = provider
         self.registry = registry or self._default_registry(max_permission, enable_coding)
@@ -45,6 +47,7 @@ class Agent:
         self.max_steps = max_steps
         self.sandbox_policy = sandbox_policy or SandboxPolicy()
         self.temperature = temperature
+        self.max_context_chars = max_context_chars
 
     @staticmethod
     def _default_registry(max_permission: Permission, enable_coding: bool = True) -> ToolRegistry:
@@ -94,6 +97,7 @@ class Agent:
 
         for step in range(1, self.max_steps + 1):
             job.steps = step
+            messages = compact_messages(messages, self.max_context_chars)
             resp = self.provider.chat(
                 messages,
                 tools=self.registry.provider_specs(),
