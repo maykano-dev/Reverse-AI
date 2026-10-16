@@ -6,35 +6,72 @@ An autonomous reverse-engineering engineer. Hand it a compiled program and a
 goal in plain language; it investigates how the program works, makes the change,
 tests it in isolation, and returns a working artifact with evidence.
 
-This is the early foundation. Today it does static binary analysis; the agent,
-modification engine, and sandbox are being built on top of it. See
-[CLAUDE.md](CLAUDE.md) for the full spec, architecture, and roadmap.
+It already has three working layers — a dependency-free **analysis engine**, a
+hardened **sandbox lab** for running untrusted binaries, and an autonomous
+**agent** that investigates a target through policy-mediated tools. The
+modification engine and web UI are next. See [CLAUDE.md](CLAUDE.md),
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and
+[docs/SECURITY.md](docs/SECURITY.md).
 
 ## Quick start
 
-No dependencies required — Python 3.11+ and standard binutils only.
+No dependencies required for the core — Python 3.11+ and standard binutils.
 
 ```bash
-# Analyze any PE / ELF / Mach-O binary
+# Static analysis of any PE / ELF / Mach-O binary
 python3 -m reverseai analyze /usr/bin/objdump
 
-# Machine-readable output
-python3 -m reverseai analyze /path/to/app.exe --json
+# What can this host do (sandbox backends, emulators, optional libs)?
+python3 -m reverseai caps
 
-# Run the tests
+# Run a command in the hardened sandbox (no network, read-only system)
+python3 -m reverseai sandbox run --untrusted -- /bin/echo "hello from the lab"
+
+# Autonomous investigation (needs DEEPSEEK_API_KEY)
+export DEEPSEEK_API_KEY=sk-...
+python3 -m reverseai agent run \
+  --goal "Explain what this program does and verify it by running it." \
+  --target ./sample --save ./jobs
+
+# Tests (no network / no API key needed — uses the mock provider)
 python3 -m unittest discover -s tests -v
 ```
 
-## What it reports today
+## Layers
 
-- Container format (PE / ELF / Mach-O), architecture, bitness, endianness
-- Hashes (MD5/SHA1/SHA256) and entropy (whole-file + per section)
-- Entry point, subsystem, exe-vs-dll / ELF type
-- Sections with addresses, sizes, permissions, and entropy
-- Imported libraries and symbols (PE)
-- Extracted strings (ASCII + UTF-16LE)
+- **Analysis** (`reverseai/core`) — format/arch/bits, hashes, per-section
+  entropy, PE imports, ELF sections, strings, optional capstone disassembly.
+- **Sandbox** (`reverseai/sandbox`) — secure-by-default isolated execution.
+  Auto-selects the strongest backend (hardened **bubblewrap** namespaces, or a
+  resource-limited subprocess), blocks network, drops capabilities, enforces
+  timeouts, and *refuses* to run untrusted code when nothing can contain it.
+- **Agent** (`reverseai/agent`) — a ReAct tool-calling loop with a permission
+  mediator + audit log, evidence tiers (believed/observed/verified), durable
+  Job records, and a pluggable provider layer (**DeepSeek** + offline mock).
+
+## Model
+
+Uses **DeepSeek** by default (OpenAI-compatible). Configure via env:
+
+```bash
+export DEEPSEEK_API_KEY=sk-...          # required for `agent run`
+export DEEPSEEK_MODEL=deepseek-chat     # or deepseek-reasoner
+```
+
+The provider is one swappable seam — a future in-house model slots in without
+changing the agent.
+
+## Optional power-ups
+
+```bash
+pip install reverseai[enhanced]   # lief, capstone, pyelftools
+```
+
+`qiling` (emulation) and `angr` (symbolic execution) are detected automatically
+when installed. None are required to run the core.
 
 ## Status
 
-`v0.0.1` — static analysis engine. Not yet: the AI agent loop, binary
-modification, sandboxed execution, or the web UI. Those are the next milestones.
+`v0.1.0` — working analysis engine, hardened sandbox, and autonomous agent, with
+51 passing tests. Not yet: binary modification, regression verification, the
+HTTP API, or the web UI. Those are the next milestones (see CLAUDE.md).

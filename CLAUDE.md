@@ -36,26 +36,42 @@ User goal ─▶ Agent (orchestrator) ─▶ Analysis engine ─▶ Modification
 
 | Layer              | Status      | Notes                                                        |
 |--------------------|-------------|--------------------------------------------------------------|
-| Analysis engine    | **started** | `reverseai/core` — format/arch/sections/imports/strings      |
-| Agent orchestrator | planned     | reasoning loop over analysis tools; Claude first, model later |
+| Analysis engine    | **working** | `reverseai/core` — format/arch/sections/imports/strings/disasm |
+| Agent orchestrator | **working** | `reverseai/agent` — ReAct loop, tool registry, mediator, job |
+| Provider layer     | **working** | `agent/providers` — DeepSeek (OpenAI-compatible) + mock      |
+| Sandbox/testing    | **working** | `reverseai/sandbox` — hardened bubblewrap + subprocess lab   |
+| Evidence/verify    | **started** | believed/observed/verified tiers + audit; regression TBD     |
 | Modification engine| planned     | resource edit → binary patch → component → reimplementation  |
-| Sandbox/testing    | planned     | isolated VM/container execution, regression comparison       |
-| Verification       | planned     | structured report: believed/observed/verified + limitations |
 | API + UI           | planned     | FastAPI job model, then React frontend                       |
 
-## Current capability (v0.0.1)
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
+[docs/SECURITY.md](docs/SECURITY.md) for the full design and threat model.
 
-Pure static analysis, zero third-party dependencies (stdlib + binutils only):
-- Format detection (PE / ELF / Mach-O) by magic.
-- Hashes (md5/sha1/sha256), whole-file and per-section Shannon entropy.
-- PE: machine/arch, bitness, entry point, subsystem, exe-vs-dll, sections,
-  imported DLLs and symbols.
-- ELF: class/endian, machine/arch, type, entry point, section table.
-- String extraction (ASCII + UTF-16LE).
-- CLI: `python -m reverseai analyze <file> [--json]`.
+## Current capability (v0.1.0)
 
-Optional future backends (`lief`, `capstone`, `pyelftools`, Ghidra) enhance this
+Zero third-party dependencies required (stdlib + binutils; optional libs enhance):
+- **Analysis:** PE/ELF/Mach-O detection, hashes, whole-file + per-section
+  entropy, PE imports, ELF section table, string extraction, optional capstone
+  disassembly.
+- **Sandbox lab:** secure-by-default isolated execution. Hardened bubblewrap
+  backend (namespaces, no network, caps dropped, read-only system, tmpfs
+  workdir) + resource-limited subprocess; auto-selects the strongest backend and
+  refuses untrusted execution when none can contain it.
+- **Agent:** autonomous ReAct loop with policy-mediated tools (permission tiers,
+  audit log, exception containment), evidence tiers (believed/observed/verified),
+  durable Job records, DeepSeek + mock providers.
+- **CLI:** `analyze`, `caps`, `sandbox run`, `agent run`.
+
+Optional backends (`lief`, `capstone`, `qiling`, `angr`, Ghidra) enhance this
 but are never required to run the core.
+
+### Model / provider
+
+Default model provider is **DeepSeek** (OpenAI-compatible). Set `DEEPSEEK_API_KEY`
+(and optionally `DEEPSEEK_MODEL`, default `deepseek-chat`). The `LLMProvider`
+seam means a future in-house model drops in without touching the agent. Train
+the in-house model later on collected `Job` records; do not attempt before the
+platform is producing verified traces.
 
 ## Stack
 
@@ -73,14 +89,19 @@ python3 -m unittest discover -s tests -v
 
 ## Milestones
 
-- **M1 — Investigation engine** *(in progress)*: ingest a binary, report the
-  truth about it. ✅ format/arch/sections/imports/strings + tests.
-  Next: dynamic disassembly of functions (capstone), import/export completeness,
-  optional Ghidra backend, packer detection.
-- **M2 — Modification + sandbox**: resource edits and byte-level patches applied
-  in a controlled env; isolated execution; crash capture; revert.
-- **M3 — End-to-end job**: upload → plan → analyze → modify → test → repair loop
-  → artifact + verification report, measured against a benchmark of known tasks.
+- **M1 — Investigation engine** ✅ : ingest a binary, report the truth, and let
+  the agent investigate it through tools. Done: analysis core, sandbox lab,
+  agent loop, providers, evidence/audit, CLI, 51 tests.
+  Next within M1: capstone/angr function recovery + CFG, Ghidra headless tool,
+  packer detection heuristics, seccomp profile for the sandbox.
+- **M2 — Modification + verification**: `modify/` package (LIEF-backed resource
+  edits and byte patches on a *copy*), WRITE-tier tools, and a `verify/` module
+  that diffs original vs modified behavior in the sandbox (regression).
+- **M3 — End-to-end job at scale**: FastAPI + worker queue + Job store; upload →
+  plan → analyze → modify → test → repair loop → artifact + verification report,
+  measured against a benchmark of known tasks. Then the web UI.
+- **M4 — In-house model**: collect verified `Job` traces → fine-tune an
+  open-weight model → hybrid routing (own model + DeepSeek fallback).
 
 ## Working agreements for Claude Code
 

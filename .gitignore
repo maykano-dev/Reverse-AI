@@ -32,3 +32,6 @@ jobs/
 
 # Local Claude Code settings
 .claude/settings.local.json
+
+# Secrets / local env
+.env
