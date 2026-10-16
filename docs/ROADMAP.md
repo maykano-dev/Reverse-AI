@@ -4,20 +4,27 @@ A living map of what exists and what comes next. Update it as milestones land.
 
 ## Done (v0.1.x)
 
-- **Analysis core** — PE/ELF/Mach-O. PE imports+exports; ELF dynamic imports,
-  DT_NEEDED, function recovery; Mach-O segments + LC_SYMTAB symbols/functions.
-  Entropy, strings, packer heuristics, structural diff. Cross-platform:
-  Windows / Linux / macOS-iOS.
-- **Sandbox lab** — bubblewrap (hardened), subprocess, experimental qiling
-  emulation; factory auto-selects; refuses uncontained untrusted execution.
-- **Agent** — ReAct loop, permission-tiered mediator + audit, evidence tiers,
-  durable Job + store, context compaction for long runs.
+- **Analysis core** — PE/ELF/Mach-O (incl. fat/universal iOS). PE imports+
+  exports; ELF dynamic imports, DT_NEEDED, function recovery; Mach-O LC_SYMTAB
+  symbols/functions. Entropy, strings, packer heuristics, malware-indicator
+  (suspicious-API) detection, structural diff. Cross-platform.
+- **Sandbox lab** — bubblewrap (hardened), subprocess, experimental qiling;
+  factory auto-selects; refuses uncontained untrusted execution. Bomb-safe
+  archive extraction; ephemeral per-run isolation contains crashes/bombs.
+- **Agent** — ReAct loop, multi-turn stateful conversations (shared target/
+  evidence/artifacts), permission-tiered mediator + audit, evidence tiers,
+  context compaction, Job + store. AI decides its own mode, asks clarifying
+  questions, verifies before finishing, delivers the final file.
 - **Tools** — analysis, execution, byte-patch + regression verify + diff,
-  LIEF structural edits (optional), coding (file ops + sandboxed run_command).
-- **Providers** — DeepSeek + generic OpenAI-compatible + Anthropic + mock.
-- **Service** — stdlib HTTP control API, secret-redacting logging.
+  archive extraction, LIEF structural edits (optional), coding (file ops +
+  sandboxed run_command).
+- **Providers** — DeepSeek + generic OpenAI-compatible + Anthropic + mock; the
+  model is server-chosen and never exposed to users.
+- **Service + UI** — stdlib HTTP API with SSE streaming; premium web UI (chat,
+  live inline tool work, markdown, upload + drag-drop, message queue, artifact
+  delivery, custom controls, sidebar with search/artifacts/host/recents).
 - **Benchmark** — task harness with ground-truth checkers.
-- **~130 tests**, CI workflow (push with a workflow-scoped token).
+- **~150 tests**, CI workflow (push with a workflow-scoped token).
 
 ## Next (priority order)
 

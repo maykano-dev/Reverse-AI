@@ -80,7 +80,15 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   sandbox; LIEF structural edits when installed.
 - **Benchmark:** task harness with ground-truth checkers (capability tracking +
   training-trace collection).
-- **Service:** stdlib HTTP control API + job store; secret-redacting logging.
+- **Conversations:** multi-turn, stateful — follow-ups share target, evidence,
+  and modified artifacts. The AI picks its own mode (read→execute→write), asks
+  clarifying questions, verifies before finishing, and delivers the final file.
+- **Hostile input:** bomb-safe archive extraction; malware-indicator detection
+  (injection/anti-debug/C2/persistence/ransomware/keylogging APIs); every run is
+  isolated and torn down, so a crash/bomb is contained.
+- **Service + UI:** stdlib HTTP API with SSE streaming + a premium web UI (chat,
+  live inline tool work, markdown, file upload + drag-drop, message queue,
+  artifact delivery, custom controls, sidebar); the model is never exposed.
 - **CLI:** `analyze`, `diff`, `caps`, `sandbox run`, `agent run`, `bench run`,
   `serve`.
 
