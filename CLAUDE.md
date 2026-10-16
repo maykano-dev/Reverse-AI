@@ -2,9 +2,19 @@
 
 > Understand. Modify. Rebuild.
 
-An autonomous reverse-engineering engineer: give it a compiled program and a
-goal in plain language; it investigates how the program works, makes the change,
-tests it in isolation, and returns a working artifact plus the evidence.
+An autonomous engineering agent built on one platform (model-driven agent +
+policy-mediated tools + hardened sandbox). Three pillars:
+
+1. **Reverse engineering (flagship):** give it a compiled program and a goal in
+   plain language; it investigates how the program works, makes the change,
+   tests it in isolation, and returns a working artifact plus the evidence.
+2. **Software engineering:** read/write/edit code and run builds & tests in the
+   sandbox — a general coding agent.
+3. **Defensive security:** analysis, hardening, detection, and authorized
+   testing — and the hardening that protects the platform itself.
+
+The same agent loop, tool framework, and sandbox serve all three; capabilities
+are added as tools, not forks.
 
 This file is the persistent spec. Keep it honest and current — it is the source
 of truth for what is actually built versus planned.

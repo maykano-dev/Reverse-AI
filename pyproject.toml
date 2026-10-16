@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reverseai"
-version = "0.0.1"
+version = "0.1.0"
 description = "An autonomous reverse-engineering engineer: understand, modify, rebuild."
 readme = "README.md"
 requires-python = ">=3.11"
