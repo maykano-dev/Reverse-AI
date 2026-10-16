@@ -61,16 +61,28 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 
 Zero third-party dependencies required (stdlib + binutils; optional libs enhance):
 - **Analysis:** PE/ELF/Mach-O detection, hashes, whole-file + per-section
-  entropy, PE imports, ELF section table, string extraction, optional capstone
-  disassembly.
+  entropy, PE imports/exports, ELF dynamic imports + DT_NEEDED, function
+  recovery from symbol tables, packer heuristics, string extraction, optional
+  capstone disassembly, structural binary diff.
 - **Sandbox lab:** secure-by-default isolated execution. Hardened bubblewrap
   backend (namespaces, no network, caps dropped, read-only system, tmpfs
-  workdir) + resource-limited subprocess; auto-selects the strongest backend and
-  refuses untrusted execution when none can contain it.
+  workdir) + resource-limited subprocess + experimental qiling emulation;
+  auto-selects the strongest backend and refuses untrusted execution when none
+  can contain it.
 - **Agent:** autonomous ReAct loop with policy-mediated tools (permission tiers,
   audit log, exception containment), evidence tiers (believed/observed/verified),
-  durable Job records, DeepSeek + mock providers.
-- **CLI:** `analyze`, `caps`, `sandbox run`, `agent run`.
+  durable Job records + store, DeepSeek + mock providers.
+- **Tools:** analysis (analyze/read_bytes/strings/disassemble/list_functions/
+  assess_heuristics), execution (run_in_sandbox), modification (apply_byte_patch/
+  verify_against_original/diff_modified; LIEF add_import/add_section when
+  installed), coding (list_dir/read_file/write_file/edit_file/run_command).
+- **Modify + verify:** byte-patch on a copy + behavioral regression in the
+  sandbox; LIEF structural edits when installed.
+- **Benchmark:** task harness with ground-truth checkers (capability tracking +
+  training-trace collection).
+- **Service:** stdlib HTTP control API + job store; secret-redacting logging.
+- **CLI:** `analyze`, `diff`, `caps`, `sandbox run`, `agent run`, `bench run`,
+  `serve`.
 
 Optional backends (`lief`, `capstone`, `qiling`, `angr`, Ghidra) enhance this
 but are never required to run the core.
