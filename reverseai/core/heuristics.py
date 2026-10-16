@@ -20,10 +20,37 @@ _PACKER_SECTIONS = {
 }
 
 
+# Suspicious imported APIs grouped by malicious capability. Presence is a
+# *hint*, not proof — many are used legitimately. The agent weighs them.
+_SUSPICIOUS_APIS: dict[str, set[str]] = {
+    "process-injection": {
+        "virtualallocex", "writeprocessmemory", "createremotethread",
+        "ntunmapviewofsection", "queueuserapc", "setwindowshookexa",
+        "setwindowshookexw", "rtlcreateuserthread", "ntmapviewofsection",
+    },
+    "anti-debug": {
+        "isdebuggerpresent", "checkremotedebuggerpresent",
+        "ntqueryinformationprocess", "outputdebugstringa", "ntsetinformationthread",
+    },
+    "code-exec": {"winexec", "shellexecutea", "shellexecutew", "createprocessa",
+                  "createprocessw", "system", "execve"},
+    "download-c2": {"urldownloadtofilea", "urldownloadtofilew", "internetopena",
+                    "internetopenurla", "winhttpopen", "wsastartup", "connect",
+                    "inetpton", "gethostbyname"},
+    "persistence": {"regsetvalueexa", "regsetvalueexw", "regcreatekeyexa",
+                    "createservicea", "createservicew"},
+    "ransomware-crypto": {"cryptencrypt", "cryptgenkey", "cryptacquirecontexta",
+                          "cryptderivekey", "bcryptencrypt"},
+    "keylogging": {"getasynckeystate", "getkeystate", "getrawinputdata"},
+}
+
+
 @dataclass
 class Assessment:
     packing_likelihood: str = "low"   # low | medium | high
     signals: list[str] = field(default_factory=list)
+    suspicion: str = "low"            # low | medium | high (malware-likeness)
+    indicators: list[str] = field(default_factory=list)  # "category: api"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -81,4 +108,34 @@ def assess(report: AnalysisReport) -> Assessment:
     elif score >= 2:
         likelihood = "medium"
 
-    return Assessment(packing_likelihood=likelihood, signals=signals)
+    indicators, categories = _malware_indicators(report)
+    # Suspicion rises with the number of *distinct* malicious capability areas.
+    suspicion = "low"
+    if len(categories) >= 3:
+        suspicion = "high"
+    elif len(categories) >= 1:
+        suspicion = "medium"
+    # Injection + download/C2 together is a strong combination.
+    if {"process-injection", "download-c2"} <= categories:
+        suspicion = "high"
+
+    return Assessment(packing_likelihood=likelihood, signals=signals,
+                      suspicion=suspicion, indicators=indicators)
+
+
+def _malware_indicators(report: AnalysisReport) -> tuple[list[str], set[str]]:
+    """Return (human indicators, set of matched capability categories)."""
+    # Collect imported symbol names (PE) and dynamic symbols (ELF/Mach-O).
+    names: set[str] = set()
+    for syms in report.imports.values():
+        names.update(s.lower() for s in syms)
+    names.update(s.lower().lstrip("_") for s in report.dynamic_symbols)
+
+    indicators: list[str] = []
+    categories: set[str] = set()
+    for category, apis in _SUSPICIOUS_APIS.items():
+        hit = sorted(names & apis)
+        if hit:
+            categories.add(category)
+            indicators.append(f"{category}: {', '.join(hit[:5])}")
+    return indicators, categories

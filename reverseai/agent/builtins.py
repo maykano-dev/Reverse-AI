@@ -288,9 +288,11 @@ class ListFunctionsTool(Tool):
 class AssessHeuristicsTool(Tool):
     name = "assess_heuristics"
     description = (
-        "Run heuristic checks over the target (packing, self-modifying sections, "
-        "suspicious import tables, high entropy). Returns INFERENCES, not facts — "
-        "treat results as hypotheses to investigate, not conclusions."
+        "Run heuristic + malware-indicator checks over the target: packing, "
+        "self-modifying sections, high entropy, and suspicious imported APIs "
+        "(process injection, anti-debug, C2/download, persistence, ransomware "
+        "crypto, keylogging). Returns INFERENCES, not facts — treat as leads to "
+        "investigate (and to decide whether running it is safe), not verdicts."
     )
     parameters = {"type": "object", "properties": {}}
     permission = Permission.READ
@@ -301,13 +303,24 @@ class AssessHeuristicsTool(Tool):
         target = _require_target(ctx)
         report = analyze_file(target)
         a = assess(report)
-        if ctx.evidence is not None and a.signals:
-            ctx.evidence.believed(
-                f"packing likelihood {a.packing_likelihood}", source=self.name,
-                detail="; ".join(a.signals))
-        body = f"packing likelihood: {a.packing_likelihood}\n" + (
-            "\n".join(f"- {s}" for s in a.signals) or "- no notable signals")
-        return ToolResult.success(body, assessment=a.to_dict())
+        if ctx.evidence is not None:
+            if a.signals:
+                ctx.evidence.believed(f"packing likelihood {a.packing_likelihood}",
+                                      source=self.name, detail="; ".join(a.signals))
+            if a.indicators:
+                ctx.evidence.believed(f"malware suspicion {a.suspicion}",
+                                      source=self.name, detail="; ".join(a.indicators))
+        lines = [f"packing likelihood: {a.packing_likelihood}",
+                 f"malware suspicion: {a.suspicion}"]
+        if a.signals:
+            lines.append("structure signals:")
+            lines += [f"  - {s}" for s in a.signals]
+        if a.indicators:
+            lines.append("suspicious capabilities:")
+            lines += [f"  - {i}" for i in a.indicators]
+        if not a.signals and not a.indicators:
+            lines.append("no notable signals")
+        return ToolResult.success("\n".join(lines), assessment=a.to_dict())
 
 
 class RecordFindingTool(Tool):

@@ -318,6 +318,35 @@ class HeuristicsTests(unittest.TestCase):
         self.assertEqual(a.packing_likelihood, "high")
         self.assertTrue(any("UPX" in s for s in a.signals))
 
+    def test_malware_indicators_injection_and_c2(self):
+        from reverseai.core.heuristics import assess
+
+        rep = self._report(imports={"KERNEL32.dll": [
+            "VirtualAllocEx", "WriteProcessMemory", "CreateRemoteThread"],
+            "WININET.dll": ["InternetOpenA", "InternetOpenUrlA"],
+            "ADVAPI32.dll": ["RegSetValueExA"]})
+        a = assess(rep)
+        self.assertEqual(a.suspicion, "high")  # 3+ categories incl injection+c2
+        self.assertTrue(any("process-injection" in i for i in a.indicators))
+        self.assertTrue(any("download-c2" in i for i in a.indicators))
+
+    def test_benign_imports_low_suspicion(self):
+        from reverseai.core.heuristics import assess
+
+        rep = self._report(imports={"KERNEL32.dll": [
+            "CreateFileW", "ReadFile", "WriteFile", "CloseHandle"]})
+        self.assertEqual(assess(rep).suspicion, "low")
+
+    def test_elf_dynamic_symbol_indicators(self):
+        from reverseai.core.heuristics import assess
+        from reverseai.core.models import BinaryFormat
+
+        rep = self._report(fmt=BinaryFormat.ELF)
+        rep.dynamic_symbols = ["ptrace", "execve", "gethostbyname"]
+        a = assess(rep)
+        # execve (code-exec) + gethostbyname (download-c2) -> at least medium
+        self.assertIn(a.suspicion, ("medium", "high"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
