@@ -204,6 +204,34 @@ class ELFAnalysisTests(unittest.TestCase):
             self.assertIs(self.report.arch, Arch.ARM64)
 
 
+class ELFDynamicTests(unittest.TestCase):
+    """Dynamic imports/needed-libs on a real system binary, cross-checked."""
+
+    def setUp(self):
+        from pathlib import Path as _P
+
+        self.bin = "/usr/bin/objdump"
+        if not _P(self.bin).exists():
+            self.skipTest("objdump not present")
+        from reverseai.core import analyze_file as _af
+
+        self.report = _af(self.bin)
+
+    def test_needed_libraries(self):
+        self.assertTrue(self.report.needed_libraries)
+        self.assertTrue(any("libc" in lib for lib in self.report.needed_libraries))
+
+    def test_imported_symbols(self):
+        self.assertGreater(len(self.report.dynamic_symbols), 0)
+
+    def test_needed_matches_readelf(self):
+        out = subprocess.run(["readelf", "-d", self.bin],
+                             capture_output=True, text=True).stdout
+        needed = [ln for ln in out.splitlines() if "NEEDED" in ln]
+        # readelf shows one NEEDED line per dependency
+        self.assertEqual(len(needed), len(self.report.needed_libraries))
+
+
 class HeuristicsTests(unittest.TestCase):
     def _report(self, **kw):
         from reverseai.core.models import AnalysisReport, BinaryFormat

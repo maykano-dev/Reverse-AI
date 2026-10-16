@@ -62,11 +62,51 @@ def _print_analysis(report) -> None:
             more = f" … (+{len(syms) - 6})" if len(syms) > 6 else ""
             print(f"  {lib}: {preview}{more}")
 
+    if report.needed_libraries and not report.imports:
+        print(f"\nNeeded libraries ({len(report.needed_libraries)}):")
+        for lib in report.needed_libraries:
+            print(f"  {lib}")
+    if report.dynamic_symbols:
+        preview = ", ".join(report.dynamic_symbols[:10])
+        print(f"\nImported symbols ({len(report.dynamic_symbols)}): {preview} …")
+    if report.exports:
+        preview = ", ".join(report.exports[:10])
+        print(f"\nExports ({len(report.exports)}): {preview}"
+              f"{' …' if len(report.exports) > 10 else ''}")
+
     print(f"\nStrings:    {report.string_count} found (showing up to {len(report.strings_sample)})")
     if report.warnings:
         print("\nWarnings:")
         for w in report.warnings:
             print(f"  - {w}")
+
+
+def _cmd_diff(args: argparse.Namespace) -> int:
+    from .core.diff import diff_files
+
+    try:
+        d = diff_files(args.a, args.b)
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(d.to_dict(), indent=2))
+        return 0
+    print(f"Summary: {d.summary}")
+    print(f"identical={d.identical} same_format={d.same_format} same_arch={d.same_arch}")
+    print(f"size delta: {d.size_delta:+d} bytes   entropy delta: {d.entropy_delta:+.3f}")
+    for label, vals in [
+        ("sections +", d.sections_added), ("sections -", d.sections_removed),
+        ("imports +", d.imports_added), ("imports -", d.imports_removed),
+        ("exports +", d.exports_added), ("exports -", d.exports_removed),
+        ("needed +", d.needed_added), ("needed -", d.needed_removed),
+    ]:
+        if vals:
+            print(f"  {label}: {', '.join(vals[:12])}{' …' if len(vals) > 12 else ''}")
+    for ch in d.sections_changed:
+        print(f"  section changed: {ch['name']} raw_size {ch['raw_size']} "
+              f"entropy {ch['entropy']} flags {ch['flags']}")
+    return 0
 
 
 def _cmd_caps(args: argparse.Namespace) -> int:
@@ -157,6 +197,12 @@ def build_parser() -> argparse.ArgumentParser:
     caps = sub.add_parser("caps", help="show host sandbox/analysis capabilities")
     caps.add_argument("--json", action="store_true")
     caps.set_defaults(func=_cmd_caps)
+
+    diff = sub.add_parser("diff", help="structural diff between two binaries")
+    diff.add_argument("a")
+    diff.add_argument("b")
+    diff.add_argument("--json", action="store_true")
+    diff.set_defaults(func=_cmd_diff)
 
     sbx = sub.add_parser("sandbox", help="sandbox operations")
     sbx_sub = sbx.add_subparsers(dest="sandbox_cmd", required=True)

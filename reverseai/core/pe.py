@@ -49,6 +49,7 @@ class PEInfo:
     binary_type: str | None = None  # "exe" or "dll"
     sections: list[Section] = field(default_factory=list)
     imports: dict[str, list[str]] = field(default_factory=dict)
+    exports: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -69,6 +70,7 @@ def parse_pe(data: bytes) -> PEInfo:
 
     opt = coff + 20
     import_rva = import_size = 0
+    export_rva = 0
     try:
         magic = struct.unpack_from("<H", data, opt)[0]
         is_pe32_plus = magic == 0x20B
@@ -76,8 +78,9 @@ def parse_pe(data: bytes) -> PEInfo:
             info.bits = 64 if is_pe32_plus else 32
         info.entry_point = struct.unpack_from("<I", data, opt + 16)[0]
         info.subsystem = _SUBSYSTEM.get(struct.unpack_from("<H", data, opt + 68)[0])
-        # Data directories: import table is index 1 (8 bytes each: RVA, size)
+        # Data directories (8 bytes each): index 0 = export, index 1 = import.
         dd_base = opt + (112 if is_pe32_plus else 96)
+        export_rva = struct.unpack_from("<I", data, dd_base + 0)[0]
         import_rva, import_size = struct.unpack_from("<II", data, dd_base + 8)
     except struct.error:
         info.warnings.append("truncated optional header")
@@ -90,6 +93,12 @@ def parse_pe(data: bytes) -> PEInfo:
             info.imports = _parse_imports(data, import_rva, info.sections)
         except Exception as exc:  # best-effort; never fatal
             info.warnings.append(f"import parse failed: {exc}")
+
+    if export_rva:
+        try:
+            info.exports = _parse_exports(data, export_rva, info.sections)
+        except Exception as exc:
+            info.warnings.append(f"export parse failed: {exc}")
 
     return info
 
@@ -170,6 +179,29 @@ def _parse_imports(data: bytes, import_rva: int, sections: list[Section]) -> dic
         if idx > 4096:  # sanity bound
             break
     return imports
+
+
+def _parse_exports(data: bytes, export_rva: int, sections: list[Section]) -> list[str]:
+    """Read exported symbol names from the export directory (names only)."""
+    dir_off = _rva_to_offset(export_rva, sections)
+    if dir_off is None or dir_off + 40 > len(data):
+        return []
+    # IMAGE_EXPORT_DIRECTORY: NumberOfNames at +24, AddressOfNames (RVA) at +32
+    num_names = struct.unpack_from("<I", data, dir_off + 24)[0]
+    names_rva = struct.unpack_from("<I", data, dir_off + 32)[0]
+    names_off = _rva_to_offset(names_rva, sections)
+    if names_off is None:
+        return []
+    out: list[str] = []
+    for i in range(min(num_names, 8192)):
+        pos = names_off + i * 4
+        if pos + 4 > len(data):
+            break
+        name_rva = struct.unpack_from("<I", data, pos)[0]
+        name_off = _rva_to_offset(name_rva, sections)
+        if name_off is not None:
+            out.append(_read_cstr(data, name_off))
+    return out
 
 
 def _parse_thunks(data: bytes, thunk_rva: int, sections: list[Section]) -> list[str]:

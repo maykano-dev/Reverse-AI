@@ -35,3 +35,6 @@ jobs/
 
 # Secrets / local env
 .env
+
+# CI workflow: push manually with a workflow-scoped token (see docs)
+.github/

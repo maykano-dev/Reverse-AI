@@ -67,6 +67,9 @@ class AnalysisReport:
     binary_type: str | None = None  # exe / dll / shared-object / etc.
     sections: list[Section] = field(default_factory=list)
     imports: dict[str, list[str]] = field(default_factory=dict)  # lib -> symbols
+    exports: list[str] = field(default_factory=list)             # exported symbol names
+    needed_libraries: list[str] = field(default_factory=list)    # ELF DT_NEEDED / PE libs
+    dynamic_symbols: list[str] = field(default_factory=list)     # ELF imported (undefined) syms
 
     strings_sample: list[str] = field(default_factory=list)
     string_count: int = 0

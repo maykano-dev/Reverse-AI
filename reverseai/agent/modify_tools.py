@@ -139,5 +139,27 @@ class VerifyAgainstOriginalTool(Tool):
         return ToolResult.success(summary, **report.to_dict())
 
 
+class StructuralDiffTool(Tool):
+    name = "diff_modified"
+    description = (
+        "Structurally compare the original target with the modified artifact "
+        "(sections, imports, exports, size, entropy). Pairs with "
+        "verify_against_original: this shows WHAT changed statically, that shows "
+        "whether behavior changed. Requires a modified artifact first."
+    )
+    parameters = {"type": "object", "properties": {}}
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        from ..core.diff import diff_files
+
+        target = _require_target(ctx)
+        modified = ctx.extra.get("modified_path")
+        if not modified:
+            return ToolResult.failure("no modified artifact yet — run apply_byte_patch first")
+        d = diff_files(target, modified)
+        return ToolResult.success(f"diff: {d.summary}", **d.to_dict())
+
+
 def modification_tools() -> list[Tool]:
-    return [ApplyBytePatchTool(), VerifyAgainstOriginalTool()]
+    return [ApplyBytePatchTool(), VerifyAgainstOriginalTool(), StructuralDiffTool()]

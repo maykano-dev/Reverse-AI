@@ -37,6 +37,9 @@ class ELFInfo:
     entry_point: int | None = None
     binary_type: str | None = None
     sections: list[Section] = field(default_factory=list)
+    needed_libraries: list[str] = field(default_factory=list)
+    dynamic_symbols: list[str] = field(default_factory=list)
+    exports: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -81,7 +84,77 @@ def parse_elf(data: bytes) -> ELFInfo:
         info.sections = _parse_sections(
             data, en, info.bits, e_shoff, e_shentsize, e_shnum, e_shstrndx, info.warnings
         )
+        try:
+            _parse_dynamic(data, en, info)
+        except (struct.error, ValueError) as exc:
+            info.warnings.append(f"dynamic parse failed: {exc}")
     return info
+
+
+def _section_by_name(info: ELFInfo, name: str) -> Section | None:
+    for s in info.sections:
+        if s.name == name:
+            return s
+    return None
+
+
+def _cstr(data: bytes, start: int, maxlen: int = 512) -> str:
+    end = data.find(b"\x00", start, start + maxlen)
+    if end == -1:
+        end = start + maxlen
+    return data[start:end].decode("ascii", "replace")
+
+
+def _parse_dynamic(data: bytes, en: str, info: ELFInfo) -> None:
+    """Populate needed libraries, imported (undefined) symbols, and exports."""
+    dynstr = _section_by_name(info, ".dynstr")
+    dynamic = _section_by_name(info, ".dynamic")
+    dynsym = _section_by_name(info, ".dynsym")
+
+    # DT_NEEDED entries -> shared library dependencies
+    if dynamic and dynstr:
+        step = 16 if info.bits == 64 else 8
+        fmt = en + ("qQ" if info.bits == 64 else "iI")
+        off = dynamic.raw_offset
+        for i in range(0, dynamic.raw_size, step):
+            pos = off + i
+            if pos + step > len(data):
+                break
+            d_tag, d_val = struct.unpack_from(fmt, data, pos)
+            if d_tag == 0:  # DT_NULL terminates
+                break
+            if d_tag == 1:  # DT_NEEDED
+                name = _cstr(data, dynstr.raw_offset + d_val)
+                if name:
+                    info.needed_libraries.append(name)
+
+    # Dynamic symbol table -> imported (undefined) and exported (defined) names
+    if dynsym and dynstr:
+        sym_size = 24 if info.bits == 64 else 16
+        base = dynsym.raw_offset
+        count = dynsym.raw_size // sym_size
+        for i in range(count):
+            pos = base + i * sym_size
+            if pos + sym_size > len(data):
+                break
+            if info.bits == 64:
+                st_name, st_info_b, _st_other, st_shndx, _st_value, _st_size = \
+                    struct.unpack_from(en + "IBBHQQ", data, pos)
+            else:
+                st_name, _st_value, _st_size, st_info_b, _st_other, st_shndx = \
+                    struct.unpack_from(en + "IIIBBH", data, pos)
+            if st_name == 0:
+                continue
+            name = _cstr(data, dynstr.raw_offset + st_name)
+            if not name:
+                continue
+            st_type = st_info_b & 0xF  # STT_FUNC=2, STT_OBJECT=1
+            if st_shndx == 0:  # SHN_UNDEF -> imported
+                if name not in info.dynamic_symbols:
+                    info.dynamic_symbols.append(name)
+            elif st_type in (1, 2):  # defined func/object -> exported
+                if name not in info.exports:
+                    info.exports.append(name)
 
 
 def _parse_sections(data, en, bits, shoff, shentsize, shnum, shstrndx, warnings) -> list[Section]:

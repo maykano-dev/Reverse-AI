@@ -31,6 +31,8 @@ def analyze_bytes(data: bytes, path: str = "<memory>") -> AnalysisReport:
         report.binary_type = info.binary_type
         report.sections = info.sections
         report.imports = info.imports
+        report.exports = info.exports
+        report.needed_libraries = list(info.imports.keys())
         report.warnings.extend(info.warnings)
     elif report.fmt is BinaryFormat.ELF:
         info = elf.parse_elf(data)
@@ -40,6 +42,9 @@ def analyze_bytes(data: bytes, path: str = "<memory>") -> AnalysisReport:
         report.entry_point = info.entry_point
         report.binary_type = info.binary_type
         report.sections = info.sections
+        report.needed_libraries = info.needed_libraries
+        report.dynamic_symbols = info.dynamic_symbols
+        report.exports = info.exports
         report.warnings.extend(info.warnings)
 
     all_strings = extract_strings(data, min_len=5)

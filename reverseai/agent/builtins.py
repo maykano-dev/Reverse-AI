@@ -72,6 +72,9 @@ class AnalyzeBinaryTool(Tool):
             f"sections: {len(report.sections)}  "
             f"imports: {sum(len(v) for v in report.imports.values())} symbols "
             f"across {len(report.imports)} libs",
+            f"needed libraries: {', '.join(report.needed_libraries[:8]) or 'n/a'}",
+            f"imported symbols: {len(report.dynamic_symbols)}  "
+            f"exports: {len(report.exports)}",
             f"strings: {report.string_count} (sample: {top})",
         ]
         if report.warnings:
