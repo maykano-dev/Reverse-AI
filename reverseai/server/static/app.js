@@ -145,7 +145,7 @@ function showArtifacts() {
     '<div class="canvas-empty" style="padding:28px"><div class="ce-big">⤓</div>No delivered files yet. When ReverseAI modifies a binary and verifies it, it appears here.</div>';
   sessionArtifacts.forEach((a) => {
     const row = el("a", "artifact"); row.style.display = "flex"; row.style.marginTop = "8px";
-    row.href = `/conversations/${a.conversationId}/artifact`; row.setAttribute("download", a.name);
+    row.href = a.href; row.setAttribute("download", a.name);
     row.innerHTML = `<span class="ai">↓</span><span class="at"><b>${esc(a.name)}</b><span>${esc(a.goal || "delivered file")}</span></span>`;
     list.appendChild(row);
   });
@@ -256,7 +256,7 @@ async function send() {
     else if (ev.type === "finding") {
       const a = act(ui.wbody, "", `<span class="tier ${ev.tier}">${ev.tier}</span> ${esc(ev.claim)}`);
     }
-    else if (ev.type === "final") { src.close(); finishFinal(ui, jobId, ev, steps); if (ev.artifact) addArtifact(ui, ev.artifact); }
+    else if (ev.type === "final") { src.close(); finishFinal(ui, jobId, ev, steps); if (ev.artifact) addArtifact(ui, ev.artifact, jobId); }
     else if (ev.type === "error") { src.close(); finishError(ui, ev.error); }
   };
   src.onerror = () => { src.close(); if (busy) finishError(ui, "connection lost"); };
@@ -292,14 +292,13 @@ function finishError(ui, msg) {
 }
 function done() { setBusy(false); currentSrc = null; currentUI = null; setTimeout(drainQueue, 150); }
 
-function addArtifact(ui, name) {
-  if (!conversationId) return;
+function addArtifact(ui, name, jobId) {
+  const href = `/jobs/${jobId}/artifact`;
   const a = document.createElement("a");
-  a.className = "artifact"; a.href = `/conversations/${conversationId}/artifact`;
-  a.setAttribute("download", name);
+  a.className = "artifact"; a.href = href; a.setAttribute("download", name);
   a.innerHTML = `<span class="ai">↓</span><span class="at"><b>${esc(name)}</b><span>Delivered file · click to download</span></span>`;
   ui.body.appendChild(a); scrollDown();
-  sessionArtifacts.unshift({ name, conversationId, goal: name });
+  sessionArtifacts.unshift({ name, href, goal: name });
   updateArtCount();
 }
 

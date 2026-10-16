@@ -40,6 +40,7 @@ _UPLOAD_MAX = 4 * 1024 * 1024 * 1024  # 4 GiB — large binaries/archives accept
 _PERM = {"read": Permission.READ, "execute": Permission.EXECUTE, "write": Permission.WRITE}
 _JOB_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)$")
 _EVENTS_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/events$")
+_JOB_ARTIFACT_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/artifact$")
 _ARTIFACT_PATH = re.compile(r"^/conversations/(conv_[A-Za-z0-9]+)/artifact$")
 _STATIC_DIR = Path(__file__).parent / "static"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
@@ -105,6 +106,9 @@ class _Handler(BaseHTTPRequestHandler):
         am = _ARTIFACT_PATH.match(path)
         if am:
             return self._download_artifact(am.group(1))
+        jam = _JOB_ARTIFACT_PATH.match(path)
+        if jam:
+            return self._download_job_artifact(jam.group(1))
         m = _JOB_PATH.match(path)
         if m:
             rec = self.store.get(m.group(1))
@@ -196,14 +200,21 @@ class _Handler(BaseHTTPRequestHandler):
                                 "size": written, "kind": kind})
 
     def _download_artifact(self, cid: str) -> None:
-        path = self.runs.artifact_path(cid)
+        self._serve_file(self.runs.artifact_path(cid), "no artifact for this conversation")
+
+    def _download_job_artifact(self, job_id: str) -> None:
+        p = self.store.artifact_for(job_id)
+        self._serve_file(str(p) if p else None, "no artifact for this job")
+
+    def _serve_file(self, path, not_found_msg: str) -> None:
         if not path:
-            return self._send(404, {"error": "no artifact for this conversation"})
+            return self._send(404, {"error": not_found_msg})
         try:
             data = Path(path).read_bytes()
         except OSError as exc:
             return self._send(404, {"error": str(exc)})
-        name = Path(path).name
+        # Strip the "<job_id>__" storage prefix from the download name if present.
+        name = Path(path).name.split("__", 1)[-1]
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Disposition", f'attachment; filename="{name}"')

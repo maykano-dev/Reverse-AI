@@ -24,6 +24,32 @@ class JobStore:
     def path_for(self, job_id: str) -> Path:
         return self.dir / f"{job_id}.json"
 
+    def save_artifact(self, job_id: str, src_path: str) -> str | None:
+        """Copy a delivered file into durable storage keyed by job id."""
+        import shutil
+
+        if not _safe_id(job_id):
+            return None
+        src = Path(src_path)
+        if not src.is_file():
+            return None
+        adir = self.dir / "artifacts"
+        adir.mkdir(parents=True, exist_ok=True)
+        name = Path(src_path).name
+        dest = adir / f"{job_id}__{name}"
+        try:
+            shutil.copy2(src, dest)
+        except OSError:
+            return None
+        return str(dest)
+
+    def artifact_for(self, job_id: str) -> Path | None:
+        if not _safe_id(job_id):
+            return None
+        adir = self.dir / "artifacts"
+        matches = sorted(adir.glob(f"{job_id}__*")) if adir.is_dir() else []
+        return matches[0] if matches else None
+
     def get(self, job_id: str) -> dict[str, Any] | None:
         # job_id is validated to be a bare identifier to prevent traversal.
         if not _safe_id(job_id):

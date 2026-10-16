@@ -84,6 +84,13 @@ class RunManager:
             try:
                 job = conv.run_turn(goal, on_event=on_event)
                 job.id = stream_id  # align stored id with the streamed one
+                # Persist any delivered artifact durably, keyed by job id.
+                mp = conv.ctx.extra.get("modified_path")
+                if mp:
+                    saved = self.store.save_artifact(job.id, mp)
+                    if saved:
+                        from pathlib import Path as _P
+                        job.artifact = _P(mp).name
                 self.store.save(job)
                 run.record = job.to_dict()
             except Exception as exc:  # pragma: no cover - defensive

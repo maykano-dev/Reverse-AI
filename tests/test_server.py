@@ -134,6 +134,21 @@ class ServerTests(unittest.TestCase):
         status, body = _get(f"{self.base}/conversations/conv_none/artifact")
         self.assertEqual(status, 404)
 
+    def test_job_artifact_persist_and_download(self):
+        job = Job(goal="deliver")
+        job.status = "completed"
+        self.srv.store.save(job)
+        # stage a delivered file and persist it for this job
+        with tempfile.TemporaryDirectory() as d:
+            art = Path(d) / "app.patched"
+            art.write_bytes(b"PATCHED-BINARY-BYTES")
+            saved = self.srv.store.save_artifact(job.id, str(art))
+            self.assertIsNotNone(saved)
+        # download via the durable job endpoint
+        with urllib.request.urlopen(f"{self.base}/jobs/{job.id}/artifact", timeout=5) as r:
+            self.assertEqual(r.read(), b"PATCHED-BINARY-BYTES")
+            self.assertIn("app.patched", r.headers.get("Content-Disposition", ""))
+
     def test_serves_ui(self):
         with urllib.request.urlopen(f"{self.base}/", timeout=5) as r:
             html = r.read().decode()
