@@ -65,11 +65,16 @@ class Agent:
         return reg
 
     def run(self, goal: str, target_path: str | None = None,
-            project_dir: str | None = None) -> Job:
+            project_dir: str | None = None, on_event=None) -> Job:
+        """Run an investigation. ``on_event(dict)`` receives live progress events
+        (start/step/assistant/tool_result/finding/final/error) as they occur."""
         job = Job(goal=goal, target_path=target_path)
         job.workspace = tempfile.mkdtemp(prefix=f"reverseai-{job.id}-")
         job.status = "running"
         evidence = EvidenceLog()
+        emit = _make_emitter(on_event)
+        emit({"type": "start", "job_id": job.id, "goal": goal,
+              "target": target_path, "provider": self.provider.name})
 
         # Validate the target up front; refuse rather than proceed blindly.
         if target_path:
@@ -79,6 +84,7 @@ class Agent:
             except ValidationError as exc:
                 job.status = "refused"
                 job.error = f"target rejected: {exc}"
+                emit({"type": "error", "error": job.error})
                 return self._finish(job, evidence)
 
         ctx = ToolContext(
@@ -97,18 +103,28 @@ class Agent:
 
         for step in range(1, self.max_steps + 1):
             job.steps = step
+            emit({"type": "step", "step": step})
             messages = compact_messages(messages, self.max_context_chars)
-            resp = self.provider.chat(
-                messages,
-                tools=self.registry.provider_specs(),
-                temperature=self.temperature,
-            )
+            try:
+                resp = self.provider.chat(
+                    messages,
+                    tools=self.registry.provider_specs(),
+                    temperature=self.temperature,
+                )
+            except Exception as exc:
+                job.status = "failed"
+                job.error = f"provider error: {exc}"
+                emit({"type": "error", "error": job.error})
+                return self._finish(job, evidence, messages)
             self._accumulate_usage(job, resp)
 
             assistant = Message(
                 Role.ASSISTANT, content=resp.content, tool_calls=resp.tool_calls
             )
             messages.append(assistant)
+            emit({"type": "assistant", "step": step, "content": resp.content,
+                  "tool_calls": [{"name": tc.name, "arguments": tc.arguments}
+                                 for tc in resp.tool_calls]})
 
             if not resp.tool_calls:
                 job.final_answer = resp.content or ""
@@ -116,6 +132,7 @@ class Agent:
                 break
 
             for tc in resp.tool_calls:
+                before = len(evidence.all())
                 result = self.mediator.dispatch(tc.name, tc.arguments, ctx)
                 messages.append(
                     Message(
@@ -125,12 +142,23 @@ class Agent:
                         name=tc.name,
                     )
                 )
+                emit({"type": "tool_result", "step": step, "name": tc.name,
+                      "ok": result.ok,
+                      "permission": _tool_perm(self.registry, tc.name),
+                      "content": (result.content or "")[:4000]})
+                for f in evidence.all()[before:]:
+                    emit({"type": "finding", "tier": f.confidence.label,
+                          "claim": f.claim, "source": f.source})
         else:
             job.status = "completed"
             job.final_answer = (job.final_answer
                                 or "(reached step limit without a final summary)")
 
-        return self._finish(job, evidence, messages)
+        job = self._finish(job, evidence, messages)
+        emit({"type": "final", "status": job.status, "answer": job.final_answer,
+              "evidence_summary": evidence.summary(), "steps": job.steps,
+              "usage": job.usage})
+        return job
 
     def _finish(self, job: Job, evidence: EvidenceLog, messages=None) -> Job:
         import time
@@ -164,3 +192,22 @@ class Agent:
             job.usage.get("completion_tokens", 0) + u.completion_tokens
         )
         job.usage["total_tokens"] = job.usage.get("total_tokens", 0) + u.total_tokens
+
+
+def _tool_perm(registry, name: str) -> str:
+    tool = registry.get(name)
+    return tool.permission.label if tool else "unknown"
+
+
+def _make_emitter(on_event):
+    """Wrap on_event so a bad callback can never break the agent loop."""
+    if on_event is None:
+        return lambda _e: None
+
+    def _emit(event):
+        try:
+            on_event(event)
+        except Exception:
+            pass
+
+    return _emit

@@ -21,6 +21,8 @@ import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from pathlib import Path
+
 from .. import __version__
 from ..agent import Agent, Permission, get_provider
 from ..agent.store import JobStore
@@ -29,16 +31,20 @@ from ..core.diff import diff_files
 from ..sandbox import detect_capabilities
 from ..security.validate import ValidationError
 from ..util.logging import get_logger
+from .runs import RunManager
 
 _log = get_logger("reverseai.server")
 
 _MAX_BODY = 1 * 1024 * 1024
 _PERM = {"read": Permission.READ, "execute": Permission.EXECUTE, "write": Permission.WRITE}
 _JOB_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)$")
+_EVENTS_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/events$")
+_STATIC_DIR = Path(__file__).parent / "static"
 
 
 class _Handler(BaseHTTPRequestHandler):
     store: JobStore = None  # type: ignore[assignment]
+    runs: RunManager = None  # type: ignore[assignment]
     server_version = f"ReverseAI/{__version__}"
 
     # Quieter logging; override to integrate a real logger later.
@@ -75,13 +81,21 @@ class _Handler(BaseHTTPRequestHandler):
 
     # --- routing ---
     def do_GET(self):  # noqa: N802
-        if self.path == "/health":
+        path = self.path.split("?", 1)[0]
+        if path in ("/", "/index.html"):
+            return self._send_static("index.html", "text/html; charset=utf-8")
+        if path == "/app.js":
+            return self._send_static("app.js", "application/javascript; charset=utf-8")
+        if path == "/health":
             return self._send(200, {"status": "ok", "version": __version__})
-        if self.path == "/caps":
+        if path == "/caps":
             return self._send(200, detect_capabilities().to_dict())
-        if self.path == "/jobs":
+        if path == "/jobs":
             return self._send(200, {"jobs": self.store.list_summaries()})
-        m = _JOB_PATH.match(self.path)
+        em = _EVENTS_PATH.match(path)
+        if em:
+            return self._stream_events(em.group(1))
+        m = _JOB_PATH.match(path)
         if m:
             rec = self.store.get(m.group(1))
             if rec is None:
@@ -99,7 +113,43 @@ class _Handler(BaseHTTPRequestHandler):
             return self._diff(body)
         if self.path == "/jobs":
             return self._run_job(body)
+        if self.path == "/jobs/start":
+            return self._start_run(body)
         return self._send(404, {"error": "not found"})
+
+    # --- static + streaming ---
+    def _send_static(self, name: str, content_type: str) -> None:
+        path = _STATIC_DIR / name
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return self._send(404, {"error": "UI not found"})
+        _log.info("GET %s -> 200 (static)", self.path)
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _start_run(self, body) -> None:
+        job_id, error = self.runs.start(body)
+        if error:
+            return self._send(400, {"error": error})
+        return self._send(200, {"job_id": job_id})
+
+    def _stream_events(self, job_id: str) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        try:
+            for chunk in self.runs.stream(job_id):
+                self.wfile.write(chunk)
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # client disconnected; nothing to do
 
     # --- handlers ---
     def _analyze(self, body):
@@ -152,9 +202,11 @@ class ReverseAIServer:
     def __init__(self, host: str = "127.0.0.1", port: int = 8077,
                  store_dir: str = "./jobs") -> None:
         store = JobStore(store_dir)
-        handler = type("BoundHandler", (_Handler,), {"store": store})
+        runs = RunManager(store)
+        handler = type("BoundHandler", (_Handler,), {"store": store, "runs": runs})
         self.httpd = ThreadingHTTPServer((host, port), handler)
         self.store = store
+        self.runs = runs
 
     @property
     def address(self) -> tuple[str, int]:

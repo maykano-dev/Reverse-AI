@@ -119,6 +119,37 @@ class ServerTests(unittest.TestCase):
         status, body = _get(f"{self.base}/nope")
         self.assertEqual(status, 404)
 
+    def test_serves_ui(self):
+        with urllib.request.urlopen(f"{self.base}/", timeout=5) as r:
+            html = r.read().decode()
+        self.assertIn("<title>ReverseAI</title>", html)
+        with urllib.request.urlopen(f"{self.base}/app.js", timeout=5) as r:
+            self.assertEqual(r.status, 200)
+
+    def test_start_and_stream_mock(self):
+        # mock provider needs no key; empty script -> immediate final.
+        status, body = _post(f"{self.base}/jobs/start",
+                             {"goal": "say hi", "provider": "mock"})
+        self.assertEqual(status, 200)
+        job_id = body["job_id"]
+        # drain the SSE stream and collect event types
+        types = []
+        with urllib.request.urlopen(f"{self.base}/jobs/{job_id}/events", timeout=10) as r:
+            for raw in r:
+                line = raw.decode().strip()
+                if line.startswith("data:"):
+                    import json as _j
+                    ev = _j.loads(line[5:].strip())
+                    types.append(ev["type"])
+                    if ev["type"] in ("final", "error"):
+                        break
+        self.assertIn("start", types)
+        self.assertTrue(types[-1] in ("final", "error"))
+
+    def test_start_requires_goal(self):
+        status, body = _post(f"{self.base}/jobs/start", {"provider": "mock"})
+        self.assertEqual(status, 400)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
