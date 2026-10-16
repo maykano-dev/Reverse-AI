@@ -122,7 +122,40 @@ function submit() {
   send();
 }
 function drainQueue() { if (queue.length && !busy) { const next = queue.shift(); renderQueue(); input.value = next.goal; if (next.attached) { attached = next.attached; renderChip(); $("#fileChip").style.display = "flex"; } send(); } }
-$("#newChat").addEventListener("click", newChat);
+$("#navNew").addEventListener("click", newChat);
+// sidebar collapse
+$("#collapseBtn").addEventListener("click", () => $("#app").classList.add("collapsed"));
+$("#expandBtn").addEventListener("click", () => $("#app").classList.remove("collapsed"));
+// search filter
+$("#search").addEventListener("input", (e) => {
+  const q = e.target.value.toLowerCase();
+  document.querySelectorAll("#convos .convo").forEach((c) => {
+    c.style.display = c.dataset.goal && c.dataset.goal.includes(q) ? "" : "none";
+  });
+});
+// host nav -> open canvas Host tab
+$("#navHost").addEventListener("click", () => openCanvas("caps"));
+// artifacts
+const sessionArtifacts = [];
+$("#navArtifacts").addEventListener("click", showArtifacts);
+$("#artSheet").addEventListener("click", (e) => { if (e.target.id === "artSheet") e.target.classList.remove("show"); });
+function showArtifacts() {
+  const list = $("#artList");
+  list.innerHTML = sessionArtifacts.length ? "" :
+    '<div class="canvas-empty" style="padding:28px"><div class="ce-big">⤓</div>No delivered files yet. When ReverseAI modifies a binary and verifies it, it appears here.</div>';
+  sessionArtifacts.forEach((a) => {
+    const row = el("a", "artifact"); row.style.display = "flex"; row.style.marginTop = "8px";
+    row.href = `/conversations/${a.conversationId}/artifact`; row.setAttribute("download", a.name);
+    row.innerHTML = `<span class="ai">↓</span><span class="at"><b>${esc(a.name)}</b><span>${esc(a.goal || "delivered file")}</span></span>`;
+    list.appendChild(row);
+  });
+  $("#artSheet").classList.add("show");
+}
+function updateArtCount() {
+  const c = $("#artCount");
+  if (sessionArtifacts.length) { c.style.display = ""; c.textContent = sessionArtifacts.length; }
+  else c.style.display = "none";
+}
 function wireChips() {
   document.querySelectorAll(".chip").forEach((c) => c.onclick = () => { input.value = c.dataset.g; input.focus(); autosize(); });
 }
@@ -266,6 +299,8 @@ function addArtifact(ui, name) {
   a.setAttribute("download", name);
   a.innerHTML = `<span class="ai">↓</span><span class="at"><b>${esc(name)}</b><span>Delivered file · click to download</span></span>`;
   ui.body.appendChild(a); scrollDown();
+  sessionArtifacts.unshift({ name, conversationId, goal: name });
+  updateArtCount();
 }
 
 // report + caps
@@ -300,7 +335,16 @@ async function loadCaps() {
 async function loadHistory() {
   try {
     const { jobs } = await getJSON("/jobs"); const h = $("#convos"); h.innerHTML = "";
-    (jobs || []).slice(0, 20).forEach((j) => { const it = el("div", "convo", (j.goal || "(job)").slice(0, 44)); it.title = `${j.status} · ${j.steps} steps`; it.addEventListener("click", () => showReport(j.id)); h.appendChild(it); });
+    (jobs || []).slice(0, 30).forEach((j) => {
+      const it = el("div", "convo");
+      it.dataset.goal = (j.goal || "").toLowerCase();
+      it.title = `${j.status} · ${j.steps} steps`;
+      it.appendChild(el("span", "cv-ic", "◦"));
+      it.appendChild(el("span", null, (j.goal || "(job)").slice(0, 40)));
+      it.addEventListener("click", () => showReport(j.id));
+      h.appendChild(it);
+    });
   } catch (_) {}
 }
+if (window.innerWidth < 900) $("#app").classList.add("collapsed");
 loadCaps(); loadHistory();
