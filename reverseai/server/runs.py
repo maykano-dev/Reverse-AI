@@ -30,12 +30,29 @@ class Run:
     created_at: float = field(default_factory=time.time)
 
 
+_MAX_RUNS = 300       # keep recent run event-streams in memory
+_MAX_CONVOS = 150     # keep recent conversations resumable
+
+
 class RunManager:
     def __init__(self, store: JobStore) -> None:
         self.store = store
         self._runs: dict[str, Run] = {}
         self._convos: dict[str, Any] = {}  # conversation_id -> Conversation
         self._lock = threading.Lock()
+
+    def _evict(self) -> None:
+        """Bound memory: drop oldest finished runs and oldest conversations."""
+        if len(self._runs) > _MAX_RUNS:
+            finished = sorted((r for r in self._runs.values() if r.done.is_set()),
+                              key=lambda r: r.created_at)
+            for r in finished[: len(self._runs) - _MAX_RUNS]:
+                self._runs.pop(r.job_id, None)
+        if len(self._convos) > _MAX_CONVOS:
+            oldest = sorted(self._convos.items(),
+                            key=lambda kv: getattr(kv[1], "created_at", 0))
+            for cid, _ in oldest[: len(self._convos) - _MAX_CONVOS]:
+                self._convos.pop(cid, None)
 
     def start(self, body: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
         """Validate + launch a turn. Returns (stream_id, conversation_id, error).
@@ -77,6 +94,7 @@ class RunManager:
         run = Run(job_id=stream_id)
         with self._lock:
             self._runs[stream_id] = run
+            self._evict()
 
         def _worker():
             def on_event(ev: dict) -> None:

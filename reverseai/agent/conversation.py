@@ -61,6 +61,7 @@ class Conversation:
         self._first = True
         self.refused: str | None = None
         self.turns = 0
+        self.created_at = time.time()
 
         if target_path:
             try:

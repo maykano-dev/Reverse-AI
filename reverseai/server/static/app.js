@@ -91,8 +91,10 @@ function renderChip() {
   const chip = $("#fileChip"); chip.classList.remove("uploading");
   const warn = ARCHIVE_KINDS.has(attached.kind);
   const kindLbl = attached.kind === "unknown" ? "file" : attached.kind;
+  const archBit = (attached.arch && attached.arch !== "unknown")
+    ? ` · ${attached.arch}${attached.bits ? " " + attached.bits + "-bit" : ""}` : "";
   chip.innerHTML = `<span class="fi">${warn ? "🗜️" : "📄"}</span>
-    <span><span class="fname">${esc(attached.filename)}</span> <span class="fmeta">${fmtSize(attached.size)}</span></span>
+    <span><span class="fname">${esc(attached.filename)}</span> <span class="fmeta">${fmtSize(attached.size)}${esc(archBit)}</span></span>
     <span class="kind ${warn ? "warn" : ""}">${esc(kindLbl)}</span>
     <span class="rm" onclick="clearAttachment()">✕</span>`;
 }
@@ -345,5 +347,13 @@ async function loadHistory() {
     });
   } catch (_) {}
 }
+// Escape closes overlays / canvas
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if ($("#artSheet").classList.contains("show")) { $("#artSheet").classList.remove("show"); return; }
+  if ($("#vdrop").classList.contains("open")) { $("#vdrop").classList.remove("open"); return; }
+  if ($("#canvas").classList.contains("open")) $("#canvas").classList.remove("open");
+});
+
 if (window.innerWidth < 900) $("#app").classList.add("collapsed");
 loadCaps(); loadHistory();

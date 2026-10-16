@@ -186,18 +186,24 @@ class _Handler(BaseHTTPRequestHandler):
         except OSError as exc:
             dest.unlink(missing_ok=True)
             return self._send(400, {"error": f"upload failed: {exc}"})
-        # Identify the uploaded file (format or archive type) for the UI.
-        kind = None
+        # Identify the uploaded file (format or archive type) for the UI, and —
+        # for a reasonably sized binary — a quick arch/bits preview.
+        kind, arch, bits = "unknown", None, None
         try:
             from ..core.identify import detect_format
             from ..security.archive import is_archive
             head = dest.open("rb").read(512)
             fmt = detect_format(head)
             kind = fmt.value if fmt.value != "unknown" else (is_archive(head) or "unknown")
+            if fmt.value != "unknown" and written <= 256 * 1024 * 1024:
+                from ..core import analyze_file
+                rep = analyze_file(str(dest))
+                arch, bits = rep.arch.value, rep.bits
         except Exception:
-            kind = "unknown"
+            pass
         return self._send(200, {"path": str(dest), "filename": safe,
-                                "size": written, "kind": kind})
+                                "size": written, "kind": kind,
+                                "arch": arch, "bits": bits})
 
     def _download_artifact(self, cid: str) -> None:
         self._serve_file(self.runs.artifact_path(cid), "no artifact for this conversation")

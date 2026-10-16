@@ -193,5 +193,22 @@ class ServerTests(unittest.TestCase):
         self.assertNotEqual(b2["job_id"], b1["job_id"])  # distinct turns
 
 
+class RunManagerEvictionTests(unittest.TestCase):
+    def test_runs_are_bounded(self):
+        from reverseai.agent.store import JobStore
+        from reverseai.server import runs as runs_mod
+        from reverseai.server.runs import Run, RunManager
+
+        with tempfile.TemporaryDirectory() as d:
+            rm = RunManager(JobStore(d))
+            # stuff more finished runs than the cap and trigger eviction
+            for i in range(runs_mod._MAX_RUNS + 50):
+                r = Run(job_id=f"job_{i:08x}")
+                r.done.set()
+                rm._runs[r.job_id] = r
+            rm._evict()
+            self.assertLessEqual(len(rm._runs), runs_mod._MAX_RUNS)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
