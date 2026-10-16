@@ -33,40 +33,53 @@ class RunManager:
     def __init__(self, store: JobStore) -> None:
         self.store = store
         self._runs: dict[str, Run] = {}
+        self._convos: dict[str, Any] = {}  # conversation_id -> Conversation
         self._lock = threading.Lock()
 
-    def start(self, body: dict[str, Any]) -> tuple[str | None, str | None]:
-        """Validate + launch. Returns (job_id, error)."""
+    def start(self, body: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
+        """Validate + launch a turn. Returns (stream_id, conversation_id, error).
+
+        A ``conversation_id`` in the body continues an existing conversation
+        (same target, evidence, and modified artifacts); otherwise a new one is
+        created from the provider/permission in the body.
+        """
         goal = body.get("goal")
         if not goal:
-            return None, "missing 'goal'"
-        perm = _PERM.get(body.get("permission", "execute"))
-        if perm is None:
-            return None, "permission must be read|execute|write"
-        provider_name = body.get("provider", "deepseek")
-        try:
-            provider = get_provider(provider_name)
-        except Exception as exc:
-            return None, f"provider error: {exc}"
+            return None, None, "missing 'goal'"
 
-        agent = Agent(provider, max_permission=perm,
-                      max_steps=int(body.get("max_steps", 24)))
-        # Pre-generate the job id so the caller can subscribe before it finishes.
+        cid = body.get("conversation_id")
+        with self._lock:
+            conv = self._convos.get(cid) if cid else None
+
+        if conv is None:
+            perm = _PERM.get(body.get("permission", "execute"))
+            if perm is None:
+                return None, None, "permission must be read|execute|write"
+            try:
+                provider = get_provider(body.get("provider", "deepseek"))
+            except Exception as exc:
+                return None, None, f"provider error: {exc}"
+            agent = Agent(provider, max_permission=perm,
+                          max_steps=int(body.get("max_steps", 24)))
+            conv = agent.open(target_path=body.get("target"),
+                              project_dir=body.get("project_dir"))
+            cid = _new_id("conv")
+            with self._lock:
+                self._convos[cid] = conv
+
         from ..agent.job import _job_id
 
-        job_id = _job_id()
-        run = Run(job_id=job_id)
+        stream_id = _job_id()
+        run = Run(job_id=stream_id)
         with self._lock:
-            self._runs[job_id] = run
+            self._runs[stream_id] = run
 
         def _worker():
             def on_event(ev: dict) -> None:
                 run.events.put(ev)
             try:
-                job = agent.run(goal, target_path=body.get("target"),
-                                project_dir=body.get("project_dir"),
-                                on_event=on_event)
-                job.id = job_id  # align stored id with the streamed one
+                job = conv.run_turn(goal, on_event=on_event)
+                job.id = stream_id  # align stored id with the streamed one
                 self.store.save(job)
                 run.record = job.to_dict()
             except Exception as exc:  # pragma: no cover - defensive
@@ -75,7 +88,7 @@ class RunManager:
                 run.done.set()
 
         threading.Thread(target=_worker, daemon=True).start()
-        return job_id, None
+        return stream_id, cid, None
 
     def get(self, job_id: str) -> Run | None:
         with self._lock:
@@ -109,6 +122,12 @@ class RunManager:
             except queue.Empty:
                 break
             yield _sse(ev)
+
+
+def _new_id(prefix: str) -> str:
+    import uuid
+
+    return f"{prefix}_{uuid.uuid4().hex[:12]}"
 
 
 def _sse(event: dict) -> bytes:

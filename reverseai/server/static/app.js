@@ -57,10 +57,12 @@ document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", ()
 
 const thread = $("#thread"); const inner = $("#threadInner");
 let busy = false;
+let conversationId = null;  // continues the same investigation across messages
 function scrollDown() { thread.scrollTop = thread.scrollHeight; }
 function removeWelcome() { const w = $("#welcome"); if (w) w.remove(); }
 
 function newChat() {
+  conversationId = null;
   inner.innerHTML = "";
   const w = el("div", "welcome"); w.id = "welcome";
   w.innerHTML = `<div class="big">✦</div><h1>What should we reverse-engineer?</h1>
@@ -111,11 +113,13 @@ async function send() {
   userTurn(goal);
   input.value = ""; input.style.height = "auto";
   const payload = { goal, target: $("#target").value.trim() || null, provider: $("#provider").value, permission: $("#permission").value };
+  if (conversationId) payload.conversation_id = conversationId;
   const ui = aiTurn(); currentUI = ui;
 
   const { status, body } = await postJSON("/jobs/start", payload);
   if (status !== 200) { finishError(ui, body.error || "failed to start"); return; }
   const jobId = body.job_id;
+  if (body.conversation_id) conversationId = body.conversation_id;
   const src = new EventSource(`/jobs/${jobId}/events`); currentSrc = src;
   let steps = 0;
   src.onmessage = (m) => {

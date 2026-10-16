@@ -137,10 +137,10 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _start_run(self, body) -> None:
-        job_id, error = self.runs.start(body)
+        stream_id, conversation_id, error = self.runs.start(body)
         if error:
             return self._send(400, {"error": error})
-        return self._send(200, {"job_id": job_id})
+        return self._send(200, {"job_id": stream_id, "conversation_id": conversation_id})
 
     def _stream_events(self, job_id: str) -> None:
         self.send_response(200)

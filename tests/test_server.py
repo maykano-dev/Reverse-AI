@@ -150,6 +150,18 @@ class ServerTests(unittest.TestCase):
         status, body = _post(f"{self.base}/jobs/start", {"provider": "mock"})
         self.assertEqual(status, 400)
 
+    def test_start_returns_conversation_id_and_reuses(self):
+        s1, b1 = _post(f"{self.base}/jobs/start", {"goal": "a", "provider": "mock"})
+        self.assertEqual(s1, 200)
+        cid = b1["conversation_id"]
+        self.assertTrue(cid and cid.startswith("conv_"))
+        # follow-up with the same conversation id must be accepted
+        s2, b2 = _post(f"{self.base}/jobs/start",
+                       {"goal": "b", "conversation_id": cid})
+        self.assertEqual(s2, 200)
+        self.assertEqual(b2["conversation_id"], cid)
+        self.assertNotEqual(b2["job_id"], b1["job_id"])  # distinct turns
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
