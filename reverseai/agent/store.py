@@ -43,6 +43,26 @@ class JobStore:
             return None
         return str(dest)
 
+    def delete(self, job_id: str) -> bool:
+        """Delete a stored job and any artifact it produced."""
+        if not _safe_id(job_id):
+            return False
+        removed = False
+        p = self.path_for(job_id)
+        if p.is_file():
+            try:
+                p.unlink()
+                removed = True
+            except OSError:
+                pass
+        art = self.artifact_for(job_id)
+        if art:
+            try:
+                art.unlink()
+            except OSError:
+                pass
+        return removed
+
     def artifact_for(self, job_id: str) -> Path | None:
         if not _safe_id(job_id):
             return None

@@ -149,6 +149,14 @@ class _Handler(BaseHTTPRequestHandler):
             return self._upload()
         return self._send(404, {"error": "not found"})
 
+    def do_DELETE(self):  # noqa: N802
+        m = _JOB_PATH.match(self.path.split("?", 1)[0])
+        if m:
+            ok = self.store.delete(m.group(1))
+            return self._send(200 if ok else 404,
+                              {"deleted": ok, "id": m.group(1)})
+        return self._send(404, {"error": "not found"})
+
     # --- static + streaming ---
     def _send_static(self, name: str, content_type: str) -> None:
         path = _STATIC_DIR / name

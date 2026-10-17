@@ -14,7 +14,10 @@ import tempfile
 import time
 from pathlib import Path
 
+import threading
+
 from ..security.validate import ValidationError, read_target
+from ..util.text import strip_dashes
 from .context import compact_messages
 from .evidence import EvidenceLog
 from .job import Job
@@ -62,6 +65,7 @@ class Conversation:
         self.refused: str | None = None
         self.turns = 0
         self.created_at = time.time()
+        self._lock = threading.Lock()  # serialize turns on one conversation
 
         if target_path:
             try:
@@ -76,6 +80,12 @@ class Conversation:
         self._first = False
 
     def run_turn(self, goal: str, on_event=None) -> Job:
+        # Serialize: a follow-up can't corrupt state while a turn is still
+        # running (e.g. a long clone). It waits for the previous turn to finish.
+        with self._lock:
+            return self._run_turn_locked(goal, on_event)
+
+    def _run_turn_locked(self, goal: str, on_event=None) -> Job:
         agent = self.agent
         job = Job(goal=goal, target_path=self.target_path)
         job.workspace = self.workspace
@@ -130,12 +140,15 @@ class Conversation:
 
             self.messages.append(Message(
                 Role.ASSISTANT, content=resp.content, tool_calls=resp.tool_calls))
-            emit({"type": "assistant", "step": step, "content": resp.content,
+            # Clean user-facing text (strip the AI "dash" tell); keep raw text in
+            # the model's own history above so its context is unchanged.
+            emit({"type": "assistant", "step": step,
+                  "content": strip_dashes(resp.content),
                   "tool_calls": [{"name": tc.name, "arguments": tc.arguments}
                                  for tc in resp.tool_calls]})
 
             if not resp.tool_calls:
-                job.final_answer = resp.content or ""
+                job.final_answer = strip_dashes(resp.content or "")
                 job.status = "completed"
                 return
 

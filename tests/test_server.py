@@ -133,6 +133,17 @@ class ServerTests(unittest.TestCase):
         status, body = _get(f"{self.base}/jobs/job_doesnotexist")
         self.assertEqual(status, 404)
 
+    def test_delete_job(self):
+        job = Job(goal="to delete")
+        self.srv.store.save(job)
+        req = urllib.request.Request(f"{self.base}/jobs/{job.id}", method="DELETE")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            body = json.loads(r.read())
+        self.assertTrue(body["deleted"])
+        # now gone
+        s, _ = _get(f"{self.base}/jobs/{job.id}")
+        self.assertEqual(s, 404)
+
     def test_run_job_requires_goal(self):
         status, body = _post(f"{self.base}/jobs", {})
         self.assertEqual(status, 400)

@@ -172,6 +172,13 @@ function showArtifacts() {
   });
   $("#artSheet").classList.add("show");
 }
+async function deleteChat(jobId, node) {
+  try {
+    await fetch(`/jobs/${jobId}`, { method: "DELETE" });
+    node.remove();
+  } catch (_) {}
+}
+
 function updateArtCount() {
   const c = $("#artCount");
   if (sessionArtifacts.length) { c.style.display = ""; c.textContent = sessionArtifacts.length; }
@@ -185,6 +192,33 @@ wireChips();
 const thread = $("#thread"); const inner = $("#threadInner");
 let busy = false;
 let conversationId = null;  // continues the same investigation across messages
+
+// Friendly labels so the activity never exposes internal tool names.
+const TOOL_LABELS = {
+  host_capabilities: "Checking the environment",
+  analyze_binary: "Analyzing the file",
+  read_bytes: "Reading data",
+  list_strings: "Reading text in the file",
+  disassemble: "Disassembling code",
+  list_functions: "Mapping functions",
+  analyze_apk: "Analyzing the app",
+  assess_heuristics: "Checking for risks",
+  run_in_sandbox: "Running it safely",
+  record_finding: "Noting a finding",
+  apply_byte_patch: "Modifying the file",
+  verify_against_original: "Verifying the change",
+  diff_modified: "Comparing versions",
+  extract_archive: "Unpacking the archive",
+  clone_website: "Rebuilding the site",
+  add_imported_library: "Modifying the file",
+  add_section: "Modifying the file",
+  list_dir: "Looking through files",
+  read_file: "Reading a file",
+  write_file: "Writing a file",
+  edit_file: "Editing a file",
+  run_command: "Running a step",
+};
+function toolLabel(name) { return TOOL_LABELS[name] || "Working"; }
 function scrollDown() { thread.scrollTop = thread.scrollHeight; }
 function removeWelcome() { const w = $("#welcome"); if (w) w.remove(); }
 
@@ -270,9 +304,9 @@ async function send() {
     }
     else if (ev.type === "tool_result") {
       const ok = ev.ok ? "✓" : "✗";
-      const a = act(ui.wbody, ok, `<b>${esc(ev.name)}</b>`);
+      const a = act(ui.wbody, ok, `<b>${esc(toolLabel(ev.name))}</b>`);
       a.classList.add("tool");
-      if (ev.content) { const key = addView(ev.name, ev.content); const v = el("span", "view", "view output"); v.addEventListener("click", () => showView(key)); a.querySelector(".tx").appendChild(v); }
+      if (ev.content) { const key = addView(toolLabel(ev.name), ev.content); const v = el("span", "view", "view details"); v.addEventListener("click", () => showView(key)); a.querySelector(".tx").appendChild(v); }
     }
     else if (ev.type === "finding") {
       const a = act(ui.wbody, "", `<span class="tier ${ev.tier}">${ev.tier}</span> ${esc(ev.claim)}`);
@@ -360,7 +394,12 @@ async function loadHistory() {
       it.dataset.goal = (j.goal || "").toLowerCase();
       it.title = `${j.status} · ${j.steps} steps`;
       it.appendChild(el("span", "cv-ic", "◦"));
-      it.appendChild(el("span", null, (j.goal || "(job)").slice(0, 40)));
+      const label = el("span", "cv-label", (j.goal || "(chat)").slice(0, 36));
+      it.appendChild(label);
+      const del = el("span", "cv-del", "✕");
+      del.title = "Delete chat";
+      del.addEventListener("click", (e) => { e.stopPropagation(); deleteChat(j.id, it); });
+      it.appendChild(del);
       it.addEventListener("click", () => showReport(j.id));
       h.appendChild(it);
     });
