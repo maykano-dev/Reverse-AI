@@ -167,16 +167,21 @@ class Conversation:
 
 
 def _initial_user_message(goal: str, target_path: str | None) -> str:
+    """First user turn.
+
+    With no target, pass the message through unchanged so the agent just talks
+    naturally. Only when a file is attached do we frame it as an investigation.
+    """
+    if not target_path:
+        return goal
     from pathlib import Path
 
-    parts = [f"Goal:\n{goal}"]
-    if target_path:
-        parts.append(f"\nTarget file: {Path(target_path).name} (path: {target_path})")
-    parts.append(
-        "\nBegin by assessing host capabilities and analyzing the target, then "
-        "proceed toward the goal. Record findings at the correct confidence tier "
-        "and finish with an honest summary.")
-    return "\n".join(parts)
+    return (
+        f"{goal}\n\n[Attached target: {Path(target_path).name} "
+        f"(path: {target_path})]\n"
+        "Investigate it and proceed toward the goal: work on a copy in the "
+        "sandbox, verify your work, finish with a clear plain-language summary, "
+        "and deliver the final file if you produce one.")
 
 
 def _acc_usage(job: Job, resp) -> None:
