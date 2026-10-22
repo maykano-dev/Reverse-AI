@@ -3,13 +3,33 @@
 const $ = (s) => document.querySelector(s);
 const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
 const esc = (s) => { const d = el("div"); d.textContent = s == null ? "" : s; return d.innerHTML; };
+const _LONGDASH = /\s*[—–‒―−]\s*/g;
+function dedashLine(line) {
+  const m = line.match(/^(\s*(?:[-*+]\s+|\d+[.)]\s+))?([\s\S]*)$/);
+  const marker = m[1] || "";
+  let body = m[2]
+    .replace(_LONGDASH, ", ")
+    .replace(/\s+-\s+/g, ", ")
+    .replace(/(\w)-(\w)/g, "$1 $2")
+    .replace(/\s*,\s*,/g, ",")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1");
+  return marker + body;
+}
+function deDash(text) {
+  if (!text) return text || "";
+  const parts = text.split(/(```[\s\S]*?```|`[^`]*`)/);
+  return parts.map((p, i) => (i % 2 ? p : p.split("\n").map(dedashLine).join("\n"))).join("");
+}
 function md(text) {
-  // Render markdown, sanitized. Falls back to escaped plain text if libs missing.
+  // De-dash, then render markdown (sanitized). Lists render as proper bullets,
+  // so no literal dashes ever reach the user. Falls back to escaped text.
+  const clean = deDash(text || "");
   try {
     if (window.marked && window.DOMPurify)
-      return DOMPurify.sanitize(marked.parse(text || "", { breaks: true }));
+      return DOMPurify.sanitize(marked.parse(clean, { breaks: true }));
   } catch (_) {}
-  return esc(text).replace(/\n/g, "<br>");
+  return esc(clean).replace(/\n/g, "<br>");
 }
 async function getJSON(u) { const r = await fetch(u); return r.json(); }
 async function postJSON(u, b) { const r = await fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }); return { status: r.status, body: await r.json() }; }
@@ -50,6 +70,23 @@ function openCanvas(pane) {
   setTimeout(() => editor && editor.refresh(), 240);
 }
 $("#closeCanvas").addEventListener("click", () => $("#canvas").classList.remove("open"));
+
+// built-in browser / preview
+function showPreview(url) {
+  const f = $("#pvFrame");
+  f.src = url; f.style.display = "block";
+  $("#pvEmpty").style.display = "none";
+  $("#pvUrl").value = url.startsWith("/preview/") ? "built site · live preview" : url;
+  openCanvas("preview");
+}
+function loadPreviewUrl() {
+  let u = $("#pvUrl").value.trim();
+  if (!u || u === "built site · live preview") return;
+  if (!/^https?:\/\//i.test(u) && !u.startsWith("/")) u = "https://" + u;
+  showPreview(u);
+}
+$("#pvGo").addEventListener("click", loadPreviewUrl);
+$("#pvUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") loadPreviewUrl(); });
 document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => {
   document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
   document.querySelectorAll(".pane").forEach((x) => x.classList.remove("active"));
@@ -299,14 +336,15 @@ async function send() {
     let ev; try { ev = JSON.parse(m.data); } catch (_) { return; }
     if (ev.type === "step") { steps = ev.step; ui.label.textContent = `Investigating… step ${ev.step}`; }
     else if (ev.type === "assistant") {
-      if (ev.content) act(ui.wbody, "💭", esc(ev.content));
-      (ev.tool_calls || []).forEach((c) => {});
+      if (ev.content) act(ui.wbody, "💭", esc(deDash(ev.content)));
     }
     else if (ev.type === "tool_result") {
       const ok = ev.ok ? "✓" : "✗";
       const a = act(ui.wbody, ok, `<b>${esc(toolLabel(ev.name))}</b>`);
       a.classList.add("tool");
       if (ev.content) { const key = addView(toolLabel(ev.name), ev.content); const v = el("span", "view", "view details"); v.addEventListener("click", () => showView(key)); a.querySelector(".tx").appendChild(v); }
+      // When a site is built/cloned, show it live in the preview pane.
+      if (ev.name === "clone_website" && ev.ok && conversationId) showPreview(`/preview/${conversationId}/index.html`);
     }
     else if (ev.type === "finding") {
       const a = act(ui.wbody, "", `<span class="tier ${ev.tier}">${ev.tier}</span> ${esc(ev.claim)}`);
@@ -372,7 +410,9 @@ async function showReport(jobId) {
     const d = el("div"); d.style.cssText = "display:flex;gap:8px;margin-top:8px;font-size:13px;align-items:flex-start";
     d.innerHTML = `<span class="tier ${f.confidence}">${f.confidence}</span><span>${esc(f.claim)}</span>`; r.appendChild(d);
   });
-  r.appendChild(el("h3", null, "Conclusion")); const pre = el("pre", null, rec.final_answer || "(none)"); r.appendChild(pre);
+  r.appendChild(el("h3", null, "Conclusion"));
+  const concl = el("div", "answer"); concl.innerHTML = md(rec.final_answer || "(none)");
+  r.appendChild(concl);
   if (rec.error) { const e = el("div", "kv", "error: " + rec.error); e.style.color = "#ff453a"; r.appendChild(e); }
   pane.appendChild(r); openCanvas("report");
 }

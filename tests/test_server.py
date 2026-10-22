@@ -98,6 +98,25 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(s, 400)
         self.assertIn("error", b)
 
+    def test_preview_serves_built_site(self):
+        # create a conversation, drop a built site into its workspace, preview it
+        sid, cid, err = self.srv.runs.start({"goal": "x", "provider": "mock"})
+        self.assertIsNone(err)
+        conv = self.srv.runs.conversation(cid)
+        site = Path(conv.workspace) / "clone"
+        site.mkdir(parents=True, exist_ok=True)
+        (site / "index.html").write_text("<h1>Demo Mall</h1>")
+        with urllib.request.urlopen(f"{self.base}/preview/{cid}/index.html", timeout=5) as r:
+            self.assertEqual(r.status, 200)
+            self.assertIn("Demo Mall", r.read().decode())
+
+    def test_preview_blocks_traversal(self):
+        sid, cid, err = self.srv.runs.start({"goal": "x", "provider": "mock"})
+        conv = self.srv.runs.conversation(cid)
+        (Path(conv.workspace) / "clone").mkdir(parents=True, exist_ok=True)
+        s, _ = _get(f"{self.base}/preview/{cid}/..%2f..%2fsecret")
+        self.assertIn(s, (400, 404))
+
     def test_analyze(self):
         status, body = _post(f"{self.base}/analyze", {"path": "/usr/bin/objdump"})
         self.assertEqual(status, 200)

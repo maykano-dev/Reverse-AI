@@ -43,6 +43,7 @@ _EVENTS_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/events$")
 _JOB_ARTIFACT_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/artifact$")
 _ARTIFACT_PATH = re.compile(r"^/conversations/(conv_[A-Za-z0-9]+)/artifact$")
 _FILES_PATH = re.compile(r"^/files/([a-f0-9]{12})/([A-Za-z0-9._-]+)$")
+_PREVIEW_PATH = re.compile(r"^/preview/(conv_[A-Za-z0-9]+)/(.*)$")
 _STATIC_DIR = Path(__file__).parent / "static"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
@@ -115,6 +116,9 @@ class _Handler(BaseHTTPRequestHandler):
         fm = _FILES_PATH.match(path)
         if fm:
             return self._download_output(fm.group(1), fm.group(2))
+        pm = _PREVIEW_PATH.match(path)
+        if pm:
+            return self._serve_preview(pm.group(1), pm.group(2))
         m = _JOB_PATH.match(path)
         if m:
             rec = self.store.get(m.group(1))
@@ -362,6 +366,38 @@ class _Handler(BaseHTTPRequestHandler):
         d = res.to_dict()
         d["download"] = f"/files/{token}/{Path(zip_path).name}"
         return self._send(200, d)
+
+    def _serve_preview(self, cid: str, relpath: str) -> None:
+        """Serve a cloned/built site live so it can render in the preview pane."""
+        import mimetypes
+
+        conv = self.runs.conversation(cid)
+        if conv is None:
+            return self._send(404, {"error": "no such session"})
+        base = (Path(conv.workspace) / "clone").resolve()
+        if not base.is_dir():
+            return self._send(404, {"error": "nothing built to preview yet"})
+        rel = relpath or "index.html"
+        target = (base / rel).resolve()
+        try:
+            target.relative_to(base)
+        except ValueError:
+            return self._send(404, {"error": "not found"})
+        if target.is_dir():
+            target = target / "index.html"
+        if not target.is_file():
+            return self._send(404, {"error": "not found"})
+        try:
+            data = target.read_bytes()
+        except OSError:
+            return self._send(404, {"error": "not found"})
+        ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _download_output(self, token: str, name: str) -> None:
         base = (Path(self.store.dir) / "api_outputs" / token).resolve()
