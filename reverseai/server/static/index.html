@@ -52,7 +52,9 @@
   .side-head{ display:flex; align-items:center; padding:15px 14px 8px; }
   .wordmark{ font-size:17px; font-weight:650; letter-spacing:-.02em; display:flex; align-items:center;
     gap:8px; flex:1; }
-  .mark{ color:var(--accent); font-size:18px; }
+  .mark{ color:var(--accent); display:flex; align-items:center; }
+  .icon{ display:block; }
+  .si{ display:flex; align-items:center; color:var(--dim); }
   .ghost{ border:1px solid var(--border); background:var(--elev); color:var(--text); width:32px;
     height:32px; border-radius:9px; cursor:pointer; font-size:14px; display:flex; align-items:center;
     justify-content:center; }
@@ -67,7 +69,8 @@
   .nav-item{ display:flex; align-items:center; gap:11px; padding:9px 11px; border-radius:10px;
     font-size:13.5px; color:var(--text); cursor:pointer; }
   .nav-item:hover{ background:var(--sunken); }
-  .nav-item .ni{ width:17px; text-align:center; color:var(--dim); font-size:15px; }
+  .nav-item .ni{ width:18px; height:18px; display:flex; align-items:center; justify-content:center; color:var(--dim); }
+  .nav-item:hover .ni, .nav-item.active .ni{ color:var(--accent); }
   .ni-count{ margin-left:auto; font-size:11px; font-weight:600; background:var(--accent-weak);
     color:var(--accent); border-radius:999px; padding:1px 8px; }
   .recents-head{ padding:12px 18px 6px; font-size:11px; font-weight:600; letter-spacing:.05em;
@@ -86,8 +89,8 @@
   .convo .cv-del:hover{ background:var(--border); color:#ff453a; }
   .side-foot{ padding:10px 12px; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px; }
   .acct{ flex:1; display:flex; align-items:center; gap:10px; padding:5px 6px; border-radius:10px; cursor:default; }
-  .acct-av{ width:30px; height:30px; border-radius:8px; background:linear-gradient(135deg,#0a84ff,#0a5fd0);
-    color:#fff; display:flex; align-items:center; justify-content:center; font-weight:650; font-size:14px; flex:none; }
+  .acct-av{ width:30px; height:30px; border-radius:9px; background:var(--accent-weak);
+    color:var(--accent); display:flex; align-items:center; justify-content:center; flex:none; }
   .acct-meta{ display:flex; flex-direction:column; min-width:0; }
   .acct-meta b{ font-size:13px; } .acct-meta span{ font-size:11px; color:var(--dim); white-space:nowrap;
     overflow:hidden; text-overflow:ellipsis; }
@@ -111,7 +114,7 @@
   .thread{ flex:1; overflow-y:auto; scroll-behavior:smooth; }
   .thread-inner{ max-width:760px; margin:0 auto; padding:32px 28px 24px; }
   .welcome{ max-width:620px; margin:12vh auto 0; text-align:center; padding:0 24px; }
-  .welcome .big{ font-size:40px; color:var(--accent); margin-bottom:14px; }
+  .welcome .big{ color:var(--accent); margin-bottom:18px; display:flex; justify-content:center; }
   .welcome h1{ font-size:27px; font-weight:650; letter-spacing:-.02em; margin:0 0 8px; }
   .welcome p{ color:var(--dim); font-size:15px; line-height:1.55; margin:0 auto; max-width:460px; }
   .suggest{ display:flex; flex-wrap:wrap; gap:9px; justify-content:center; margin-top:22px; }
@@ -144,7 +147,11 @@
   .work.collapsed .chev{ transform:rotate(-90deg); }
   .work-body{ padding:4px 12px 12px; display:flex; flex-direction:column; gap:7px; }
   .act{ font-size:12.5px; display:flex; align-items:flex-start; gap:9px; animation:rise .2s ease; }
-  .act .ic{ width:17px; text-align:center; flex:none; margin-top:1px; }
+  .act .ic{ width:17px; flex:none; margin-top:1px; display:flex; align-items:center; justify-content:center; color:var(--faint); }
+  .act.ok .ic{ color:var(--verified); } .act.fail .ic{ color:#ff453a; }
+  .act .ic svg{ color:inherit; }
+  .donemark{ display:flex; align-items:center; color:var(--verified); }
+  .qlabel{ font-weight:600; color:var(--text); }
   .act .tx{ min-width:0; color:var(--dim); }
   .act .tx b{ font-family:var(--font-mono); font-size:12px; color:var(--text); font-weight:600; }
   .act.tool .tx{ color:var(--text); }
@@ -298,48 +305,63 @@
     #sidebar{ position:absolute; left:0; top:0; bottom:0; z-index:35; box-shadow:var(--shadow); }
     #canvas.open{ width:94%; }
   }
+
+  /* file:// block overlay */
+  .file-block{ position:fixed; inset:0; z-index:9999; display:none; align-items:center; justify-content:center;
+    background:var(--bg); }
+  .file-block.show{ display:flex; }
+  .fb-card{ max-width:440px; text-align:center; padding:36px 32px; }
+  .fb-mark{ color:var(--accent); display:flex; justify-content:center; margin-bottom:18px; }
+  .fb-card h2{ font-size:22px; font-weight:650; letter-spacing:-.02em; margin:0 0 10px; }
+  .fb-card p{ color:var(--dim); font-size:14.5px; line-height:1.55; margin:0 0 16px; }
+  .fb-card code{ display:inline-block; font-family:var(--font-mono); font-size:15px; color:var(--accent);
+    background:var(--accent-weak); border-radius:10px; padding:10px 18px; }
+  .fb-cmd{ margin-top:16px !important; font-size:13px !important; }
+  .fb-cmd b{ font-family:var(--font-mono); color:var(--text); }
+  /* icon buttons hold svgs cleanly */
+  .ghost svg, .attach svg, .send svg, .nav-item svg, .mark svg, .acct-av svg, .big svg, .si svg,
+  .ce-big svg, .fb-mark svg{ display:block; }
 </style>
 </head>
 <body>
 <div id="app">
   <aside id="sidebar">
     <div class="side-head">
-      <div class="wordmark"><span class="mark">✦</span> ReverseAI</div>
-      <button class="ghost sm" id="collapseBtn" title="Collapse sidebar">⟨</button>
+      <div class="wordmark"><span class="mark" data-icon="logo" data-size="22"></span> ReverseAI</div>
+      <button class="ghost sm" id="collapseBtn" title="Collapse sidebar" data-icon="chevronLeft"></button>
     </div>
     <div class="side-search">
-      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"
-        stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-      <input type="text" id="search" placeholder="Search investigations" />
+      <span class="si" data-icon="search" data-size="16"></span>
+      <input type="text" id="search" placeholder="Search" />
     </div>
     <nav class="side-nav">
-      <div class="nav-item" id="navNew"><span class="ni">＋</span> New investigation</div>
-      <div class="nav-item" id="navBrowser"><span class="ni">◎</span> Browser</div>
-      <div class="nav-item" id="navArtifacts"><span class="ni">⤓</span> Artifacts
+      <div class="nav-item" id="navNew"><span class="ni" data-icon="plus"></span> New investigation</div>
+      <div class="nav-item" id="navBrowser"><span class="ni" data-icon="globe"></span> Browser</div>
+      <div class="nav-item" id="navArtifacts"><span class="ni" data-icon="download"></span> Artifacts
         <span class="ni-count" id="artCount" style="display:none;">0</span></div>
-      <div class="nav-item" id="navHost"><span class="ni">⚡</span> Host &amp; sandbox</div>
+      <div class="nav-item" id="navHost"><span class="ni" data-icon="cpu"></span> Host &amp; sandbox</div>
     </nav>
-    <div class="recents-head"><span>Recents</span></div>
+    <div class="recents-head"><span>Recent</span></div>
     <div class="convos" id="convos"></div>
     <div class="side-foot">
       <div class="acct">
-        <span class="acct-av">R</span>
+        <span class="acct-av" data-icon="logo" data-size="18"></span>
         <div class="acct-meta"><b>ReverseAI</b><span id="hostText">checking…</span></div>
         <span class="host-dot" id="hostDot"></span>
       </div>
-      <button class="ghost sm" id="themeBtn" title="Theme">◐</button>
+      <button class="ghost sm" id="themeBtn" title="Theme" data-icon="moon"></button>
     </div>
   </aside>
-  <button class="expand-btn" id="expandBtn" title="Open sidebar">☰</button>
+  <button class="expand-btn" id="expandBtn" title="Open sidebar" data-icon="menu"></button>
 
   <main id="main">
     <div class="thread" id="thread">
       <div class="thread-inner" id="threadInner">
         <div class="welcome" id="welcome">
-          <div class="big">✦</div>
-          <h1>What should we reverse-engineer?</h1>
-          <p>Hand me a binary (Windows PE, Linux ELF, or macOS/iOS Mach-O) and a goal.
-             I'll investigate it, work in an isolated sandbox, and show you every step.</p>
+          <div class="big" data-icon="logo" data-size="46"></div>
+          <h1>What can I build or break down for you?</h1>
+          <p>Hand me a binary, an app, an archive, or a website, and tell me the goal.
+             I work in an isolated sandbox and hand back a finished, verified result.</p>
           <div class="suggest" id="suggest">
             <div class="chip" data-g="Analyze this binary: format, architecture, imports, and what it likely does.">Analyze a binary</div>
             <div class="chip" data-g="Run this program safely in the sandbox and tell me exactly what it does.">Run it safely</div>
@@ -354,20 +376,15 @@
       <div class="composer" id="composer">
         <div id="fileChip" class="file-chip" style="display:none;"></div>
         <div class="cinput">
-          <button class="attach" id="attach" title="Attach a file">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-            </svg>
-          </button>
+          <button class="attach" id="attach" title="Attach a file" data-icon="paperclip" data-size="20"></button>
           <input type="file" id="fileInput" style="display:none;" />
-          <textarea id="input" rows="1" placeholder="Describe what you want ReverseAI to do…"></textarea>
-          <button class="send" id="send" title="Send">↑</button>
+          <textarea id="input" rows="1" placeholder="Message ReverseAI…"></textarea>
+          <button class="send" id="send" title="Send" data-icon="arrowUp" data-size="19"></button>
         </div>
       </div>
-      <div class="hint">Enter to send · Shift+Enter or Ctrl+Enter for a new line · drop a file anywhere</div>
+      <div class="hint">Enter to send &nbsp;·&nbsp; Shift+Enter for a new line &nbsp;·&nbsp; drop a file anywhere</div>
     </div>
-    <div id="dropOverlay" class="drop-overlay"><div class="drop-inner">Drop a binary or archive to analyze</div></div>
+    <div id="dropOverlay" class="drop-overlay"><div class="drop-inner" data-icon="download" data-size="40"></div></div>
   <div class="sheet" id="artSheet">
     <div class="sheet-card">
       <h3>Delivered artifacts</h3>
@@ -386,7 +403,7 @@
         <div class="tab" data-pane="caps">Host</div>
       </div>
       <div style="flex:1"></div>
-      <button class="ghost" id="closeCanvas" title="Close">✕</button>
+      <button class="ghost" id="closeCanvas" title="Close" data-icon="x"></button>
     </div>
     <div class="canvas-body">
       <div class="pane active" id="editorPane">
@@ -397,25 +414,36 @@
             <div class="vdrop-menu" id="vdropMenu"></div>
           </div>
         </div>
-        <div id="editorEmpty" class="canvas-empty"><div class="ce-big">⌁</div>
-          Tool outputs — disassembly, hex, strings, files — show up here as the agent works.</div>
+        <div id="editorEmpty" class="canvas-empty"><div class="ce-big" data-icon="code" data-size="30"></div>
+          Tool outputs (disassembly, hex, strings, files) show up here as I work.</div>
         <div id="editorHolder" style="flex:1; min-height:0; display:none;"><textarea id="editor"></textarea></div>
       </div>
-      <div class="pane report" id="reportPane"><div class="canvas-empty"><div class="ce-big">✦</div>
+      <div class="pane report" id="reportPane"><div class="canvas-empty"><div class="ce-big" data-icon="file" data-size="30"></div>
         The plain-language report and evidence appear here when a turn completes.</div></div>
       <div class="pane caps" id="capsPane"><div class="caps-grid" id="capsGrid"></div></div>
       <div class="pane preview" id="previewPane">
         <div class="pv-bar">
-          <input type="text" id="pvUrl" placeholder="https://example.com — load a site, or built sites show here" />
+          <input type="text" id="pvUrl" placeholder="Enter a URL to browse, or built sites appear here" />
           <button class="pv-go" id="pvGo">Open</button>
         </div>
-        <div id="pvEmpty" class="canvas-empty"><div class="ce-big">◎</div>
+        <div id="pvEmpty" class="canvas-empty"><div class="ce-big" data-icon="globe" data-size="30"></div>
           Live preview. When I build or clone a site it renders here, or type a URL to open one.</div>
         <iframe id="pvFrame" class="pv-frame" style="display:none;"
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
       </div>
     </div>
   </aside>
+</div>
+
+<div id="fileBlock" class="file-block">
+  <div class="fb-card">
+    <div class="fb-mark" data-icon="globe" data-size="34"></div>
+    <h2>Open ReverseAI in your browser</h2>
+    <p>You opened the app as a file, so there's no server behind it and nothing will respond.
+       Start the server and open the address below.</p>
+    <code>http://localhost:8077</code>
+    <p class="fb-cmd">If it isn't running: <b>python3 -m reverseai serve</b></p>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>

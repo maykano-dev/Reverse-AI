@@ -3,6 +3,40 @@
 const $ = (s) => document.querySelector(s);
 const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
 const esc = (s) => { const d = el("div"); d.textContent = s == null ? "" : s; return d.innerHTML; };
+
+// ---------- professional icon set (Lucide-style, stroke = currentColor) ----------
+const P = {
+  logo: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.3 7 12 12 20.7 7"/><line x1="12" y1="22" x2="12" y2="12"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a14 14 0 0 1 3.5 9A14 14 0 0 1 12 21a14 14 0 0 1-3.5-9A14 14 0 0 1 12 3z"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  cpu: '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/>',
+  search: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  chevronLeft: '<polyline points="15 18 9 12 15 6"/>',
+  menu: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>',
+  arrowUp: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>',
+  paperclip: '<path d="M21.4 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+  archive: '<rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><line x1="10" y1="13" x2="14" y2="13"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  alert: '<circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16" x2="12" y2="16"/>',
+  sparkle: '<path d="M12 4l1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6z"/>',
+  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+  dot: '<circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>',
+  box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>',
+};
+function ic(name, size) {
+  const s = size || 18;
+  return `<svg class="icon" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${P[name] || ""}</svg>`;
+}
+function renderIcons(root) {
+  (root || document).querySelectorAll("[data-icon]").forEach((n) => {
+    if (!n.dataset.done) { n.innerHTML = ic(n.dataset.icon, n.dataset.size ? +n.dataset.size : 18); n.dataset.done = "1"; }
+  });
+}
 const _LONGDASH = /\s*[—–‒―−]\s*/g;
 function dedashLine(line) {
   const m = line.match(/^(\s*(?:[-*+]\s+|\d+[.)]\s+))?([\s\S]*)$/);
@@ -142,7 +176,7 @@ async function uploadFile(file) {
   removeWelcome();
   const chip = $("#fileChip"); attached = null;
   chip.style.display = "flex"; chip.classList.add("uploading");
-  chip.innerHTML = `<span class="fi">📄</span><span><span class="fname">${esc(file.name)}</span> <span class="fmeta">${fmtSize(file.size)}</span></span>`;
+  chip.innerHTML = `<span class="fi">${ic("file",16)}</span><span><span class="fname">${esc(file.name)}</span> <span class="fmeta">${fmtSize(file.size)}</span></span>`;
   try {
     const r = await fetch("/upload", { method: "PUT", headers: { "X-Filename": file.name }, body: file });
     const b = await r.json();
@@ -150,7 +184,7 @@ async function uploadFile(file) {
     attached = b; renderChip();
   } catch (err) {
     chip.classList.remove("uploading");
-    chip.innerHTML = `<span class="fi">⚠︎</span><span><span class="fname">${esc(file.name)}</span> <span class="fmeta" style="color:#ff453a">${esc(err.message)}</span></span><span class="rm" onclick="clearAttachment()">✕</span>`;
+    chip.innerHTML = `<span class="fi">${ic("alert",16)}</span><span><span class="fname">${esc(file.name)}</span> <span class="fmeta" style="color:#ff453a">${esc(err.message)}</span></span><span class="rm" onclick="clearAttachment()">${ic("x",14)}</span>`;
   }
 }
 function renderChip() {
@@ -159,10 +193,10 @@ function renderChip() {
   const kindLbl = attached.kind === "unknown" ? "file" : attached.kind;
   const archBit = (attached.arch && attached.arch !== "unknown")
     ? ` · ${attached.arch}${attached.bits ? " " + attached.bits + "-bit" : ""}` : "";
-  chip.innerHTML = `<span class="fi">${warn ? "🗜️" : "📄"}</span>
+  chip.innerHTML = `<span class="fi">${warn ? ic("archive",16) : ic("file",16)}</span>
     <span><span class="fname">${esc(attached.filename)}</span> <span class="fmeta">${fmtSize(attached.size)}${esc(archBit)}</span></span>
     <span class="kind ${warn ? "warn" : ""}">${esc(kindLbl)}</span>
-    <span class="rm" onclick="clearAttachment()">✕</span>`;
+    <span class="rm" onclick="clearAttachment()">${ic("x",14)}</span>`;
 }
 function clearAttachment() { attached = null; const c = $("#fileChip"); c.style.display = "none"; c.innerHTML = ""; }
 window.clearAttachment = clearAttachment;
@@ -179,7 +213,7 @@ window.addEventListener("drop", (e) => { e.preventDefault(); dragDepth = 0; over
 const queue = [];
 function renderQueue() {
   const q = $("#queued"); q.innerHTML = "";
-  queue.forEach((m, i) => { const d = el("div", "qmsg"); d.innerHTML = `<span>⏎ queued:</span> <span>${esc(m.goal.slice(0, 70))}</span><span class="qx">✕</span>`; d.querySelector(".qx").onclick = () => { queue.splice(i, 1); renderQueue(); }; q.appendChild(d); });
+  queue.forEach((m, i) => { const d = el("div", "qmsg"); d.innerHTML = `<span class="qlabel">queued</span> <span>${esc(m.goal.slice(0, 70))}</span><span class="qx">${ic("x",13)}</span>`; d.querySelector(".qx").onclick = () => { queue.splice(i, 1); renderQueue(); }; q.appendChild(d); });
 }
 function submit() {
   if (busy) { // queue it
@@ -212,11 +246,11 @@ $("#artSheet").addEventListener("click", (e) => { if (e.target.id === "artSheet"
 function showArtifacts() {
   const list = $("#artList");
   list.innerHTML = sessionArtifacts.length ? "" :
-    '<div class="canvas-empty" style="padding:28px"><div class="ce-big">⤓</div>No delivered files yet. When ReverseAI modifies a binary and verifies it, it appears here.</div>';
+    `<div class="canvas-empty" style="padding:28px"><div class="ce-big">${ic("download", 30)}</div>No delivered files yet. When I produce and verify a file, it appears here.</div>`;
   sessionArtifacts.forEach((a) => {
     const row = el("a", "artifact"); row.style.display = "flex"; row.style.marginTop = "8px";
     row.href = a.href; row.setAttribute("download", a.name);
-    row.innerHTML = `<span class="ai">↓</span><span class="at"><b>${esc(a.name)}</b><span>${esc(a.goal || "delivered file")}</span></span>`;
+    row.innerHTML = `<span class="ai">${ic("download",17)}</span><span class="at"><b>${esc(a.name)}</b><span>${esc(a.goal || "delivered file")}</span></span>`;
     list.appendChild(row);
   });
   $("#artSheet").classList.add("show");
@@ -275,14 +309,14 @@ function resetCanvas() {
   viewOrder.length = 0; for (const k in views) delete views[k];
   $("#vdropMenu").innerHTML = ""; $("#vdropLabel").textContent = "tool output";
   $("#editorEmpty").style.display = ""; $("#editorHolder").style.display = "none";
-  $("#reportPane").innerHTML = '<div class="canvas-empty"><div class="ce-big">✦</div>The plain-language report and evidence appear here when a turn completes.</div>';
+  $("#reportPane").innerHTML = `<div class="canvas-empty"><div class="ce-big">${ic("file", 30)}</div>The plain-language report and evidence appear here when a turn completes.</div>`;
 }
 function newChat() {
   conversationId = null; clearAttachment(); queue.length = 0; renderQueue(); resetCanvas();
   inner.innerHTML = "";
   const w = el("div", "welcome"); w.id = "welcome";
-  w.innerHTML = `<div class="big">✦</div><h1>What should we reverse-engineer?</h1>
-    <p>Drop a binary (Windows PE, Linux ELF, or macOS/iOS Mach-O) or archive and tell me what you want. I'll investigate it, work in an isolated sandbox, and deliver the result.</p>
+  w.innerHTML = `<div class="big">${ic("logo", 46)}</div><h1>What can I build or break down for you?</h1>
+    <p>Hand me a binary, an app, an archive, or a website, and tell me the goal. I work in an isolated sandbox and hand back a finished, verified result.</p>
     <div class="suggest">
       <div class="chip" data-g="Analyze this binary and tell me what it does, in plain language.">Analyze a binary</div>
       <div class="chip" data-g="Run this program safely in the sandbox and tell me what it does.">Run it safely</div>
@@ -299,7 +333,7 @@ function userTurn(text) {
 
 function aiTurn() {
   const t = el("div", "turn ai");
-  t.appendChild(el("div", "avatar", "✦"));
+  const av = el("div", "avatar"); av.innerHTML = ic("logo", 17); t.appendChild(av);
   const body = el("div", "ai-body");
   const work = el("div", "work");
   const head = el("div", "work-head");
@@ -323,7 +357,7 @@ function setBusy(on) {
   busy = on;
   const b = $("#send");
   b.classList.toggle("stop", on);
-  b.innerHTML = on ? "■" : "↑";
+  b.innerHTML = on ? ic("stop", 18) : ic("arrowUp", 19);
   b.title = on ? "Stop" : "Send";
 }
 
@@ -348,12 +382,12 @@ async function send() {
     let ev; try { ev = JSON.parse(m.data); } catch (_) { return; }
     if (ev.type === "step") { steps = ev.step; ui.label.textContent = "Thinking…"; }
     else if (ev.type === "assistant") {
-      if (ev.content) act(ui.wbody, "💭", esc(deDash(ev.content)));
+      if (ev.content) act(ui.wbody, ic("sparkle", 14), esc(deDash(ev.content)));
     }
     else if (ev.type === "tool_result") {
-      const ok = ev.ok ? "✓" : "✗";
+      const ok = ev.ok ? ic("check", 15) : ic("alert", 15);
       const a = act(ui.wbody, ok, `<b>${esc(toolLabel(ev.name))}</b>`);
-      a.classList.add("tool");
+      a.classList.add("tool", ev.ok ? "ok" : "fail");
       ui.label.textContent = "Working…";
       if (ev.content) { const key = addView(toolLabel(ev.name), ev.content); const v = el("span", "view", "view details"); v.addEventListener("click", () => showView(key)); a.querySelector(".tx").appendChild(v); }
       // When a site is built/cloned, show it live in the preview pane.
@@ -371,8 +405,8 @@ async function send() {
 function finishFinal(ui, jobId, ev, steps) {
   ui.work.classList.add("collapsed");
   ui.head.querySelector(".spin").remove();
-  const ic = el("span", null, "✓"); ic.style.color = "var(--verified)"; ic.style.width = "14px"; ic.style.textAlign = "center";
-  ui.head.insertBefore(ic, ui.head.firstChild);
+  const mark = el("span", "donemark"); mark.innerHTML = ic("check", 15); mark.style.color = "var(--verified)";
+  ui.head.insertBefore(mark, ui.head.firstChild);
   ui.label.textContent = `Worked through ${ev.steps || steps} step${(ev.steps || steps) === 1 ? "" : "s"}`;
   const ans = el("div", "answer"); ans.innerHTML = md(ev.answer || "_(no conclusion)_");
   ui.body.appendChild(ans);
@@ -382,7 +416,7 @@ function finishFinal(ui, jobId, ev, steps) {
     row.appendChild(evi("verified", es.verified || 0));
     row.appendChild(evi("observed", es.observed || 0));
     row.appendChild(evi("believed", es.believed || 0));
-    const rep = el("span", "evi"); rep.style.cursor = "pointer"; rep.innerHTML = "📄 full report";
+    const rep = el("span", "evi"); rep.style.cursor = "pointer"; rep.innerHTML = ic("file", 13) + " full report";
     rep.addEventListener("click", () => showReport(jobId));
     row.appendChild(rep);
     ui.body.appendChild(row);
@@ -402,7 +436,7 @@ function addArtifact(ui, name, jobId) {
   const href = `/jobs/${jobId}/artifact`;
   const a = document.createElement("a");
   a.className = "artifact"; a.href = href; a.setAttribute("download", name);
-  a.innerHTML = `<span class="ai">↓</span><span class="at"><b>${esc(name)}</b><span>Delivered file · click to download</span></span>`;
+  a.innerHTML = `<span class="ai">${ic("download",17)}</span><span class="at"><b>${esc(name)}</b><span>Delivered file · click to download</span></span>`;
   ui.body.appendChild(a); scrollDown();
   sessionArtifacts.unshift({ name, href, goal: name });
   updateArtCount();
@@ -446,10 +480,10 @@ async function loadHistory() {
       const it = el("div", "convo");
       it.dataset.goal = (j.goal || "").toLowerCase();
       it.title = `${j.status} · ${j.steps} steps`;
-      it.appendChild(el("span", "cv-ic", "◦"));
+      const cvic=el("span","cv-ic");cvic.innerHTML=ic("dot",8);it.appendChild(cvic);
       const label = el("span", "cv-label", (j.goal || "(chat)").slice(0, 36));
       it.appendChild(label);
-      const del = el("span", "cv-del", "✕");
+      const del = el("span", "cv-del"); del.innerHTML = ic("x",14);
       del.title = "Delete chat";
       del.addEventListener("click", (e) => { e.stopPropagation(); deleteChat(j.id, it); });
       it.appendChild(del);
@@ -484,14 +518,11 @@ async function checkReady() {
 
 autosize();  // size the composer correctly on first paint (no stray scrollbar)
 
-// If opened as a file:// (no backend), say so clearly instead of silently failing.
+renderIcons();   // fill all static [data-icon] placeholders
+
+// Opened as a file:// (no backend)? Show a full blocking notice instead of
+// failing silently when the user tries to chat.
 if (location.protocol === "file:") {
-  const w = $("#welcome");
-  if (w) {
-    const n = el("div");
-    n.style.cssText = "margin:18px auto 0;max-width:470px;font-size:13px;color:#ff453a;background:rgba(255,69,58,.1);border:1px solid rgba(255,69,58,.28);border-radius:12px;padding:12px 15px;line-height:1.5";
-    n.innerHTML = "You've opened this file directly, so there's no server to chat with. Run <b>python3 -m reverseai serve</b> and open <b>http://localhost:8077</b>.";
-    w.appendChild(n);
-  }
+  $("#fileBlock").classList.add("show");
 }
 checkReady(); loadCaps(); loadHistory();
