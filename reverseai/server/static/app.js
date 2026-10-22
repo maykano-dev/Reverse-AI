@@ -255,6 +255,45 @@ function showArtifacts() {
   });
   $("#artSheet").classList.add("show");
 }
+// Reopen a past chat: rebuild the thread from its saved transcript so you can
+// read it (and continue it if the conversation is still live on the server).
+async function openConversation(jobId) {
+  let rec; try { rec = await getJSON(`/jobs/${jobId}`); } catch (_) { return; }
+  if (!rec || rec.error) return;
+  resetCanvas(); queue.length = 0; renderQueue(); clearAttachment();
+  inner.innerHTML = "";
+  conversationId = rec.conversation_id || null;  // best-effort continue
+  const msgs = rec.transcript || [];
+  let lastAssistant = null;
+  for (const m of msgs) {
+    if (m.role === "user") {
+      // skip tool-result user turns (they carry tool_call_id / array content)
+      if (m.tool_call_id || Array.isArray(m.content)) continue;
+      let text = (m.content || "").toString();
+      text = text.split("\n\n[Attached target:")[0]
+                 .replace(/^Goal:\s*/i, "").trim();
+      if (text) userTurn(text);
+    } else if (m.role === "assistant" && m.content) {
+      lastAssistant = m.content;
+    }
+  }
+  if (lastAssistant) {
+    const t = el("div", "turn ai");
+    const av = el("div", "avatar"); av.innerHTML = ic("logo", 17); t.appendChild(av);
+    const body = el("div", "ai-body");
+    const ans = el("div", "answer"); ans.innerHTML = md(lastAssistant);
+    body.appendChild(ans); t.appendChild(body); inner.appendChild(t);
+  }
+  // offer the full report for this turn
+  if (rec.final_answer) showReportInline(rec);
+  scrollDown();
+}
+function showReportInline(rec) {
+  // populate the Report canvas pane without forcing it open
+  const pane = $("#reportPane"); if (!pane) return;
+  buildReport(pane, rec);
+}
+
 async function deleteChat(jobId, node) {
   try {
     await fetch(`/jobs/${jobId}`, { method: "DELETE" });
@@ -443,16 +482,12 @@ function addArtifact(ui, name, jobId) {
 }
 
 // report + caps
-async function showReport(jobId) {
-  let rec; try { rec = await getJSON(`/jobs/${jobId}`); } catch (_) { return; }
-  if (rec.error) return;
-  const pane = $("#reportPane"); pane.innerHTML = "";
+function buildReport(pane, rec) {
+  pane.innerHTML = "";
   const r = el("div", "report");
-  r.appendChild(el("h3", null, rec.status === "completed" ? "Investigation report" : `Status: ${rec.status}`));
-  r.appendChild(el("div", "kv", `${rec.id} · ${rec.steps} steps · ${rec.status}`));
+  r.appendChild(el("h3", null, rec.status === "completed" ? "Report" : `Status: ${rec.status}`));
   const es = rec.evidence_summary || {};
-  r.appendChild(el("div", "kv", `evidence — verified ${es.verified || 0} · observed ${es.observed || 0} · believed ${es.believed || 0}`));
-  if (rec.usage && rec.usage.total_tokens) r.appendChild(el("div", "kv", `tokens: ${rec.usage.total_tokens}`));
+  r.appendChild(el("div", "kv", `verified ${es.verified || 0} · observed ${es.observed || 0} · believed ${es.believed || 0}` + (rec.usage && rec.usage.total_tokens ? ` · ${rec.usage.total_tokens} tokens` : "")));
   (rec.evidence || []).forEach((f) => {
     const d = el("div"); d.style.cssText = "display:flex;gap:8px;margin-top:8px;font-size:13px;align-items:flex-start";
     d.innerHTML = `<span class="tier ${f.confidence}">${f.confidence}</span><span>${esc(f.claim)}</span>`; r.appendChild(d);
@@ -461,7 +496,12 @@ async function showReport(jobId) {
   const concl = el("div", "answer"); concl.innerHTML = md(rec.final_answer || "(none)");
   r.appendChild(concl);
   if (rec.error) { const e = el("div", "kv", "error: " + rec.error); e.style.color = "#ff453a"; r.appendChild(e); }
-  pane.appendChild(r); openCanvas("report");
+  pane.appendChild(r);
+}
+async function showReport(jobId) {
+  let rec; try { rec = await getJSON(`/jobs/${jobId}`); } catch (_) { return; }
+  if (rec.error) return;
+  buildReport($("#reportPane"), rec); openCanvas("report");
 }
 
 async function loadCaps() {
@@ -487,7 +527,7 @@ async function loadHistory() {
       del.title = "Delete chat";
       del.addEventListener("click", (e) => { e.stopPropagation(); deleteChat(j.id, it); });
       it.appendChild(del);
-      it.addEventListener("click", () => showReport(j.id));
+      it.addEventListener("click", () => { document.querySelectorAll(".convo").forEach(c=>c.classList.remove("active")); it.classList.add("active"); openConversation(j.id); });
       h.appendChild(it);
     });
   } catch (_) {}

@@ -102,6 +102,7 @@ class RunManager:
             try:
                 job = conv.run_turn(goal, on_event=on_event)
                 job.id = stream_id  # align stored id with the streamed one
+                job.conversation_id = cid
                 # Persist any delivered artifact durably, keyed by job id.
                 mp = conv.ctx.extra.get("modified_path")
                 if mp:

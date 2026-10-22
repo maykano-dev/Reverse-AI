@@ -47,12 +47,13 @@ class CloneResult:
     assets: int = 0
     total_bytes: int = 0
     renamed: int = 0
+    engine: str = "static"
     skipped: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {"out_dir": self.out_dir, "pages": self.pages, "assets": self.assets,
                 "total_bytes": self.total_bytes, "renamed": self.renamed,
-                "skipped": self.skipped[:50]}
+                "engine": self.engine, "skipped": self.skipped[:50]}
 
 
 class _AssetCollector(HTMLParser):

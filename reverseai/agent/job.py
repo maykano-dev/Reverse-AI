@@ -40,6 +40,7 @@ class Job:
     error: str | None = None
     usage: dict[str, int] = field(default_factory=dict)
     artifact: str | None = None   # delivered file name, if one was produced
+    conversation_id: str | None = None  # the conversation this turn belongs to
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -55,6 +56,7 @@ class Job:
             "error": self.error,
             "usage": self.usage,
             "artifact": self.artifact,
+            "conversation_id": self.conversation_id,
             "evidence": self.evidence.to_list(),
             "evidence_summary": self.evidence.summary(),
             "audit": self.audit,
