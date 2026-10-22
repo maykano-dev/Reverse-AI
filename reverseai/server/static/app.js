@@ -72,18 +72,28 @@ function openCanvas(pane) {
 $("#closeCanvas").addEventListener("click", () => $("#canvas").classList.remove("open"));
 
 // built-in browser / preview
-function showPreview(url) {
+function showPreview(url, opts) {
   const f = $("#pvFrame");
+  // Our own built site is same-origin (safe); external pages go through the
+  // proxy and run as an opaque origin so they can't reach the app.
+  const local = (opts && opts.local) || url.startsWith("/preview/");
+  f.sandbox = local ? "allow-scripts allow-same-origin allow-forms allow-popups"
+                    : "allow-scripts allow-forms allow-popups";
   f.src = url; f.style.display = "block";
   $("#pvEmpty").style.display = "none";
-  $("#pvUrl").value = url.startsWith("/preview/") ? "built site · live preview" : url;
+  if (!(opts && opts.keepBar))
+    $("#pvUrl").value = local ? "built site · live preview" : (opts && opts.shown) || url;
   openCanvas("preview");
 }
+function browse(u) {
+  if (!u) return;
+  if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+  showPreview("/proxy?url=" + encodeURIComponent(u), { shown: u, keepBar: true });
+}
 function loadPreviewUrl() {
-  let u = $("#pvUrl").value.trim();
+  const u = $("#pvUrl").value.trim();
   if (!u || u === "built site · live preview") return;
-  if (!/^https?:\/\//i.test(u) && !u.startsWith("/")) u = "https://" + u;
-  showPreview(u);
+  browse(u);
 }
 $("#pvGo").addEventListener("click", loadPreviewUrl);
 $("#pvUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") loadPreviewUrl(); });
@@ -292,7 +302,7 @@ function aiTurn() {
   const work = el("div", "work");
   const head = el("div", "work-head");
   head.appendChild(el("span", "spin"));
-  const label = el("span", null, "Investigating…"); head.appendChild(label);
+  const label = el("span", null, "Thinking…"); head.appendChild(label);
   const chev = el("span", "chev", "▾"); head.appendChild(chev);
   head.addEventListener("click", () => work.classList.toggle("collapsed"));
   const wbody = el("div", "work-body");
@@ -334,7 +344,7 @@ async function send() {
   let steps = 0;
   src.onmessage = (m) => {
     let ev; try { ev = JSON.parse(m.data); } catch (_) { return; }
-    if (ev.type === "step") { steps = ev.step; ui.label.textContent = `Investigating… step ${ev.step}`; }
+    if (ev.type === "step") { steps = ev.step; ui.label.textContent = "Thinking…"; }
     else if (ev.type === "assistant") {
       if (ev.content) act(ui.wbody, "💭", esc(deDash(ev.content)));
     }
@@ -342,6 +352,7 @@ async function send() {
       const ok = ev.ok ? "✓" : "✗";
       const a = act(ui.wbody, ok, `<b>${esc(toolLabel(ev.name))}</b>`);
       a.classList.add("tool");
+      ui.label.textContent = "Working…";
       if (ev.content) { const key = addView(toolLabel(ev.name), ev.content); const v = el("span", "view", "view details"); v.addEventListener("click", () => showView(key)); a.querySelector(".tx").appendChild(v); }
       // When a site is built/cloned, show it live in the preview pane.
       if (ev.name === "clone_website" && ev.ok && conversationId) showPreview(`/preview/${conversationId}/index.html`);

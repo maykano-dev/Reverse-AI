@@ -119,6 +119,8 @@ class _Handler(BaseHTTPRequestHandler):
         pm = _PREVIEW_PATH.match(path)
         if pm:
             return self._serve_preview(pm.group(1), pm.group(2))
+        if path == "/proxy":
+            return self._proxy_browse()
         m = _JOB_PATH.match(path)
         if m:
             rec = self.store.get(m.group(1))
@@ -367,6 +369,42 @@ class _Handler(BaseHTTPRequestHandler):
         d["download"] = f"/files/{token}/{Path(zip_path).name}"
         return self._send(200, d)
 
+    def _proxy_browse(self) -> None:
+        """Browsing proxy: fetch an external URL and serve it embeddable."""
+        import urllib.parse
+
+        from ..clone.proxy import PROXY_PREFIX, ProxyError, fetch, rewrite_html
+
+        qs = urllib.parse.urlparse(self.path).query
+        url = urllib.parse.parse_qs(qs).get("url", [None])[0]
+        if not url:
+            return self._send(400, {"error": "missing url"})
+        try:
+            data, ctype, final_url = fetch(url)
+        except ProxyError as exc:
+            page = ("<!doctype html><meta charset=utf-8>"
+                    "<body style='font-family:system-ui;padding:40px;color:#444'>"
+                    f"<h3>Could not open this page</h3><p>{_html_escape(str(exc))}</p>"
+                    "</body>")
+            return self._serve_raw(page.encode(), "text/html; charset=utf-8")
+        is_html = "text/html" in ctype.lower() or (not ctype and data[:15].lstrip().lower().startswith(b"<!doctype") )
+        if is_html:
+            html = rewrite_html(data.decode("utf-8", "replace"), final_url)
+            return self._serve_raw(html.encode("utf-8"), "text/html; charset=utf-8")
+        return self._serve_raw(data, ctype or "application/octet-stream")
+
+    def _serve_raw(self, data: bytes, ctype: str) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        # Explicitly do NOT set X-Frame-Options so the preview can embed it.
+        self.end_headers()
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def _serve_preview(self, cid: str, relpath: str) -> None:
         """Serve a cloned/built site live so it can render in the preview pane."""
         import mimetypes
@@ -454,6 +492,10 @@ class ReverseAIServer:
     def shutdown(self) -> None:
         self.httpd.shutdown()
         self.httpd.server_close()
+
+
+def _html_escape(s: str) -> str:
+    return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
 def serve(host: str = "127.0.0.1", port: int = 8077, store_dir: str = "./jobs") -> None:
