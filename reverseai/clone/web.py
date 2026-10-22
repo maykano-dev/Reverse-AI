@@ -154,9 +154,18 @@ def clone_site(
             result.skipped.append(ref)
             continue
         name = _asset_name(abs_url, i)
+        local = f"assets/{name}"
+        # Stylesheets: pull in and localise what they reference (fonts, bg
+        # images, @imports) so the actual design renders, not just the markup.
+        if _looks_like_css(ref, _ctype):
+            try:
+                data = _process_css(data.decode("utf-8", "replace"), abs_url,
+                                    assets_dir, origin_host, allow_private,
+                                    result, max_assets).encode("utf-8")
+            except Exception:
+                pass
         dest = safe_join(assets_dir, name)
         dest.write_bytes(data)
-        local = f"assets/{name}"
         seen[ref] = local
         result.assets += 1
         result.total_bytes += len(data)
@@ -172,6 +181,55 @@ def clone_site(
 
     (out / "index.html").write_text(html, "utf-8")
     return result
+
+
+def _looks_like_css(ref: str, ctype: str) -> bool:
+    return ref.lower().split("?")[0].endswith(".css") or "text/css" in (ctype or "").lower()
+
+
+_CSS_URL = re.compile(r"""url\(\s*(['"]?)([^'")]+)\1\s*\)""", re.IGNORECASE)
+_CSS_IMPORT = re.compile(r"""@import\s+(?:url\()?\s*(['"])([^'"]+)\1""", re.IGNORECASE)
+
+
+def _process_css(css: str, css_url: str, assets_dir: Path, origin_host: str,
+                 allow_private: bool, result: "CloneResult", max_assets: int) -> str:
+    """Download same-origin url()/@import targets in a stylesheet and localise them."""
+    local_map: dict[str, str] = {}
+
+    def _grab(ref: str) -> str | None:
+        ref = ref.strip()
+        if ref.startswith(("data:", "#")):
+            return None
+        abs_url = urllib.parse.urljoin(css_url, ref)
+        if urllib.parse.urlparse(abs_url).hostname != origin_host:
+            return None
+        if ref in local_map:
+            return local_map[ref]
+        if result.assets >= max_assets:
+            return None
+        try:
+            data, _ct = _fetch(abs_url, MAX_ASSET_BYTES, allow_private)
+        except (CloneError, OSError):
+            return None
+        name = _asset_name(abs_url, 1000 + result.assets)
+        safe_join(assets_dir, name).write_bytes(data)
+        result.assets += 1
+        result.total_bytes += len(data)
+        # CSS assets live in assets/, so sibling references are just the name.
+        local_map[ref] = name
+        return name
+
+    def _sub_url(m: re.Match) -> str:
+        local = _grab(m.group(2))
+        return f"url({m.group(1)}{local}{m.group(1)})" if local else m.group(0)
+
+    def _sub_import(m: re.Match) -> str:
+        local = _grab(m.group(2))
+        return f'@import "{local}"' if local else m.group(0)
+
+    css = _CSS_IMPORT.sub(_sub_import, css)
+    css = _CSS_URL.sub(_sub_url, css)
+    return css
 
 
 def _rename(text: str, frm: str, to: str) -> tuple[str, int]:

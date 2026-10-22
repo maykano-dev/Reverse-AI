@@ -203,6 +203,8 @@ $("#search").addEventListener("input", (e) => {
 });
 // host nav -> open canvas Host tab
 $("#navHost").addEventListener("click", () => openCanvas("caps"));
+// browser nav -> open the in-app browser (preview)
+$("#navBrowser").addEventListener("click", () => { openCanvas("preview"); setTimeout(() => $("#pvUrl").focus(), 250); });
 // artifacts
 const sessionArtifacts = [];
 $("#navArtifacts").addEventListener("click", showArtifacts);
