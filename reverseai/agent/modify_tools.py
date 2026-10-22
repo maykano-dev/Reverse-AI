@@ -295,11 +295,11 @@ class CloneWebsiteTool(Tool):
         import shutil
         from pathlib import Path
 
-        from ..clone import CloneError, clone_site
+        from ..clone import CloneError, clone_best
 
         site_dir = Path(ctx.workspace) / "clone"
         try:
-            res = clone_site(args["url"], site_dir,
+            res = clone_best(args["url"], site_dir,
                              rename_from=args.get("rename_from"),
                              rename_to=args.get("rename_to"))
         except (CloneError, OSError) as exc:

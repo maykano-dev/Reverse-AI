@@ -352,14 +352,14 @@ class _Handler(BaseHTTPRequestHandler):
     def _api_clone(self, body):
         import shutil
 
-        from ..clone import CloneError, clone_site
+        from ..clone import CloneError, clone_best
 
         url = body.get("url")
         if not url:
             return self._send(400, {"error": "need 'url'"})
         out, token = self._api_out()
         try:
-            res = clone_site(url, out / "site",
+            res = clone_best(url, out / "site",
                              rename_from=body.get("rename_from"),
                              rename_to=body.get("rename_to"))
         except (CloneError, OSError) as exc:
