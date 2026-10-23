@@ -289,6 +289,51 @@ class AnalyzeApkTool(Tool):
         return ToolResult.success("\n".join(lines), report=rep.to_dict())
 
 
+class DecompileTool(Tool):
+    name = "decompile"
+    description = (
+        "Decompile the target to readable C using Ghidra. Far more useful than "
+        "disassembly for understanding logic. Optionally focus on one function by "
+        "name. Static analysis only (the target is never run). Available only when "
+        "Ghidra is installed."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "function": {"type": "string",
+                         "description": "only return this function's decompiled code"},
+            "max_functions": {"type": "integer", "minimum": 1, "default": 300},
+        },
+    }
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        from ..decompile import decompile, ghidra_available
+
+        if not ghidra_available():
+            return ToolResult.failure("Ghidra is not installed on this host")
+        target = _require_target(ctx)
+        res = decompile(target, max_functions=int(args.get("max_functions", 300)))
+        if not res.ok:
+            return ToolResult.failure(res.error or "decompilation failed")
+        code = res.code
+        fn = args.get("function")
+        if fn:
+            # extract just the requested function block
+            marker = f"// --- {fn} "
+            idx = code.find(marker)
+            if idx != -1:
+                nxt = code.find("// --- ", idx + 10)
+                code = code[idx:nxt if nxt != -1 else len(code)]
+            else:
+                return ToolResult.failure(f"function {fn!r} not found in decompilation")
+        if ctx.evidence is not None:
+            ctx.evidence.observed(f"decompiled {res.functions} functions with Ghidra",
+                                  source=self.name)
+        return ToolResult.success(code[:12000], functions=res.functions,
+                                  truncated=len(code) > 12000)
+
+
 class ListFunctionsTool(Tool):
     name = "list_functions"
     description = (
@@ -391,7 +436,7 @@ class RecordFindingTool(Tool):
 
 
 def default_tools() -> list[Tool]:
-    return [
+    tools = [
         HostCapabilitiesTool(),
         AnalyzeBinaryTool(),
         ReadBytesTool(),
@@ -403,6 +448,15 @@ def default_tools() -> list[Tool]:
         RunInSandboxTool(),
         RecordFindingTool(),
     ]
+    # Real decompilation when Ghidra is installed — a big capability upgrade.
+    try:
+        from ..decompile import ghidra_available
+
+        if ghidra_available():
+            tools.insert(5, DecompileTool())
+    except Exception:
+        pass
+    return tools
 
 
 def _hexdump(data: bytes, base: int = 0, width: int = 16) -> str:
