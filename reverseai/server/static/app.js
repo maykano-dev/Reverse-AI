@@ -28,6 +28,7 @@ const P = {
   code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
   dot: '<circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>',
   box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>',
+  copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
 };
 function ic(name, size) {
   const s = size || 18;
@@ -65,6 +66,28 @@ function md(text) {
       return DOMPurify.sanitize(marked.parse(clean, { breaks: true }));
   } catch (_) {}
   return esc(clean).replace(/\n/g, "<br>");
+}
+// Render markdown into an element and give code blocks a header + copy button.
+function renderMd(elm, text) { elm.innerHTML = md(text); enhanceCodeBlocks(elm); }
+function enhanceCodeBlocks(root) {
+  root.querySelectorAll("pre").forEach((pre) => {
+    if (pre.dataset.enh) return; pre.dataset.enh = "1";
+    const code = pre.querySelector("code");
+    let lang = "code";
+    if (code) { const m = (code.className || "").match(/language-([\w+-]+)/); if (m) lang = m[1]; }
+    const wrap = el("div", "codeblock");
+    const bar = el("div", "cb-bar");
+    bar.appendChild(el("span", "cb-lang", lang));
+    const btn = el("button", "cb-copy"); btn.title = "Copy"; btn.innerHTML = ic("copy", 14);
+    btn.onclick = () => {
+      const txt = code ? code.innerText : pre.innerText;
+      try { navigator.clipboard.writeText(txt); btn.innerHTML = ic("check", 14);
+        setTimeout(() => (btn.innerHTML = ic("copy", 14)), 1400); } catch (_) {}
+    };
+    bar.appendChild(btn);
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(bar); wrap.appendChild(pre);
+  });
 }
 async function getJSON(u) { const r = await fetch(u); return r.json(); }
 async function postJSON(u, b) { const r = await fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }); return { status: r.status, body: await r.json() }; }
@@ -282,7 +305,7 @@ async function openConversation(jobId) {
     const t = el("div", "turn ai");
     const av = el("div", "avatar"); av.innerHTML = ic("logo", 17); t.appendChild(av);
     const body = el("div", "ai-body");
-    const ans = el("div", "answer"); ans.innerHTML = md(lastAssistant);
+    const ans = el("div", "answer"); renderMd(ans, lastAssistant);
     body.appendChild(ans); t.appendChild(body); inner.appendChild(t);
   }
   // offer the full report for this turn
@@ -448,7 +471,7 @@ function finishFinal(ui, jobId, ev, steps) {
   ui.head.insertBefore(mark, ui.head.firstChild);
   const n = ev.steps || steps;
   ui.label.textContent = `Thought for ${n} step${n === 1 ? "" : "s"}`;
-  const ans = el("div", "answer"); ans.innerHTML = md(ev.answer || "_(no conclusion)_");
+  const ans = el("div", "answer"); renderMd(ans, ev.answer || "_(no conclusion)_");
   ui.body.appendChild(ans);
   const es = ev.evidence_summary || {};
   if ((es.verified || es.observed || es.believed)) {
@@ -493,7 +516,7 @@ function buildReport(pane, rec) {
     d.innerHTML = `<span class="tier ${f.confidence}">${f.confidence}</span><span>${esc(f.claim)}</span>`; r.appendChild(d);
   });
   r.appendChild(el("h3", null, "Conclusion"));
-  const concl = el("div", "answer"); concl.innerHTML = md(rec.final_answer || "(none)");
+  const concl = el("div", "answer"); renderMd(concl, rec.final_answer || "(none)");
   r.appendChild(concl);
   if (rec.error) { const e = el("div", "kv", "error: " + rec.error); e.style.color = "#ff453a"; r.appendChild(e); }
   pane.appendChild(r);
