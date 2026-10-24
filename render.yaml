@@ -1,0 +1,31 @@
+# Render Blueprint for ReverseAI — one-click deploy.
+#
+# Create a new Blueprint on https://render.com pointing at this repo, then set
+# DEEPSEEK_API_KEY in the dashboard (it is marked sync:false so it is never
+# committed). Render builds the Dockerfile and serves the web app on $PORT.
+#
+# Sandbox note: untrusted-code EXECUTION needs unprivileged user namespaces,
+# which Render's managed runtime disables. Analysis, chat, decompilation, and
+# website cloning all work there; for full sandboxed execution, deploy on a
+# VM/VPS that allows user namespaces. See docs/SECURITY.md.
+services:
+  - type: web
+    name: reverseai
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /config
+    autoDeploy: true
+    envVars:
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: REVERSEAI_PROVIDER
+        value: deepseek
+      - key: DEEPSEEK_MODEL
+        value: deepseek-chat
+      - key: REVERSEAI_STORE
+        value: /data/jobs
+    disk:
+      name: reverseai-data
+      mountPath: /data
+      sizeGB: 1
