@@ -19,6 +19,13 @@ def _require_target(ctx: ToolContext) -> str:
     return ctx.target_path
 
 
+def _slug(text: str) -> str:
+    import re
+
+    s = re.sub(r"[^A-Za-z0-9]+", "-", (text or "").strip().lower()).strip("-")
+    return (s or "output")[:48]
+
+
 class ApplyBytePatchTool(Tool):
     name = "apply_byte_patch"
     description = (
@@ -45,12 +52,16 @@ class ApplyBytePatchTool(Tool):
                 },
                 "minItems": 1,
             },
+            "output_name": {"type": "string",
+                            "description": "name for the delivered file (with extension)"},
         },
         "required": ["patches"],
     }
     permission = Permission.WRITE
 
     def run(self, args, ctx) -> ToolResult:
+        from pathlib import Path
+
         target = _require_target(ctx)
         try:
             patches = [
@@ -64,8 +75,11 @@ class ApplyBytePatchTool(Tool):
         except (ValueError, KeyError) as exc:
             return ToolResult.failure(f"bad patch spec: {exc}")
 
+        # Descriptive output name: "<stem>-modified<suffix>", or the caller's.
+        tp = Path(target)
+        out_name = args.get("output_name") or f"{tp.stem}-modified{tp.suffix}"
         try:
-            result = apply_byte_patches(target, patches, ctx.workspace)
+            result = apply_byte_patches(target, patches, ctx.workspace, out_name=out_name)
         except PatchError as exc:
             return ToolResult.failure(str(exc))
 
@@ -286,6 +300,8 @@ class CloneWebsiteTool(Tool):
             "url": {"type": "string", "description": "the page URL to clone"},
             "rename_from": {"type": "string", "description": "brand text to replace"},
             "rename_to": {"type": "string", "description": "new brand text"},
+            "output_name": {"type": "string",
+                            "description": "name for the delivered file (no extension)"},
         },
         "required": ["url"],
     }
@@ -305,8 +321,12 @@ class CloneWebsiteTool(Tool):
         except (CloneError, OSError) as exc:
             return ToolResult.failure(f"clone failed: {exc}")
 
-        # Package the replica as a delivered artifact.
-        base = Path(ctx.workspace) / "site_clone"
+        # Package the replica with a meaningful name (the new brand, else host).
+        import urllib.parse
+        label = args.get("output_name") or args.get("rename_to") \
+            or urllib.parse.urlparse(args["url"]).hostname or "site"
+        name = _slug(label) + "-site"
+        base = Path(ctx.workspace) / name
         zip_path = shutil.make_archive(str(base), "zip", str(site_dir))
         ctx.extra["modified_path"] = zip_path
         if ctx.evidence is not None:

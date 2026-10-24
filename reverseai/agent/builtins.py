@@ -289,6 +289,40 @@ class AnalyzeApkTool(Tool):
         return ToolResult.success("\n".join(lines), report=rep.to_dict())
 
 
+class ReadTextFromImageTool(Tool):
+    name = "read_text_from_image"
+    description = (
+        "Extract text from an image, screenshot, or PDF via OCR. Use for reading "
+        "text in app screenshots, UI mockups, scanned docs, or images embedded in "
+        "a file (helpful for mobile/app reverse engineering and design cloning). "
+        "Defaults to the target; pass a path for another file."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "image/PDF path; defaults to target"},
+        },
+    }
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        from ..ocr import ocr_available, ocr_image, ocr_pdf
+
+        if not ocr_available():
+            return ToolResult.failure(
+                "OCR engine not installed (needs tesseract + pytesseract)")
+        path = args.get("path") or ctx.target_path
+        if not path:
+            return ToolResult.failure("no image path")
+        res = (ocr_pdf(path) if str(path).lower().endswith(".pdf") else ocr_image(path))
+        if not res.ok:
+            return ToolResult.failure(res.error or "OCR failed")
+        if ctx.evidence is not None:
+            ctx.evidence.observed(f"OCR extracted {len(res.text)} chars", source=self.name)
+        return ToolResult.success(res.text[:8000] or "(no text found)",
+                                  chars=len(res.text), pages=res.pages)
+
+
 class DecompileTool(Tool):
     name = "decompile"
     description = (
@@ -454,6 +488,14 @@ def default_tools() -> list[Tool]:
 
         if ghidra_available():
             tools.insert(5, DecompileTool())
+    except Exception:
+        pass
+    # OCR when an engine is installed.
+    try:
+        from ..ocr import ocr_available
+
+        if ocr_available():
+            tools.append(ReadTextFromImageTool())
     except Exception:
         pass
     return tools

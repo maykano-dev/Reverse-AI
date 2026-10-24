@@ -13,6 +13,7 @@ const P = {
   cpu: '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/>',
   search: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
   chevronLeft: '<polyline points="15 18 9 12 15 6"/>',
+  chevronDown: '<polyline points="6 9 12 15 18 9"/>',
   menu: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>',
   arrowUp: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
@@ -375,10 +376,9 @@ function aiTurn() {
   const av = el("div", "avatar"); av.innerHTML = ic("logo", 17); t.appendChild(av);
   const body = el("div", "ai-body");
   const work = el("div", "work");
-  const head = el("div", "work-head");
-  head.appendChild(el("span", "spin"));
-  const label = el("span", null, "Thinking…"); head.appendChild(label);
-  const chev = el("span", "chev", "▾"); head.appendChild(chev);
+  const head = el("div", "work-head live");
+  const label = el("span", "wlabel", "Thinking"); head.appendChild(label);
+  const chev = el("span", "chev"); chev.innerHTML = ic("chevronDown", 14); head.appendChild(chev);
   head.addEventListener("click", () => work.classList.toggle("collapsed"));
   const wbody = el("div", "work-body");
   work.appendChild(head); work.appendChild(wbody);
@@ -443,10 +443,11 @@ async function send() {
 
 function finishFinal(ui, jobId, ev, steps) {
   ui.work.classList.add("collapsed");
-  ui.head.querySelector(".spin").remove();
-  const mark = el("span", "donemark"); mark.innerHTML = ic("check", 15); mark.style.color = "var(--verified)";
+  ui.head.classList.remove("live");
+  const mark = el("span", "donemark"); mark.innerHTML = ic("check", 14);
   ui.head.insertBefore(mark, ui.head.firstChild);
-  ui.label.textContent = `Worked through ${ev.steps || steps} step${(ev.steps || steps) === 1 ? "" : "s"}`;
+  const n = ev.steps || steps;
+  ui.label.textContent = `Thought for ${n} step${n === 1 ? "" : "s"}`;
   const ans = el("div", "answer"); ans.innerHTML = md(ev.answer || "_(no conclusion)_");
   ui.body.appendChild(ans);
   const es = ev.evidence_summary || {};
@@ -464,9 +465,8 @@ function finishFinal(ui, jobId, ev, steps) {
 }
 function evi(tier, n) { const e = el("span", "evi"); e.innerHTML = `<span class="tier ${tier}">${tier}</span> <b>${n}</b>`; return e; }
 function finishError(ui, msg) {
-  if (ui.head.querySelector(".spin")) ui.head.querySelector(".spin").remove();
-  ui.label.textContent = "Stopped";
-  const e = el("div", "answer"); e.innerHTML = `<span style="color:#ff453a">✗ ${esc(msg)}</span>`; ui.body.appendChild(e);
+  ui.head.classList.remove("live"); ui.label.textContent = "Stopped";
+  const e = el("div", "answer"); e.innerHTML = `<span style="color:#ff453a">${esc(msg)}</span>`; ui.body.appendChild(e);
   scrollDown(); done();
 }
 function done() { setBusy(false); currentSrc = null; currentUI = null; setTimeout(drainQueue, 150); }

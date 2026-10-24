@@ -135,17 +135,19 @@
   .ai-body{ flex:1; min-width:0; }
 
   /* working block */
-  .work{ border:1px solid var(--border); border-radius:14px; background:var(--sunken); overflow:hidden;
-    margin-bottom:12px; }
-  .work-head{ display:flex; align-items:center; gap:10px; padding:11px 14px; cursor:pointer;
-    font-size:13px; font-weight:550; color:var(--text); }
-  .work-head .spin{ width:14px; height:14px; border:2px solid var(--border-strong);
-    border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; }
-  @keyframes spin{ to{ transform:rotate(360deg); } }
-  .work-head .chev{ margin-left:auto; color:var(--faint); transition:transform .2s; font-size:12px; }
+  .work{ margin-bottom:12px; }
+  .work-head{ display:inline-flex; align-items:center; gap:8px; padding:4px 2px; cursor:pointer;
+    font-size:13.5px; font-weight:550; color:var(--dim); }
+  .work-head .wlabel{ font-weight:550; }
+  .work-head.live .wlabel{ background:linear-gradient(90deg,var(--faint) 20%,var(--text) 50%,var(--faint) 80%);
+    background-size:220% 100%; -webkit-background-clip:text; background-clip:text;
+    -webkit-text-fill-color:transparent; color:transparent; animation:shimmer 1.5s linear infinite; }
+  @keyframes shimmer{ to{ background-position:-220% 0; } }
+  .work-head .chev{ color:var(--faint); transition:transform .2s; display:flex; }
+  .work:not(.collapsed) .chev{ transform:rotate(180deg); }
+  .work-body{ padding:8px 0 2px 6px; margin-top:4px; display:flex; flex-direction:column; gap:9px;
+    border-left:2px solid var(--border); padding-left:14px; }
   .work.collapsed .work-body{ display:none; }
-  .work.collapsed .chev{ transform:rotate(-90deg); }
-  .work-body{ padding:4px 12px 12px; display:flex; flex-direction:column; gap:7px; }
   .act{ font-size:12.5px; display:flex; align-items:flex-start; gap:9px; animation:rise .2s ease; }
   .act .ic{ width:17px; flex:none; margin-top:1px; display:flex; align-items:center; justify-content:center; color:var(--faint); }
   .act.ok .ic{ color:var(--verified); } .act.fail .ic{ color:#ff453a; }
@@ -303,7 +305,20 @@
   }
   @media (max-width:760px){
     #sidebar{ position:absolute; left:0; top:0; bottom:0; z-index:35; box-shadow:var(--shadow); }
-    #canvas.open{ width:94%; }
+    #canvas.open{ width:100%; }
+  }
+  /* mobile-first polish */
+  @media (max-width:600px){
+    .thread-inner{ padding:20px 16px 16px; }
+    .welcome{ margin-top:7vh; } .welcome h1{ font-size:21px; } .welcome p{ font-size:13.5px; }
+    .composer-wrap{ padding:8px 12px 14px; }
+    .composer{ border-radius:20px; }
+    .turn.user .bubble{ max-width:88%; }
+    .hint{ font-size:10.5px; }
+    .suggest{ gap:7px; } .chip{ font-size:12px; padding:8px 11px; }
+    .expand-btn{ width:40px; height:40px; }
+    .cinput textarea{ font-size:16px; } /* avoids iOS zoom-on-focus */
+    .pv-bar input{ font-size:16px; }
   }
 
   /* file:// block overlay */
@@ -335,7 +350,7 @@
       <input type="text" id="search" placeholder="Search" />
     </div>
     <nav class="side-nav">
-      <div class="nav-item" id="navNew"><span class="ni" data-icon="plus"></span> New investigation</div>
+      <div class="nav-item" id="navNew"><span class="ni" data-icon="plus"></span> New chat</div>
       <div class="nav-item" id="navBrowser"><span class="ni" data-icon="globe"></span> Browser</div>
       <div class="nav-item" id="navArtifacts"><span class="ni" data-icon="download"></span> Artifacts
         <span class="ni-count" id="artCount" style="display:none;">0</span></div>

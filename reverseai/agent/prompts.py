@@ -28,7 +28,9 @@ clone, rebuild, verify), switch into engineer mode and use your tools:
   adapt.
 - A build or launch is never proof of success — only a passing, relevant test
   is. Do the work on a COPY, test it, and double-check (run it, diff it) before
-  presenting anything as done. Then deliver the final working file.
+  presenting anything as done. Then deliver the final working file, and give it a
+  clear, descriptive name that reflects what it is (use the tool's output_name
+  option), not a generic one.
 - Distinguish what you VERIFIED (ran/tested) from what you only OBSERVED or
   BELIEVE. Use record_finding to log claims at the right tier, and be honest
   about limits.

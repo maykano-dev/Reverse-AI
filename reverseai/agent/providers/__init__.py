@@ -36,4 +36,15 @@ def get_provider(name: str = "deepseek", **kwargs):
         from .anthropic import AnthropicProvider
 
         return AnthropicProvider(**kwargs)
+    if name == "ollama":
+        # Local models via Ollama's OpenAI-compatible endpoint (no key needed).
+        import os
+
+        from .openai_compat import OpenAICompatibleProvider
+
+        kwargs.setdefault("base_url", os.environ.get(
+            "OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1"))
+        kwargs.setdefault("model", os.environ.get("OLLAMA_MODEL", "llama3.2"))
+        kwargs.setdefault("api_key", "ollama")
+        return OpenAICompatibleProvider(**kwargs)
     raise ValueError(f"unknown provider: {name}")
