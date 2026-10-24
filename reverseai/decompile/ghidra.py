@@ -33,8 +33,36 @@ def ghidra_home() -> str | None:
     return None
 
 
+def supported_jdk() -> str | None:
+    """Find a Ghidra-compatible JDK (17-23). The host's default may be too new.
+
+    Checks REVERSEAI_JDK, ~/jdk21, and /usr/lib/jvm/* for a java whose major
+    version Ghidra accepts.
+    """
+    candidates = []
+    env = os.environ.get("REVERSEAI_JDK")
+    if env:
+        candidates.append(env)
+    candidates += sorted(glob.glob(os.path.expanduser("~/jdk*/jdk-*")), reverse=True)
+    candidates += sorted(glob.glob("/usr/lib/jvm/*"), reverse=True)
+    for home in candidates:
+        java = Path(home) / "bin" / "java"
+        if not java.exists():
+            continue
+        try:
+            out = subprocess.run([str(java), "-version"], capture_output=True,
+                                 text=True, timeout=10).stderr
+        except (OSError, subprocess.SubprocessError):
+            continue
+        import re
+        m = re.search(r'version "(\d+)', out)
+        if m and 17 <= int(m.group(1)) <= 23:
+            return str(home)
+    return None
+
+
 def ghidra_available() -> bool:
-    return ghidra_home() is not None
+    return ghidra_home() is not None and supported_jdk() is not None
 
 
 @dataclass
@@ -62,6 +90,9 @@ def decompile(binary_path: str, max_functions: int = 400,
         env = dict(os.environ)
         env["REVERSEAI_DECOMP_OUT"] = str(out_file)
         env["REVERSEAI_DECOMP_MAX"] = str(max_functions)
+        jdk = supported_jdk()
+        if jdk:
+            env["JAVA_HOME"] = jdk  # Ghidra rejects too-new JDKs; force a supported one
         cmd = [
             headless, proj, "rvai",
             "-import", binary_path,
