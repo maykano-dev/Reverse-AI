@@ -14,6 +14,7 @@ artifact plus the evidence that it actually works.
 ![status](https://img.shields.io/badge/status-active-brightgreen)
 ![python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![deps](https://img.shields.io/badge/core-zero%20dependencies-success)
+![license](https://img.shields.io/badge/license-MIT-blue)
 ![tests](https://img.shields.io/badge/tests-passing-brightgreen)
 
 ---
@@ -187,4 +188,6 @@ and sites you own or are authorized to work on. You are responsible for your use
 
 ## License
 
-© maykano-dev. All rights reserved. Licensing terms are being finalized.
+Released under the [MIT License](LICENSE) — free to use, modify, and build on.
+Use it responsibly and only on software and sites you own or are authorized to
+work on.
