@@ -399,6 +399,7 @@ class DifferentialTestTool(Tool):
             timeout_seconds=timeout)
         data = report.to_dict()
         ctx.extra["differential"] = data
+        ctx.extra["differential_turn"] = ctx.job_id
         if not report.ran:
             return ToolResult.failure(
                 f"differential test could not run: {report.error}",

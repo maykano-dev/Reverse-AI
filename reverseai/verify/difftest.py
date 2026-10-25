@@ -56,6 +56,9 @@ class InputCase:
                 raise DiffTestError(f"case {self.name!r}: argument too long")
             args.append(a)
         stdin = self.stdin or b""
+        if isinstance(stdin, str):
+            stdin = stdin.encode()
+        stdin = bytes(stdin)
         if len(stdin) > MAX_STDIN:
             raise DiffTestError(f"case {self.name!r}: stdin too large")
         files = {}

@@ -54,7 +54,7 @@ def tool_perm(registry, name: str) -> str:
 _SAFE_EXTRA = {
     "project_dir", "modified_path", "modified_operation", "modified_label",
     "modified_turn", "last_patches", "extracted_dir", "routine_id",
-    "verification", "delivery", "differential",
+    "verification", "delivery", "differential", "differential_turn",
 }
 _GATED_OPERATIONS = {"patch", "imports", "section"}
 
@@ -206,6 +206,10 @@ class Conversation:
             verification = {}
         job.verification = verification
         job.delivery = dict(delivery)
+        diff = dict(self.ctx.extra.get("differential") or {})
+        if self.ctx.extra.get("differential_turn") not in (None, job.id):
+            diff = {}
+        job.differential = diff
         if job.delivery and not job.delivery.get("allowed", True):
             reason = job.delivery.get("reason") or "the change was not verified"
             # Do not let an optimistic, unverified model claim stand as the
@@ -222,6 +226,7 @@ class Conversation:
               "usage": job.usage, "artifact": job.artifact,
               "artifact_meta": job.artifact_meta, "sources": job.sources,
               "verification": job.verification, "delivery": job.delivery,
+              "differential": job.differential,
               "template": self.template, "plan": plan})
         return job
 

@@ -47,6 +47,7 @@ class Job:
     # Additive contract fields; older records simply omit them.
     verification: dict[str, Any] = field(default_factory=dict)
     delivery: dict[str, Any] = field(default_factory=dict)
+    differential: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -68,6 +69,7 @@ class Job:
             "sources": self.sources,
             "verification": self.verification,
             "delivery": self.delivery,
+            "differential": self.differential,
             "evidence": self.evidence.to_list(),
             "evidence_summary": self.evidence.summary(),
             "audit": self.audit,

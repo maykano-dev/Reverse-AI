@@ -76,6 +76,11 @@ def make_record() -> dict:
         },
     }
     job.delivery = {"allowed": True, "reason": "behavioral test passed"}
+    job.differential = {
+        "summary": "2 input(s): 1 matched, 1 differed; expected delta met",
+        "matched": ["default"], "differed": ["switch"],
+        "unexpected": [], "expected_delta_met": True,
+    }
     job.sources = [{"url": "https://example.com/doc", "title": "Example"}]
     return job.to_dict()
 
@@ -121,6 +126,21 @@ class ReportTests(unittest.TestCase):
             self.assertTrue(verify_signature(signed))
             with mock.patch.dict(os.environ, {"REVERSEAI_REPORT_KEY": "wrong"}):
                 self.assertFalse(verify_signature(signed))
+
+    def test_standalone_differential_feeds_the_report(self):
+        rec = make_record()
+        rec["verification"] = {}
+        rec["delivery"] = {"allowed": False, "reason": "no behavioral test"}
+        rec["differential"] = {
+            "summary": "1 input(s): 0 matched, 1 differed; 1 unexpected regression(s)",
+            "matched": [], "differed": ["default"],
+            "unexpected": ["default"], "expected_delta_met": False,
+        }
+        r = build_report(rec)
+        self.assertEqual(r["differential"]["unexpected"], ["default"])
+        self.assertEqual(r["evidence_tier"], "observed")
+        self.assertFalse(r["delivery"]["allowed"])
+        self.assertTrue(verify_signature(r))
 
     def test_json_roundtrip(self):
         raw = render_json(self.report)

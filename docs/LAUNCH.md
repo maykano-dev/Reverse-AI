@@ -8,7 +8,8 @@ implemented yet.
 ## One-liner
 
 > ReverseAI: an autonomous agent that understands, modifies, rebuilds, and
-> verifies software. Real bytes, a hardened sandbox, and evidence you can check.
+> verifies software. Real bytes, a hardened sandbox, and a behavioral test
+> before any modified file is delivered.
 
 ## Short description (160 chars)
 
@@ -72,8 +73,8 @@ Free and MIT. Bring your own model key.
 ## A short thread
 
 1. Most AI reverse-engineering tools stop at "here is what the binary probably does." That is a demo, not an engineer.
-2. ReverseAI closes the loop: analyze the real bytes, change a copy, test it in a sandbox, prove the behavior changed, deliver the file.
-3. The important word is *prove*. Findings are tiered believed, observed, verified. A successful build is not a working modification.
+2. ReverseAI closes the loop: analyze the real bytes, change a copy, test it in a sandbox, prove the behavior changed, and only then deliver the file. If the test fails, the file is withheld and the reason is shown.
+3. The important word is *prove*. Findings are tiered believed, observed, verified. A successful build is not a working modification, and an unverified binary is withheld.
 4. The sandbox is not decoration: bubblewrap, no network, read-only system, dropped capabilities, RLIMITs. If the host cannot isolate it, the agent refuses.
 5. The thinking is visible: a plan, a natural timeline, tool cards, sources, and evidence. No raw tool names, no "investigating" filler.
 6. It also remembers, researches with citations, runs routines, and delegates to specialists. One engine, not six forks.

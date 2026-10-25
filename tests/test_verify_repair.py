@@ -228,6 +228,8 @@ class VerifyToolTests(unittest.TestCase):
         self.assertTrue(res.ok, res.content)
         self.assertEqual(res.data["unexpected"], ["default"])
         self.assertNotIn("verification", self.ctx.extra)
+        self.assertEqual(self.ctx.extra["differential_turn"], "test")
+        self.assertIn("unexpected regression", self.ctx.extra["differential"]["summary"])
         self.assertTrue(Path(bad).exists())
 
 

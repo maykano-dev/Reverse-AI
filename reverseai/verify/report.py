@@ -108,7 +108,8 @@ def build_report(record: dict[str, Any]) -> dict[str, Any]:
         "sha256": artifact_meta.get("sha256", ""),
     }
     attempts = _compact_attempts(verification)
-    diff_summary = (verification.get("test_summary") or {})
+    diff_summary = (verification.get("test_summary")
+                    or record.get("differential") or {})
     if not diff_summary and attempts:
         diff_summary = {"summary": attempts[-1].get("summary", "")}
     verified = bool(verification.get("verified")) and int(
