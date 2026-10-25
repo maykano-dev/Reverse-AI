@@ -15,7 +15,7 @@ A living map of what exists and what comes next. Updated with v0.5.0.
 - **Control-flow graphs**: basic blocks, edges, call targets, complexity.
 - **Approvals and action gate**: capability + live scoped approval + audit.
 - **Optional encrypted vault**: PBKDF2 + Fernet, deny-by-default.
-- **Tests**: 292, including corpus replay, CLI verification, checkpoint attacks,
+- **Tests**: 293, including corpus replay, CLI verification, checkpoint attacks,
   readiness, seccomp, CFG, approvals, gate, and vault.
 
 ### v0.4.0: autonomous modification engine

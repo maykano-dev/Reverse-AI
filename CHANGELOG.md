@@ -29,7 +29,7 @@
   for any future irreversible action.
 - Optional encrypted vault (`security/vault.py`): PBKDF2-HMAC-SHA256 + Fernet,
   mode 0600, deny-by-default capability, no plaintext fallback.
-- 43 new tests; total 292.
+- 44 new tests; total 293.
 
 ### Changed
 
