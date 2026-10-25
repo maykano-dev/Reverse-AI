@@ -16,7 +16,7 @@
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
-  <img alt="tests" src="https://img.shields.io/badge/tests-450%2B%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-505%2B%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
   <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
@@ -30,6 +30,7 @@
   <a href="docs/INTELLIGENCE_ROADMAP.md">Intelligence roadmap</a> ·
   <a href="docs/TESTING.md">Testing and evaluation</a> ·
   <a href="docs/AUDIT_REMEDIATION.md">Audit remediation</a> ·
+  <a href="docs/DANGEROUS_AND_OPEN_ITEMS.md">Dangerous surfaces</a> ·
   <a href="docs/VERIFYING.md">Reproducible verification</a> ·
   <a href="#deploy-it">Deploy</a> ·
   <a href="docs/SECURITY.md">Security</a> ·
@@ -48,6 +49,21 @@ Most "AI + reverse engineering" demos stop at describing a binary. ReverseAI clo
 - **Untrusted by default.** Analysis is pure. Execution happens only inside a hardened bubblewrap sandbox (no network, dropped capabilities, read-only system, tmpfs workdir) and is refused when nothing can contain it.
 - **A real working memory.** Durable notes, web research with citations, scheduled routines, specialist agents, and conversations that survive a reload or a server restart.
 - **Mobile first.** A PWA that works as a full chat app on a phone, with a drawer, safe areas, touch-sized controls, and an installable manifest.
+
+## What's new in 0.8
+
+| Area | What landed |
+|---|---|
+| **Desktop surface** | A local desktop-session broker and loopback listener. Allowlisted actions, bearer token, approval gate, audit. No VNC or keyboard/mouse injection backend is bundled. |
+| **Telegram channel** | Bot API transport, chat allowlist, pairing, rate limits, read-only `/status`, `/jobs`, `/readiness`, `/discover`. No shell or payment command. |
+| **Payments** | Intent ledger with idempotency, amount/currency limits, capability + scoped approval, and a deterministic mock provider. No card data and no live processor. |
+| **MCP** | JSON-RPC client, manifest validation, tool allowlist, timeout, capability gate. Host-process transport is explicitly opt-in; tests use an in-memory transport. |
+| **Hooks** | Signed manifests, event allowlist, sandboxed subprocess runner, timeout, environment isolation, audit. Disabled by default. |
+| **Self-training** | Verified-trace extraction, redaction, deduplication, deterministic train/holdout split, and a benchmark-gated improvement pipeline. No automatic training or weight deployment. |
+| **Self-deployment** | Deployment plans, dry run, scoped approvals, injected transport, explicit rollback. No cloud/SSH transport is bundled. |
+| **Open items** | Differential fuzzing, PE resources/debug/TLS/rich header, Mach-O dylibs, Landlock/cgroup/QEMU surfaces, mission persistence, per-token quota, and a single readiness verdict. |
+
+The details and honest statuses are in `docs/DANGEROUS_AND_OPEN_ITEMS.md`.
 
 ## What's new in 0.7
 
@@ -179,6 +195,11 @@ python3 -m reverseai repo ./project
 # Repository invariants and benchmark inventory
 python3 -m reverseai audit
 python3 -m reverseai bench --list
+
+# Inspect dangerous surfaces without enabling them
+python3 -m reverseai surfaces --json
+python3 -m reverseai mcp validate mcp.json
+python3 -m reverseai hooks validate hook.json
 
 # What can this host do (sandbox backends, emulators, optional libs)?
 python3 -m reverseai caps

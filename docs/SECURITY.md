@@ -139,6 +139,34 @@ audited encryption boundary. Until then, refusal is the correct behavior. The
 approval and vault primitives exist so a future implementation cannot invent a
 weaker boundary.
 
+## Gated dangerous surfaces
+
+The v0.8 surfaces are deliberately narrow:
+
+- **Desktop**: loopback listener with a bearer token, allowlisted actions, and a
+  scoped approval for `takeover`/`focus`/`refresh`. No VNC endpoint and no
+  keyboard/mouse injection backend. `type`, `click`, `shell`, and `exec` are
+  refused by name.
+- **Telegram**: only `/status`, `/jobs`, `/readiness`, `/discover`, and `/pair`.
+  There is no shell, payment, deployment, or arbitrary-file command. A chat must
+  be paired; messages are rate-limited and audited.
+- **Payments**: no card fields, no live provider, amount/currency limits,
+  idempotency keys, and a scoped approval for every charge. The bundled provider
+  is a mock that moves no money.
+- **MCP**: the protocol client is transport-agnostic. `StdioTransport` launches a
+  host process only when both `REVERSEAI_ALLOW_MCP_HOST=1` and
+  `allow_host=True` are set *and* the MCP capability is enabled. Prefer a
+  sandbox/VM transport for untrusted servers.
+- **Hooks**: signed manifests only, event allowlist, sandboxed subprocess,
+  timeout, no host environment inheritance, audit.
+- **Self-training**: only verified, delivery-allowed jobs become traces. Secrets
+  are redacted, duplicates removed, and a deterministic holdout is kept. No
+  automatic training or weight deployment.
+- **Self-deployment**: dry run first, capability + approval, injected transport,
+  and a separately approved rollback. No cloud/SSH transport is bundled.
+- **QEMU/Landlock/cgroup**: surfaces and preflight are present; enforcement is
+  not claimed. The bubblewrap namespace remains the active boundary.
+
 ## Discovery, world models, and domain adapters
 
 - `/world` and `/discover` are read-only analysis endpoints. They parse the

@@ -32,6 +32,7 @@ _TOOL_ICON = {
     "verify_modification": "check",
     "differential_test": "bars",
     "assess_test_strength": "alert",
+    "differential_fuzz": "bars",
     "capture_behavior_corpus": "memory",
     "choose_modification_strategy": "search",
     "plan_and_modify": "sparkle",
@@ -167,6 +168,9 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "assess_test_strength":
         title = "Checking whether the tests can actually fail"
         detail = "Mutating the candidate to see whether the corpus detects breakage."
+    elif name == "differential_fuzz":
+        title = "Fuzzing the change against the original"
+        detail = "Mutating seed inputs and comparing behavior in the sandbox."
     elif name == "capture_behavior_corpus":
         title = "Recording how the original behaves"
         detail = "Saving a reusable regression suite before changing anything."

@@ -62,6 +62,8 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | Product/proof layer | **working** | specs, behaviour contracts, proof packages, independent verify |
 | Orchestration | **working** | model router, tool manifests, capability map, missions, trust |
 | Domain adapters | **foundation** | hardware, robotics, CAD, network, security contracts |
+| Remote/payment/MCP/hooks | **gated surface** | desktop broker, Telegram read-only, payment ledger/mock, MCP client, sandboxed hooks |
+| Training/deployment | **gated surface** | verified traces, holdout pipeline, dry-run deployment, rollback, approvals |
 | Decompile | **working** | Ghidra headless + Java script for modern releases |
 | Clone | **working** | static fetch; opt-in headless render |
 | Memory/research/routines | **working** | durable notes, web sources, schedules |
@@ -69,7 +71,7 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | API + UI | **working** | stdlib HTTP + SSE, mobile-first PWA |
 | Multi-tenant product layer | **planned** | accounts, quotas, object storage, worker queue |
 
-## Current capability (v0.7.0)
+## Current capability (v0.8.0)
 
 Zero third-party dependencies required (stdlib + binutils; optional libs enhance):
 
@@ -192,9 +194,10 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   allowlists, mobile-first PWA with a thinking timeline, sources, artifacts,
   memory, routines, usage, feedback, notifications, and speech input.
 - **CLI:** `analyze`, `diff`, `cfg`, `xrefs`, `repo`, `caps`, `capabilities`,
-  `readiness`, `sandbox run`, `verify`, `corpus capture|list|show`,
-  `report verify|render`, `approvals grant|list`, `audit`,
-  `agent run` (with `--mode ask|build|modify|optimize|autonomous`), `bench`, `serve`.
+  `surfaces`, `mcp validate`, `hooks validate`, `readiness`, `sandbox run`,
+  `verify`, `corpus capture|list|show`, `report verify|render`,
+  `approvals grant|list`, `audit`, `agent run` (with
+  `--mode ask|build|modify|optimize|autonomous`), `bench`, `serve`.
 
 ## Important modules
 
@@ -260,7 +263,7 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 python3 -m reverseai analyze /path/to/binary
 python3 -m reverseai analyze /path/to/binary --json
 python3 -m reverseai serve
-python3 -m unittest discover -s tests -v   # 450+ tests, no API key
+python3 -m unittest discover -s tests -v   # 500+ tests, no API key
 ```
 
 The intelligence build ledger is `docs/INTELLIGENCE_ROADMAP.md`. It separates

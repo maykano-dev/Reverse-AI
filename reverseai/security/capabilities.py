@@ -60,6 +60,14 @@ CAPABILITIES: dict[str, Capability] = {
         "hooks", "high",
         "Hooks run operator code around tool calls and can bypass the mediator.",
         "REVERSEAI_ENABLE_HOOKS"),
+    "deployment": Capability(
+        "deployment", "critical",
+        "Deployment changes a real environment and needs a tested rollback.",
+        "REVERSEAI_ENABLE_DEPLOYMENT"),
+    "self_training": Capability(
+        "self_training", "high",
+        "Training changes future behavior and must be benchmark-gated.",
+        "REVERSEAI_ENABLE_SELF_TRAINING"),
 }
 
 _MASTER_ENV = "REVERSEAI_ENABLE_DANGEROUS_CAPABILITIES"

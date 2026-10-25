@@ -75,6 +75,10 @@ class AnalysisReport:
     strings_sample: list[str] = field(default_factory=list)
     string_count: int = 0
 
+    # Additive format-specific inventories. Older records simply omit them.
+    pe_extra: dict[str, Any] = field(default_factory=dict)
+    macho_extra: dict[str, Any] = field(default_factory=dict)
+
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:

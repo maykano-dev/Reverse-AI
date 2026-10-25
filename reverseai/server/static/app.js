@@ -1212,6 +1212,7 @@ const TOOL_LABELS = {
   verify_modification: "Proving the change in the sandbox",
   differential_test: "Testing across a set of inputs",
   assess_test_strength: "Checking test strength",
+  differential_fuzz: "Fuzzing the change",
   capture_behavior_corpus: "Recording the original behavior",
   choose_modification_strategy: "Choosing the safest way to change it",
   plan_and_modify: "Planning and making the change",

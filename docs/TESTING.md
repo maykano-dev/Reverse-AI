@@ -100,7 +100,7 @@ Skips are environmental, not hidden failures:
 ## 6. Baseline (2026-10-25)
 
 - Version: 0.6.0
-- Unit/contract tests: 454 passing, 4 environment-dependent skips
+- Unit/contract tests: 509 passing, 4 environment-dependent skips
 - Tools: every registered tool covered by the contract suite
 - Sandbox: bubblewrap + x86_64 seccomp; network/filesystem/env/timeout boundaries
   tested

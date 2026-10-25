@@ -8,6 +8,9 @@ Commands:
   xrefs <file>              direct call/jump cross-references
   repo <dir>                map a source repository
   audit                     check repository invariants
+  surfaces                  inventory dangerous surfaces (not enable them)
+  mcp validate <json>       validate an MCP server manifest
+  hooks validate <json>     validate a signed hook manifest
   caps                      show host sandbox/analysis capabilities
   readiness <file>          can this target be executed and verified here?
   sandbox run -- <argv...>  run a command in the hardened sandbox
@@ -244,6 +247,66 @@ def _cmd_audit(args: argparse.Namespace) -> int:
     else:
         print(report.render())
     return 0 if report.ok else 1
+
+
+def _cmd_mcp(args: argparse.Namespace) -> int:
+    import json
+    from .mcp.client import MCPManifest
+
+    try:
+        raw = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+        manifest = MCPManifest(**raw)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    problems = manifest.validate()
+    if args.json:
+        print(json.dumps({"manifest": manifest.to_dict(),
+                          "problems": problems}, indent=2))
+    else:
+        print("valid" if not problems else "invalid")
+        for p in problems:
+            print(f"  - {p}")
+    return 0 if not problems else 1
+
+
+def _cmd_hooks(args: argparse.Namespace) -> int:
+    import json
+    from .hooks.runner import HookManifest, verify_manifest
+
+    try:
+        raw = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+        manifest = HookManifest(**raw)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    problems = manifest.validate()
+    signed = verify_manifest(manifest.to_dict())
+    if args.json:
+        print(json.dumps({"manifest": manifest.to_dict(),
+                          "problems": problems,
+                          "signature_valid": signed}, indent=2))
+    else:
+        print("valid" if not problems else "invalid")
+        print(f"signature: {'valid' if signed else 'missing or invalid'}")
+        for p in problems:
+            print(f"  - {p}")
+    return 0 if not problems and signed else 1
+
+
+def _cmd_surfaces(args: argparse.Namespace) -> int:
+    from .surfaces import surface_status
+
+    status = surface_status(target=args.target)
+    if args.json:
+        print(json.dumps(status, indent=2))
+        return 0
+    for name, row in status.items():
+        if name in ("capabilities", "note"):
+            continue
+        print(f"{name}: {json.dumps(row, sort_keys=True)}")
+    print(status["note"])
+    return 0
 
 
 def _cmd_capabilities(args: argparse.Namespace) -> int:
@@ -632,6 +695,26 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--root", default=".")
     audit.add_argument("--json", action="store_true")
     audit.set_defaults(func=_cmd_audit)
+
+    mcp = sub.add_parser("mcp", help="MCP manifest utilities")
+    mcp_sub = mcp.add_subparsers(dest="mcp_cmd", required=True)
+    mcp_validate = mcp_sub.add_parser("validate", help="validate an MCP manifest")
+    mcp_validate.add_argument("manifest")
+    mcp_validate.add_argument("--json", action="store_true")
+    mcp_validate.set_defaults(func=_cmd_mcp)
+
+    hooks = sub.add_parser("hooks", help="hook manifest utilities")
+    hooks_sub = hooks.add_subparsers(dest="hooks_cmd", required=True)
+    hooks_validate = hooks_sub.add_parser("validate", help="validate a signed hook manifest")
+    hooks_validate.add_argument("manifest")
+    hooks_validate.add_argument("--json", action="store_true")
+    hooks_validate.set_defaults(func=_cmd_hooks)
+
+    surfaces = sub.add_parser("surfaces",
+                              help="inventory dangerous surfaces without enabling them")
+    surfaces.add_argument("--target", help="optional target for readiness")
+    surfaces.add_argument("--json", action="store_true")
+    surfaces.set_defaults(func=_cmd_surfaces)
 
     capabilities = sub.add_parser("capabilities",
                                   help="show the high-risk capability policy")

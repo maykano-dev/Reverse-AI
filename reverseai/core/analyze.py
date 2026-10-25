@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import elf, macho, pe
+from . import elf, macho, pe, pe_extra
 from .identify import compute_hashes, detect_format, shannon_entropy
 from .models import AnalysisReport, BinaryFormat
 from .strings import extract_strings
@@ -33,7 +33,9 @@ def analyze_bytes(data: bytes, path: str = "<memory>") -> AnalysisReport:
         report.imports = info.imports
         report.exports = info.exports
         report.needed_libraries = list(info.imports.keys())
+        report.pe_extra = pe_extra.parse_pe_extra(data, info)
         report.warnings.extend(info.warnings)
+        report.warnings.extend(report.pe_extra.get("warnings") or [])
     elif report.fmt is BinaryFormat.ELF:
         info = elf.parse_elf(data)
         report.arch = info.arch
@@ -57,6 +59,10 @@ def analyze_bytes(data: bytes, path: str = "<memory>") -> AnalysisReport:
         report.dynamic_symbols = info.dynamic_symbols
         report.exports = info.exports
         report.functions = info.functions
+        report.needed_libraries = list(info.dylibs)
+        report.macho_extra = {"dylibs": list(info.dylibs),
+                              "is_fat": info.is_fat,
+                              "slice_count": info.slice_count}
         report.warnings.extend(info.warnings)
 
     all_strings = extract_strings(data, min_len=5)

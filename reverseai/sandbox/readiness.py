@@ -35,6 +35,7 @@ class ExecutionReadiness:
     can_analyze: bool = True
     can_verify_natively: bool = False
     can_emulate: bool = False
+    can_use_vm: bool = False
     backend: str = ""
     level: int = 0
     verdict: str = "analysis_only"
@@ -117,6 +118,9 @@ def assess_execution(target: str, policy: SandboxPolicy | None = None) -> Execut
     out.can_verify_natively = bool(native_format and arch_ok and out.level >= 40)
     rootfs = os.environ.get("REVERSEAI_QILING_ROOTFS", "").strip()
     out.can_emulate = bool(caps.qiling and rootfs and os.path.isdir(rootfs))
+    from .backends.qemu_backend import QemuVmBackend
+
+    out.can_use_vm = QemuVmBackend.is_available()
 
     if out.can_verify_natively:
         out.verdict = "executable"
@@ -133,6 +137,16 @@ def assess_execution(target: str, policy: SandboxPolicy | None = None) -> Execut
             "REVERSEAI_QILING_ROOTFS are configured.")
         out.suggestions = ["Use the Qiling backend; confirm the rootfs has the "
                            "target's runtime libraries."]
+        return out
+
+    if out.can_use_vm:
+        out.verdict = "vm"
+        out.reason = (
+            "A QEMU kernel/rootfs is configured. The VM surface exists, but a "
+            "guest runner must be provided before execution can be certified.")
+        out.suggestions = ["Configure the guest runner, then re-run readiness.",
+                           "Do not claim behavioral verification from the VM "
+                           "surface alone."]
         return out
 
     out.verdict = "analysis_only"

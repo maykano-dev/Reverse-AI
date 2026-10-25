@@ -146,6 +146,7 @@ class IntelligenceToolTests(unittest.TestCase):
         mission = PlanMissionTool().run(
             {"objective": "modernise", "budget_usd": 50}, self.ctx)
         self.assertTrue(mission.ok)
+        self.assertTrue(mission.data["mission"].get("saved_to"))
         trust = TrustCheckTool().run(
             {"action": "deploy", "reversible": False,
              "blast_radius": "production"}, self.ctx)

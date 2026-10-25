@@ -898,7 +898,8 @@ def default_tools() -> list[Tool]:
     from .intelligence_tools import intelligence_tools
     from .modify_engine import ChooseModificationStrategyTool, PlanAndModifyTool
     from .verify_tools import (
-        AssessTestStrengthTool, DifferentialTestTool, VerifyModificationTool,
+        AssessTestStrengthTool, DifferentialFuzzTool, DifferentialTestTool,
+        VerifyModificationTool,
     )
     from .workspace_tools import (
         CheckExecutionReadinessTool,
@@ -933,6 +934,7 @@ def default_tools() -> list[Tool]:
         ScheduleRoutineTool(),
         VerifyModificationTool(),
         DifferentialTestTool(),
+        DifferentialFuzzTool(),
         AssessTestStrengthTool(),
         CaptureBehaviorCorpusTool(),
         ChooseModificationStrategyTool(),

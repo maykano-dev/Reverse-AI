@@ -90,8 +90,8 @@ test exist.
 
 - Date: 2026-10-25
 - Version: 0.7.0
-- Tests: 454 passing, 4 environment-dependent skips
-- Tools: 55 (every one covered by the contract suite)
+- Tests: 509 passing, 4 environment-dependent skips
+- Tools: 56 (every one covered by the contract suite)
 - Known skips: no-sandbox refusal path (because a sandbox exists), LIEF absence
   (because LIEF is installed), missing-provider-key paths (because a key is
   present), and foreign-platform execution (no configured VM/rootfs).

@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.0: gated dangerous surfaces and open-item closure
+
+### Added
+
+- Live desktop-session broker and loopback control listener: allowlisted
+  actions, bearer token, pairing, approval gate, audit. No VNC or input backend.
+- Telegram read-only channel: Bot API transport, chat allowlist, pairing, rate
+  limits, `/status`, `/jobs`, `/readiness`, `/discover`; no shell or payment
+  command.
+- Payment intent ledger and provider boundary: idempotency, amount/currency
+  limits, capability + scoped approval, deterministic mock provider, no card
+  data, no live processor.
+- MCP stdio/JSON-RPC client, manifest validation, tool allowlist, timeout, and
+  capability gate. Host transport requires explicit opt-in.
+- Signed, sandboxed hook manifests and runner with event allowlist, timeout,
+  environment isolation, and audit.
+- Verified-trace dataset extraction, redaction, deduplication, deterministic
+  train/holdout split, and a benchmark-gated improvement pipeline.
+- Deployment plan/controller with dry run, scoped approvals, injected transport,
+  and explicit rollback.
+- Differential fuzzing tool and bounded fuzz report.
+- PE resources/debug/version/TLS/rich-header inventory and Mach-O dylib parsing.
+- Landlock ABI/ruleset plan, cgroup v2 detection/optional scope, QEMU VM command
+  surface and honest refusal, mission persistence/resume, per-token quota module.
+- `reverseai surfaces`, `mcp validate`, `hooks validate`, `/surfaces`.
+- 55 new tests; total 509; 56 tools covered by contract tests.
+
 ## 0.7.0: audit remediation and evidence hardening
 
 ### Fixed

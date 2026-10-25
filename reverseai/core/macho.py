@@ -33,6 +33,15 @@ _MAGIC = {
 _LC_SEGMENT = 0x1
 _LC_SEGMENT_64 = 0x19
 _LC_SYMTAB = 0x2
+_LC_LOAD_DYLIB = 0xC
+_LC_ID_DYLIB = 0xD
+_LC_LOAD_WEAK_DYLIB = 0x80000018
+_LC_REEXPORT_DYLIB = 0x8000001F
+_LC_LAZY_LOAD_DYLIB = 0x20
+_LC_LOAD_UPWARD_DYLIB = 0x80000023
+_DYLIB_COMMANDS = {_LC_LOAD_DYLIB, _LC_ID_DYLIB, _LC_LOAD_WEAK_DYLIB,
+                   _LC_REEXPORT_DYLIB, _LC_LAZY_LOAD_DYLIB,
+                   _LC_LOAD_UPWARD_DYLIB}
 
 # nlist n_type masks
 _N_STAB = 0xE0
@@ -59,6 +68,7 @@ class MachOInfo:
     slice_count: int = 0
     sections: list[Section] = field(default_factory=list)
     dynamic_symbols: list[str] = field(default_factory=list)  # imported (undefined)
+    dylibs: list[str] = field(default_factory=list)           # LC_LOAD_DYLIB family
     exports: list[str] = field(default_factory=list)
     functions: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -172,7 +182,25 @@ def _parse_load_commands(data, en, is64, offset, ncmds, info) -> None:
             info.sections.extend(_parse_segment(data, en, is64, pos, shannon_entropy))
         elif cmd == _LC_SYMTAB:
             _parse_symtab(data, en, is64, pos, info)
+        elif cmd in _DYLIB_COMMANDS:
+            _parse_dylib(data, en, pos, cmdsize, info)
         pos += cmdsize
+
+
+def _parse_dylib(data, en, pos, cmdsize, info) -> None:
+    """Read the install name from an LC_LOAD_DYLIB family command."""
+    if cmdsize < 12 or pos + 12 > len(data):
+        return
+    name_offset = struct.unpack_from(en + "I", data, pos + 8)[0]
+    if not (0 < name_offset < cmdsize):
+        return
+    start = pos + name_offset
+    end = data.find(b"\x00", start, min(pos + cmdsize, len(data)))
+    if end == -1:
+        end = min(pos + cmdsize, len(data))
+    name = data[start:end].decode("utf-8", "replace")
+    if name and name not in info.dylibs:
+        info.dylibs.append(name[:512])
 
 
 def _parse_symtab(data, en, is64, pos, info) -> None:

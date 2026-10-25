@@ -91,7 +91,7 @@ def run_audit(root: str | Path) -> AuditReport:
         "reverseai/server/static/sw.js",
         "docs/SECURITY.md", "docs/ARCHITECTURE.md",
         "docs/INTELLIGENCE_ROADMAP.md", "docs/AUDIT_REMEDIATION.md",
-        "docs/TESTING.md",
+        "docs/TESTING.md", "docs/DANGEROUS_AND_OPEN_ITEMS.md",
     ]
     missing = [p for p in required if not (root / p).is_file()]
     add("required files exist", not missing, ", ".join(missing))

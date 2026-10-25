@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from reverseai.cli import build_parser, main  # noqa: E402
+from reverseai.hooks.runner import HookManifest, sign_manifest  # noqa: E402
 from reverseai.sandbox import SandboxPolicy, create_sandbox  # noqa: E402
 
 CC = shutil.which("cc") is not None
@@ -48,7 +49,8 @@ class CliContractTests(unittest.TestCase):
         sub = next(a for a in parser._actions if a.dest == "command")
         names = set(sub.choices)
         for name in ("analyze", "diff", "world", "discover", "repo", "cfg", "caps",
-                     "capabilities", "readiness", "sandbox", "verify", "corpus",
+                     "surfaces", "capabilities", "mcp", "hooks",
+                     "readiness", "sandbox", "verify", "corpus",
                      "report", "approvals", "agent", "bench", "serve"):
             self.assertIn(name, names)
 
@@ -130,6 +132,34 @@ class CliContractTests(unittest.TestCase):
         code, out, err = _run(["world", "/definitely/not/a/file"])
         self.assertEqual(code, 2)
         self.assertIn("error", err.lower())
+
+    def test_mcp_and_hook_manifest_validation(self):
+        with tempfile.TemporaryDirectory() as td:
+            mcp = Path(td) / "mcp.json"
+            mcp.write_text(json.dumps({"name": "files",
+                                       "command": ["python", "server.py"],
+                                       "allowed_tools": ["read"]}))
+            code, out, err = _run(["mcp", "validate", str(mcp), "--json"])
+            self.assertEqual(code, 0, err)
+            self.assertEqual(json.loads(out)["problems"], [])
+
+            manifest = HookManifest(
+                "echo", "tool.before", ["true"], timeout_seconds=5).to_dict()
+            manifest["signature"] = sign_manifest(
+                manifest, key="h" * 32)
+            hook = Path(td) / "hook.json"
+            hook.write_text(json.dumps(manifest))
+            old = os.environ.get("REVERSEAI_HOOK_KEY")
+            os.environ["REVERSEAI_HOOK_KEY"] = "h" * 32
+            try:
+                code, out, err = _run(["hooks", "validate", str(hook), "--json"])
+            finally:
+                if old is None:
+                    os.environ.pop("REVERSEAI_HOOK_KEY", None)
+                else:
+                    os.environ["REVERSEAI_HOOK_KEY"] = old
+            self.assertEqual(code, 0, err)
+            self.assertTrue(json.loads(out)["signature_valid"])
 
     def test_bench_list_needs_no_provider(self):
         code, out, err = _run(["bench", "--list"])

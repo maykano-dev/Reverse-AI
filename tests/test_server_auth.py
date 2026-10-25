@@ -83,6 +83,11 @@ class AuthTests(unittest.TestCase):
         status, body = _request(self.base + "/jobs", token=TOKEN)
         self.assertEqual(status, 200)
         self.assertIn("jobs", body)
+        status, body = _request(self.base + "/surfaces", token=TOKEN)
+        self.assertEqual(status, 200)
+        self.assertIn("desktop", body)
+        self.assertFalse(body["payments"]["live_provider"])
+        self.assertFalse(body["desktop"]["input_injection"])
 
     def test_wrong_token_is_refused(self):
         status, _ = _request(self.base + "/jobs", token="wrong")

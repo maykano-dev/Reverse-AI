@@ -27,6 +27,7 @@ from ..verify import (
     generate_corpus,
     run_differential,
 )
+from ..verify.fuzz import FuzzError, fuzz_differential
 from ..verify.mutation import (
     MutationError, assess_mutations, generate_string_mutations,
 )
@@ -480,6 +481,57 @@ class AssessTestStrengthTool(Tool):
             f"weak cases: {', '.join(result.weak_cases) or 'none'}\n"
             f"{result.note}")
         return ToolResult.success(content, **data)
+
+
+class DifferentialFuzzTool(Tool):
+    name = "differential_fuzz"
+    description = (
+        "Mutate declared seed inputs and compare the original and modified "
+        "artifacts on every generated case in the sandbox. Reports behavior "
+        "differences, crash signals, and timeouts. Bounded sampling, not proof."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "cases": {"type": "array", "items": {"type": "object"}},
+            "iterations": {"type": "integer", "minimum": 1, "maximum": 32,
+                           "default": 16},
+            "seed": {"type": "integer", "default": 0},
+            "timeout_seconds": {"type": "number", "minimum": 0.1, "default": 10},
+        },
+    }
+    permission = Permission.EXECUTE
+
+    def run(self, args, ctx) -> ToolResult:
+        if not ctx.target_path:
+            return ToolResult.failure("no target set for this job")
+        modified = ctx.extra.get("modified_path")
+        if not modified:
+            return ToolResult.failure("no modified artifact yet - apply a patch first")
+        try:
+            seeds = build_cases(args) if args.get("cases") else generate_corpus()
+        except DiffTestError as exc:
+            return ToolResult.failure(f"bad fuzz seeds: {exc}")
+        base = ctx.sandbox_policy or SandboxPolicy()
+        timeout = min(max(float(args.get("timeout_seconds", 10)), 0.1), 60.0)
+        try:
+            result = fuzz_differential(
+                ctx.target_path, modified, seeds,
+                iterations=int(args.get("iterations", 16)),
+                policy=base, timeout_seconds=timeout,
+                seed=int(args.get("seed", 0)))
+        except FuzzError as exc:
+            return ToolResult.failure(str(exc))
+        if not result.ran:
+            return ToolResult.failure(f"fuzzing could not run: {result.error}")
+        ctx.extra["fuzz"] = result.to_dict()
+        if ctx.evidence is not None:
+            ctx.evidence.observed(result.summary, source=self.name)
+        return ToolResult(ok=not result.differences,
+                          content=result.summary,
+                          data=result.to_dict(),
+                          error=("unexpected fuzz difference" if result.differences
+                                 else None))
 
 
 class DifferentialTestTool(Tool):

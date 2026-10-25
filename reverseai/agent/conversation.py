@@ -23,6 +23,7 @@ from ..naming import artifact_meta
 from ..security.validate import ValidationError, read_target
 from ..util.text import strip_dashes
 from ..checkpoints import CheckpointStore
+from ..missions import MissionStore
 from ..verify.corpus import CorpusStore, default_corpus_dir
 from .context import compact_messages
 from .evidence import Confidence, EvidenceLog, Finding
@@ -101,6 +102,7 @@ class Conversation:
                     str(Path(self.workspace).parent / "checkpoints"
                         / Path(self.workspace).name),
                     workspace=self.workspace),
+                "mission_store": MissionStore(Path(self.workspace) / "missions"),
                 "mode": self.mode,
             },
         )
@@ -455,6 +457,8 @@ class Conversation:
             str(Path(conv.workspace).parent / "checkpoints"
                 / Path(conv.workspace).name),
             workspace=conv.workspace)
+        conv.ctx.extra["mission_store"] = MissionStore(
+            Path(conv.workspace) / "missions")
         conv.turns = int(state.get("turns") or 0)
         conv.created_at = float(state.get("created_at") or time.time())
         conv.refused = state.get("refused")

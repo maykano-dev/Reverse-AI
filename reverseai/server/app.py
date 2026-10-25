@@ -5,6 +5,7 @@ Endpoints (JSON in / JSON out):
   GET  /config            -> readiness + feature flags (never the model)
   GET  /caps              -> host capabilities
   GET  /capabilities      -> high-risk capability policy (deny by default)
+  GET  /surfaces          -> dangerous-surface inventory (no secrets)
   GET  /templates         -> agent roles / squads
   GET  /skills            -> installed playbooks
   GET  /memory            -> long-term notes
@@ -264,6 +265,10 @@ class _Handler(BaseHTTPRequestHandler):
                 "default": "deny",
                 "capabilities": CapabilityPolicy().status(),
             })
+        if path == "/surfaces":
+            from ..surfaces import surface_status
+
+            return self._send(200, surface_status())
         if path == "/templates":
             return self._send(200, {"templates": [t.to_dict() for t in all_templates()]})
         if path == "/skills":

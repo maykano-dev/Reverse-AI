@@ -503,8 +503,19 @@ class PlanMissionTool(Tool):
             constraints=list(args.get("constraints") or []),
             budget_usd=float(args.get("budget_usd", 0) or 0),
             deadline_s=float(args.get("deadline_s", 0) or 0))
-        return ToolResult.success(json.dumps(mission.to_dict(), indent=2),
-                                  mission=mission.to_dict())
+        store = ctx.extra.get("mission_store")
+        if store is None:
+            from ..missions import MissionStore
+            store = MissionStore(Path(ctx.workspace) / "missions")
+        path = None
+        try:
+            path = str(store.save(mission.to_dict()))
+        except Exception:
+            path = None
+        data = mission.to_dict()
+        if path:
+            data["saved_to"] = path
+        return ToolResult.success(json.dumps(data, indent=2), mission=data)
 
 
 class AnalyzeDomainTool(Tool):

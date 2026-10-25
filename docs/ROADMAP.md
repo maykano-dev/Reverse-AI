@@ -1,8 +1,26 @@
 # ReverseAI: Roadmap and Status
 
-A living map of what exists and what comes next. Updated with v0.7.0.
+A living map of what exists and what comes next. Updated with v0.8.0.
 
 ## Done
+
+### v0.8.0: gated dangerous surfaces and open-item closure
+
+- **Desktop**: local session broker + loopback listener, allowlisted actions,
+  bearer token, approval gate, audit; no input-injection backend.
+- **Telegram**: read-only Bot API channel, pairing, chat allowlist, rate limits.
+- **Payments**: idempotent intent ledger, limits, approval gate, deterministic
+  mock provider; no card data or live processor.
+- **MCP**: JSON-RPC client, manifest validation, allowlist, capability gate;
+  host transport explicitly dangerous.
+- **Hooks**: signed manifests, sandboxed runner, events, timeout, audit.
+- **Self-training**: verified-trace dataset, redaction, holdout, improvement
+  pipeline; no auto-training.
+- **Self-deployment**: plan, dry run, scoped approval, injected transport,
+  rollback; no auto-deploy.
+- **Open items**: differential fuzzing, PE/Mach-O depth, Landlock/cgroup/QEMU
+  surfaces, mission persistence, per-token quota, readiness verdict.
+- **Tests**: 509.
 
 ### v0.7.0: audit remediation and evidence hardening
 
