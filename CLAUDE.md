@@ -54,6 +54,13 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | Autonomous modify | **working** | choose -> plan -> implement -> verify -> signed report; mode override |
 | Workspace safety | **working** | auto-checkpoints, reviewable diff, conservative restore |
 | Control-flow analysis | **working** | bounded basic blocks, branch edges, call graph (capstone) |
+| Engineering world model | **working** | components, dependencies, records, provenance, queries |
+| Discovery engine | **working** | ranked opportunities, hypotheses, bounded missions |
+| Experiment/causal engine | **working** | predictions, controlled observations, interventions |
+| Architecture/algorithm search | **working** | weighted objectives, Pareto front, measured comparison |
+| Product/proof layer | **working** | specs, behaviour contracts, proof packages, independent verify |
+| Orchestration | **working** | model router, tool manifests, capability map, missions, trust |
+| Domain adapters | **foundation** | hardware, robotics, CAD, network, security contracts |
 | Decompile | **working** | Ghidra headless + Java script for modern releases |
 | Clone | **working** | static fetch; opt-in headless render |
 | Memory/research/routines | **working** | durable notes, web sources, schedules |
@@ -61,7 +68,7 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | API + UI | **working** | stdlib HTTP + SSE, mobile-first PWA |
 | Multi-tenant product layer | **planned** | accounts, quotas, object storage, worker queue |
 
-## Current capability (v0.5.0)
+## Current capability (v0.6.0)
 
 Zero third-party dependencies required (stdlib + binutils; optional libs enhance):
 
@@ -90,8 +97,12 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 - **Skills:** markdown playbooks under `REVERSEAI_SKILLS` / `<store>/skills`,
   loaded on demand with `read_skill`.
 - **Tools:** analysis, execution, strategy selection, modification planning,
-  modification, verification, differential testing, coding, memory, research,
-  delegate, routines, archive extraction, website cloning, OCR.
+  modification, verification, differential testing, world-model building and
+  querying, discovery, hypothesis design, twin simulation, architecture search,
+  product planning, model selection, proof packaging, mission planning, domain
+  adapters, tool forging, manifests, capability mapping, trust, and reality
+  classification, plus coding, memory, research, delegate, routines, archive
+  extraction, website cloning, and OCR.
 - **Modify + verify:** byte patch on a copy + behavioral regression in the
   sandbox; LIEF structural edits when installed.
 - **Verified delivery gate:** `verify_modification` runs declared behavioral
@@ -146,6 +157,28 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 - **Control-flow analysis:** `core/cfg.py` builds bounded basic blocks, branch
   edges, call targets, and a rough cyclomatic complexity from capstone. It is an
   observed map, not a decompiler or reachability proof.
+- **Engineering intelligence (`reverseai/intelligence/`):**
+  - a persistent world model and engineering graph with provenance and queries;
+  - autonomous discovery of hidden features, undocumented interfaces,
+    architecture/dependency risks, missing tests, and unlockable capabilities,
+    each with impact/effort/risk/confidence and a next step;
+  - hypothesis → experiment → prediction → observation → update, with
+    environment errors kept distinct from evidence;
+  - causal graphs that only predict through explicit mechanisms, and label
+    correlations as hypotheses;
+  - digital-twin simulation with a hybrid simulated/live/unknown plan;
+  - architecture search with constraints and a Pareto front, algorithm
+    optimization with equivalence checks, and a sandboxed tool forge;
+  - specification-to-product planning, behavior contracts, proof packages,
+    independent verification, calibrated confidence, and regression promotion;
+  - model routing, tool manifests, capability measurement, mission control,
+    budgets, trust tiers, the intelligence foundry, verified skill learning,
+    analogy as a testable transfer, and failure classification.
+  - Five product modes: Ask, Build, Modify, Optimize, Autonomous Mission. They
+    change the contract with the user, not the safety rules.
+  - Domain adapters for hardware, robotics, CAD, network, security, and computer
+    operation are **contracts only** where the physical/live boundary requires a
+    simulator or a human. They refuse claims they cannot support.
 - **Decompile:** Ghidra headless with a Java GhidraScript for modern Ghidra and
   JDK-range detection. Optional.
 - **OCR:** Baidu Unlimited-OCR via an OpenAI-compatible vLLM/SGLang endpoint,
@@ -158,8 +191,8 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   allowlists, mobile-first PWA with a thinking timeline, sources, artifacts,
   memory, routines, usage, feedback, notifications, and speech input.
 - **CLI:** `analyze`, `diff`, `cfg`, `caps`, `capabilities`, `readiness`, `sandbox run`,
-  `verify`, `corpus capture|list|show`, `report verify|render`, `agent run`,
-  `bench`, `serve`.
+  `verify`, `corpus capture|list|show`, `report verify|render`, `approvals grant|list`,
+  `agent run` (with `--mode ask|build|modify|optimize|autonomous`), `bench`, `serve`.
 
 ## Important modules
 
@@ -192,6 +225,17 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 | `reverseai/modify/strategy.py` | Strategy scoring, mode mapping, confidence, clarification |
 | `reverseai/modify/planner.py` | Ordered plan, components, blast radius, scoped requests |
 | `reverseai/agent/modify_engine.py` | `choose_modification_strategy` and `plan_and_modify` |
+| `reverseai/intelligence/world.py` | World model, engineering graph, memory fabric |
+| `reverseai/intelligence/discovery.py` | Ranked opportunities and discovery missions |
+| `reverseai/intelligence/science.py` | Hypotheses, experiments, reality classes |
+| `reverseai/intelligence/causal.py` | Interventions and counterfactuals |
+| `reverseai/intelligence/twin.py` | Digital twin and simulation factory |
+| `reverseai/intelligence/design.py` | Architecture search and algorithm comparison |
+| `reverseai/intelligence/product.py` | Specs, plans, behaviour contracts, languages |
+| `reverseai/intelligence/proof.py` | Proof packages, independent verify, calibration |
+| `reverseai/intelligence/orchestration.py` | Router, protocol, capability map, missions, trust |
+| `reverseai/intelligence/learning.py` | Skill learning, foundry, analogy, failure review |
+| `reverseai/agent/intelligence_tools.py` | Agent tools for the intelligence layer |
 | `reverseai/security/` | Validation, limits, archives, SSRF-safe fetch, capability policy |
 | `reverseai/server/static/` | Mobile-first UI (no build step) |
 
@@ -210,8 +254,11 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 python3 -m reverseai analyze /path/to/binary
 python3 -m reverseai analyze /path/to/binary --json
 python3 -m reverseai serve
-python3 -m unittest discover -s tests -v   # 290+ tests, no API key
+python3 -m unittest discover -s tests -v   # 370+ tests, no API key
 ```
+
+The intelligence build ledger is `docs/INTELLIGENCE_ROADMAP.md`. It separates
+what is built from what is only a domain contract or a research bet.
 
 Model-free verification and replay:
 

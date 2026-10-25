@@ -1,8 +1,38 @@
 # ReverseAI: Roadmap and Status
 
-A living map of what exists and what comes next. Updated with v0.5.0.
+A living map of what exists and what comes next. Updated with v0.6.0.
 
 ## Done
+
+### v0.6.0: engineering intelligence layer
+
+- **World model and engineering graph**: components, dependencies, records,
+  provenance, invalidation, queries, and memory classes.
+- **Autonomous discovery**: hidden features, undocumented interfaces,
+  architecture/dependency risks, missing tests, unlockable capabilities, and
+  falsifiable hypotheses, each with evidence and a next step.
+- **Science loop**: hypothesis → experiment → prediction → observation → update,
+  with environment errors kept separate and competing explanations tested rather
+  than voted on.
+- **Causal reasoning**: explicit mechanisms, interventions, counterfactuals, and
+  correlation labels.
+- **Digital twin**: contract simulation, affected components, predicted failures,
+  and a hybrid simulated/live/unknown plan.
+- **Design search**: weighted objectives, constraints, Pareto front, measured
+  algorithm comparison with equivalence checks, and a sandboxed tool forge.
+- **Product and proof**: specification-to-product plans, behavior contracts,
+  proof packages, independent verification, calibration, and regression
+  promotion.
+- **Orchestration**: model router, tool manifests, capability map, mission
+  control, budgets, trust tiers, foundry, skill learning, analogy, and failure
+  review.
+- **Domain contracts**: hardware, robotics, CAD, network, security, and computer
+  operation foundations, with explicit refusals for physical/live claims.
+- **Tests**: 385, including world, discovery, science, causal, design, twin,
+  forge, product, proof, adapters, router, protocol, capability, mission,
+  learning, and tool wiring.
+
+The full ledger is [`docs/INTELLIGENCE_ROADMAP.md`](INTELLIGENCE_ROADMAP.md).
 
 ### v0.5.0: durable proof, replay, and a harder sandbox
 

@@ -95,6 +95,7 @@ class Conversation:
                 "delegate_depth": getattr(agent, "delegate_depth", 0),
                 "skills": getattr(agent, "skills", []),
                 "mediator": getattr(agent, "mediator", None),
+                "all_tools": getattr(getattr(agent, "registry", None), "all", lambda: [])(),
                 "corpus_store": CorpusStore(default_corpus_dir()),
                 "checkpoint_store": CheckpointStore(
                     str(Path(self.workspace).parent / "checkpoints"
@@ -121,7 +122,14 @@ class Conversation:
     # Prompt
     # ------------------------------------------------------------------
     def _system_prompt(self) -> str:
-        parts = [SYSTEM_PROMPT.rstrip(), "", "Current mode:", prompt_addendum(self.template)]
+        parts = [SYSTEM_PROMPT.rstrip(), "", "Current role:", prompt_addendum(self.template)]
+        try:
+            from ..intelligence.modes import mode_prompt
+            mp = mode_prompt(self.mode)
+            if mp:
+                parts += ["", mp]
+        except Exception:
+            pass
         skills = getattr(self.agent, "skills", None) or []
         if skills:
             from .skills import skills_prompt
@@ -429,6 +437,8 @@ class Conversation:
         conv.mode = state.get("mode") or getattr(agent, "mode", "") or ""
         conv.ctx.extra["mode"] = conv.mode
         conv.ctx.extra["mediator"] = getattr(agent, "mediator", None)
+        conv.ctx.extra["all_tools"] = getattr(
+            getattr(agent, "registry", None), "all", lambda: [])()
         conv.ctx.extra["corpus_store"] = CorpusStore(default_corpus_dir())
         conv.ctx.extra["checkpoint_store"] = CheckpointStore(
             str(Path(conv.workspace).parent / "checkpoints"

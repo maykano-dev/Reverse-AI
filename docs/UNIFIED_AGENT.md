@@ -64,6 +64,28 @@ made the loop **visible**, **durable**, **personal**, and **mobile**.
 | seccomp host hardening | new | **Implemented (x86_64 denylist)** | `sandbox/seccomp.py`, bubblewrap `--seccomp` |
 | Approvals + action gate | new | **Implemented** | `security/approvals.py`, `security/gate.py` |
 | Encrypted vault | Xiryn | **Implemented (optional primitive)** | `security/vault.py`; no payment execution |
+| Engineering world model | new | **Implemented** | `intelligence/world.py`, `build_world_model` |
+| Autonomous discovery | new | **Implemented (static + experiment leads)** | `intelligence/discovery.py`, `discover_opportunities` |
+| Scientific experiments | new | **Implemented (runner injected)** | `intelligence/science.py`, `form_hypotheses` |
+| Causal reasoning | new | **Implemented (explicit mechanisms)** | `intelligence/causal.py` |
+| Digital twin | new | **Implemented (contract simulation)** | `intelligence/twin.py`, `simulate_change` |
+| Architecture search | new | **Implemented (scored, benchmark callback)** | `intelligence/design.py`, `search_architectures` |
+| Algorithm optimization | new | **Implemented (equivalence + measured)** | `intelligence/design.py` |
+| Tool forge | new | **Implemented (sandbox-tested)** | `intelligence/forge.py`, `forge_tool` |
+| Spec-to-product | new | **Implemented (plan + acceptance)** | `intelligence/product.py`, `plan_product` |
+| Software from behaviour | new | **Foundation** | `BehaviorContract`; replacement generation is not bundled |
+| Proof-carrying artifact | new | **Implemented** | `intelligence/proof.py`, `build_proof_package` |
+| Independent verifier | new | **Implemented** | `IndependentVerifier` |
+| Confidence calibration | new | **Implemented (no small-sample percentages)** | `ConfidenceCalibrator` |
+| Model router | new | **Implemented** | `intelligence/orchestration.py`, `select_model` |
+| Universal tool protocol | new | **Implemented** | `ToolManifest`, `export_tool_manifests` |
+| Capability discovery | new | **Implemented** | `CapabilityMap`, `capability_map` |
+| Mission control / economy | new | **Implemented (plans and budgets)** | `MissionPlanner`, `AutonomousEconomy` |
+| Intelligence foundry | new | **Implemented (baseline + holdout)** | `IntelligenceFoundry` |
+| Verified skill learning | new | **Implemented** | `SkillLearner` |
+| Domain adapters | new | **Foundation** | hardware, robotics, CAD, network, security |
+| Computer operator | Xiryn | **Boundary only** | no live input or remote listener |
+| Extension registry | new | **Foundation** | signed manifests, no auto-execution |
 | MCP servers | Claude Code, OpenCode | **Deferred** | needs a protocol client and permission model |
 | Hooks (pre/post tool) | Claude Code | **Deferred** | needs an operator policy and sandboxing |
 | Computer use / live desktop | Xiryn, OpenClaw | **Deferred** | denied by capability policy; needs Docker workstations, VNC, and a new threat model |

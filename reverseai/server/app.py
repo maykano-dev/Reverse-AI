@@ -18,6 +18,8 @@ Endpoints (JSON in / JSON out):
   POST /feedback          {job_id, rating, note?}
   POST /analyze           {path}                 -> AnalysisReport
   POST /diff              {a, b}                 -> BinaryDiff
+  POST /world             {path}                 -> world model summary
+  POST /discover          {path, ...}            -> ranked opportunities
   POST /modify            {target, patches}      -> patch result + download
   POST /verify            {original, modified}   -> behavioral comparison
   POST /clone             {url, rename_*}        -> clone result + download
@@ -318,6 +320,10 @@ class _Handler(BaseHTTPRequestHandler):
             return self._analyze(body)
         if self.path == "/diff":
             return self._diff(body)
+        if self.path == "/world":
+            return self._world(body)
+        if self.path == "/discover":
+            return self._discover(body)
         if self.path == "/modify":
             return self._api_modify(body)
         if self.path == "/verify":
@@ -618,6 +624,50 @@ class _Handler(BaseHTTPRequestHandler):
         except (ValidationError, OSError) as exc:
             return self._send(400, {"error": str(exc)})
         return self._send(200, report.to_dict())
+
+    def _world(self, body):
+        from ..intelligence.world import world_from_analysis
+
+        path = body.get("path")
+        if not path:
+            return self._send(400, {"error": "missing 'path'"})
+        err = self._path_error(path)
+        if err:
+            return self._send(403, {"error": err})
+        try:
+            report = self._analyze_path(path)
+            wm = world_from_analysis(report)
+        except (ValidationError, OSError) as exc:
+            return self._send(400, {"error": str(exc)})
+        return self._send(200, {"summary": wm.summary(), "world": wm.to_dict()})
+
+    def _discover(self, body):
+        from ..intelligence.discovery import DiscoveryEngine
+        from ..intelligence.world import world_from_analysis
+
+        path = body.get("path")
+        if not path:
+            return self._send(400, {"error": "missing 'path'"})
+        err = self._path_error(path)
+        if err:
+            return self._send(403, {"error": err})
+        try:
+            report = self._analyze_path(path)
+            wm = world_from_analysis(report)
+            engine = DiscoveryEngine(wm)
+            opps = engine.discover(
+                report, corpus_present=bool(body.get("corpus_present")),
+                tests_present=bool(body.get("tests_present")))
+        except (ValidationError, OSError) as exc:
+            return self._send(400, {"error": str(exc)})
+        return self._send(200, {
+            "summary": engine.summary(),
+            "world": wm.summary(),
+            "opportunities": [o.to_dict() for o in opps],
+            "hypotheses": [h.to_dict() for h in engine.hypotheses()],
+            "mission": engine.mission(max_steps=6, max_effort=15),
+            "note": "This is a plan, not permission to modify the system.",
+        })
 
     def _diff(self, body):
         a, b = body.get("a"), body.get("b")

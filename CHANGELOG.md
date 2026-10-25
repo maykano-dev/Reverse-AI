@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.6.0: engineering intelligence layer
+
+### Added
+
+- World model and engineering graph with components, dependencies, requirements,
+  hypotheses, experiments, decisions, tests, provenance, invalidation, and
+  queries (`intelligence/world.py`).
+- Autonomous discovery engine with evidence-backed opportunities, impact/effort/
+  risk/confidence scoring, hypotheses, and bounded missions
+  (`intelligence/discovery.py`).
+- Scientific experiment engine, competing-hypothesis review, and reality classes
+  (`intelligence/science.py`).
+- Causal graph with explicit mechanisms, interventions, counterfactuals, and
+  correlation labeling (`intelligence/causal.py`).
+- Digital twin, contract simulation, hybrid simulated/live/unknown plan, and a
+  provisional simulation factory (`intelligence/twin.py`).
+- Architecture search with weighted objectives, constraints, Pareto front, and
+  benchmark callback; algorithm comparison with equivalence checks
+  (`intelligence/design.py`).
+- Sandboxed tool forge with manifest, test harness, promotion gate, and listing
+  (`intelligence/forge.py`).
+- Specification-to-product planning, behavior contracts, language detection, and
+  any-language trade-offs (`intelligence/product.py`).
+- Proof-carrying artifacts, independent verification, confidence calibration,
+  and regression promotion (`intelligence/proof.py`).
+- Model router, universal tool manifests, capability map, mission control,
+  budgets, trust tiers, human escalation, compression planning
+  (`intelligence/orchestration.py`).
+- Verified skill learning, intelligence foundry with holdout, knowledge transfer
+  as a hypothesis, failure classification, research program, representation
+  search, and reconstruction planning (`intelligence/learning.py`).
+- Domain adapter contracts for hardware, robotics, CAD, network, security, and
+  computer operation; extension manifest registry
+  (`intelligence/adapters.py`, `intelligence/extensions.py`).
+- 18 new agent tools, including `build_world_model`, `discover_opportunities`,
+  `form_hypotheses`, `simulate_change`, `search_architectures`, `plan_product`,
+  `select_model`, `build_proof_package`, `plan_mission`, `analyze_domain`,
+  `forge_tool`, `reality_check`, `human_decision`, `compression_plan`, and
+  `reconstruction_plan`.
+- Five interaction modes: Ask, Build, Modify, Optimize, Autonomous Mission.
+- Build ledger: `docs/INTELLIGENCE_ROADMAP.md`.
+- 92 new tests; total 385.
+
+### Changed
+
+- Agent `all_tools` manifests are available to `export_tool_manifests`.
+- `ToolRegistry.all()` added.
+- `agent run --mode` accepts product and strategy modes.
+- Version bumped to 0.6.0.
+
 ## 0.5.0: durable proof, replay, and hardened host
 
 ### Added

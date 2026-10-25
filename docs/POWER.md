@@ -30,6 +30,10 @@ The further right you go, the more the product must earn the right to act.
 A company that skips from layer 3 to layer 8 is not powerful. It is one incident
 away from being untrustworthy.
 
+The concrete build ledger for this layer is
+[`INTELLIGENCE_ROADMAP.md`](INTELLIGENCE_ROADMAP.md). It marks what is built,
+what is a foundation, and what is deliberately not claimed.
+
 ## What is already enabled
 
 - **Autonomous reverse engineering.** Read a real binary, choose a strategy,

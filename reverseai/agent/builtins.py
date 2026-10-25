@@ -797,6 +797,7 @@ class ScheduleRoutineTool(Tool):
 
 def default_tools() -> list[Tool]:
     from .corpus_tools import CaptureBehaviorCorpusTool
+    from .intelligence_tools import intelligence_tools
     from .modify_engine import ChooseModificationStrategyTool, PlanAndModifyTool
     from .verify_tools import DifferentialTestTool, VerifyModificationTool
     from .workspace_tools import (
@@ -839,6 +840,7 @@ def default_tools() -> list[Tool]:
         ReviewWorkspaceChangesTool(),
         RestoreCheckpointTool(),
     ]
+    tools.extend(intelligence_tools())
     # Real decompilation when Ghidra is installed — a big capability upgrade.
     try:
         from ..decompile import ghidra_available

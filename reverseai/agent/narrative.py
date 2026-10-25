@@ -33,6 +33,27 @@ _TOOL_ICON = {
     "choose_modification_strategy": "search",
     "plan_and_modify": "sparkle",
     "check_execution_readiness": "check",
+    "build_world_model": "globe",
+    "query_world_model": "search",
+    "project_memory": "memory",
+    "discover_opportunities": "sparkle",
+    "plan_discovery_mission": "chart",
+    "form_hypotheses": "sparkle",
+    "simulate_change": "box",
+    "search_architectures": "chart",
+    "plan_product": "book",
+    "select_model": "cpu",
+    "build_proof_package": "check",
+    "plan_mission": "clock",
+    "analyze_domain": "box",
+    "forge_tool": "code",
+    "export_tool_manifests": "file",
+    "capability_map": "chart",
+    "trust_check": "lock",
+    "reality_check": "check",
+    "human_decision": "alert",
+    "compression_plan": "chart",
+    "reconstruction_plan": "box",
     "create_workspace_checkpoint": "bookmark",
     "list_workspace_checkpoints": "bookmark",
     "review_workspace_changes": "bars",
@@ -136,6 +157,69 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "check_execution_readiness":
         title = "Checking whether this target can actually be run"
         detail = "Separating what can be analyzed from what can be verified behaviorally."
+    elif name == "build_world_model":
+        title = "Building a model of how this system fits together"
+        detail = "Components, dependencies, relationships, and open questions."
+    elif name == "query_world_model":
+        title = "Asking the system model a question"
+        detail = "Looking for weak evidence, unresolved links, and the next useful test."
+    elif name == "project_memory":
+        title = "Consulting project memory"
+        detail = "Recalling decisions, experiments, and lessons with provenance."
+    elif name == "discover_opportunities":
+        title = "Looking for things nobody asked about"
+        detail = "Ranking hidden features, risks, and unexplored possibilities by evidence."
+    elif name == "plan_discovery_mission":
+        title = "Planning a bounded investigation"
+        detail = "Ordering the opportunities by expected value and effort."
+    elif name == "form_hypotheses":
+        title = "Turning leads into falsifiable hypotheses"
+        detail = "Separating an observation from an explanation worth testing."
+    elif name == "simulate_change":
+        title = "Simulating the change on a model"
+        detail = "Predicting affected components and naming what still needs a live test."
+    elif name == "search_architectures":
+        title = "Comparing candidate designs"
+        detail = "Scoring feasible options against measurable objectives and constraints."
+    elif name == "plan_product":
+        title = "Turning the request into requirements"
+        detail = "Acceptance criteria, constraints, non-goals, and a phased plan."
+    elif name == "select_model":
+        title = "Choosing the right model for this task"
+        detail = "Capability, cost, latency, privacy, and measured success."
+    elif name == "build_proof_package":
+        title = "Packaging the proof, not just the file"
+        detail = "Hashes, tests, measurements, limitations, and reproduction steps."
+    elif name == "plan_mission":
+        title = "Planning a longer mission"
+        detail = "Phases, checkpoints, budgets, approvals, and a stopping condition."
+    elif name == "analyze_domain":
+        title = "Applying the domain adapter"
+        detail = "Inventory, hypotheses, a simulation plan, and explicit refusals."
+    elif name == "forge_tool":
+        title = "Building a small tool for this problem"
+        detail = "Writing it, testing it in the sandbox, and keeping it only if it passes."
+    elif name == "export_tool_manifests":
+        title = "Describing the available tools"
+        detail = "Permissions, inputs, side effects, and security boundaries."
+    elif name == "capability_map":
+        title = "Measuring what actually works"
+        detail = "Verified rates, failure modes, cost, and independent checks."
+    elif name == "trust_check":
+        title = "Checking the consequence of an action"
+        detail = "Reversibility, blast radius, external effect, and approval level."
+    elif name == "reality_check":
+        title = "Separating prediction from observation"
+        detail = "Predictions, simulations, observations, and unknowns stay distinct."
+    elif name == "human_decision":
+        title = "Naming the decision that needs a person"
+        detail = "Physical safety, authorization, irreversible effects, or domain judgment."
+    elif name == "compression_plan":
+        title = "Choosing the cheapest reliable path"
+        detail = "Deterministic, small model, strong model, or human, with a quality check."
+    elif name == "reconstruction_plan":
+        title = "Planning what can be reconstructed"
+        detail = "Separating evidence-backed behavior from underdetermined internals."
     elif name in ("create_workspace_checkpoint", "list_workspace_checkpoints"):
         title = "Taking a checkpoint"
         detail = "Making the current workspace reversible before a change."

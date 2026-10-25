@@ -85,6 +85,18 @@ class ServerTests(unittest.TestCase):
         self.assertFalse(body["capabilities"]["remote_control"]["allowed"])
         self.assertFalse(body["capabilities"]["payments"]["allowed"])
 
+    def test_world_and_discovery_endpoints(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "sample"
+            p.write_bytes(b"MZ" + b"\x00" * 100)
+            status, body = _post(f"{self.base}/world", {"path": str(p)})
+            self.assertEqual(status, 200)
+            self.assertIn("summary", body)
+            status, body = _post(f"{self.base}/discover", {"path": str(p)})
+            self.assertEqual(status, 200)
+            self.assertIn("opportunities", body)
+            self.assertIn("mission", body)
+
     def test_api_modify_and_download(self):
         with tempfile.TemporaryDirectory() as d:
             src = Path(d) / "data.bin"

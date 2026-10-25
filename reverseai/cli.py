@@ -2,6 +2,8 @@
 
 Commands:
   analyze <file>            static analysis report
+  world <file>              build a world model for a target
+  discover <file>           propose evidence-backed opportunities
   caps                      show host sandbox/analysis capabilities
   readiness <file>          can this target be executed and verified here?
   sandbox run -- <argv...>  run a command in the hardened sandbox
@@ -175,6 +177,58 @@ def _cmd_approvals(args: argparse.Namespace) -> int:
                   file=sys.stderr)
         return 0
     return 2
+
+
+def _cmd_world(args: argparse.Namespace) -> int:
+    from .intelligence.world import world_from_analysis
+
+    try:
+        report = analyze_file(args.path)
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    wm = world_from_analysis(report)
+    if args.json:
+        print(json.dumps(wm.to_dict(), indent=2))
+    else:
+        print(json.dumps(wm.summary(), indent=2))
+        if args.unresolved:
+            for row in wm.unresolved()[:args.limit]:
+                print(f"- {row['type']}: {row['name']} ({row['confidence']})")
+    return 0
+
+
+def _cmd_discover(args: argparse.Namespace) -> int:
+    from .intelligence.discovery import DiscoveryEngine
+    from .intelligence.world import world_from_analysis
+
+    try:
+        report = analyze_file(args.path)
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    wm = world_from_analysis(report)
+    engine = DiscoveryEngine(wm)
+    opps = engine.discover(report, corpus_present=args.corpus,
+                           tests_present=args.tests)
+    if args.json:
+        print(json.dumps({
+            "summary": engine.summary(),
+            "opportunities": [o.to_dict() for o in opps],
+            "hypotheses": [h.to_dict() for h in engine.hypotheses()],
+            "mission": engine.mission(max_steps=args.steps,
+                                      max_effort=args.effort),
+        }, indent=2))
+        return 0
+    print(f"{len(opps)} opportunity(ies) for {args.path}")
+    for o in opps[:args.limit]:
+        approval = " [approval]" if o.requires_approval else ""
+        print(f"\n[{o.category}] {o.title}{approval}")
+        print(f"  confidence: {o.confidence}  score: {o.score}  "
+              f"impact/effort/risk: {o.impact}/{o.effort}/{o.risk}")
+        print(f"  next: {o.proposed_action}")
+    print("\nThis is a plan, not permission to modify the system.")
+    return 0
 
 
 def _cmd_capabilities(args: argparse.Namespace) -> int:
@@ -456,6 +510,7 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
         template=getattr(args, "template", "general"),
         memory=MemoryStore(default_memory_path()),
         skills=load_skills(Path(skills_root) if skills_root else None),
+        mode=getattr(args, "mode", ""),
     )
     job = agent.run(args.goal, target_path=args.target, project_dir=args.project_dir)
 
@@ -485,6 +540,26 @@ def build_parser() -> argparse.ArgumentParser:
     diff.add_argument("b")
     diff.add_argument("--json", action="store_true")
     diff.set_defaults(func=_cmd_diff)
+
+    world = sub.add_parser("world", help="build a world model for a target")
+    world.add_argument("path")
+    world.add_argument("--json", action="store_true")
+    world.add_argument("--unresolved", action="store_true")
+    world.add_argument("--limit", type=int, default=20)
+    world.set_defaults(func=_cmd_world)
+
+    discover = sub.add_parser("discover",
+                              help="propose evidence-backed opportunities")
+    discover.add_argument("path")
+    discover.add_argument("--json", action="store_true")
+    discover.add_argument("--corpus", action="store_true",
+                          help="a behavioral corpus already exists")
+    discover.add_argument("--tests", action="store_true",
+                          help="acceptance tests already exist")
+    discover.add_argument("--steps", type=int, default=6)
+    discover.add_argument("--effort", type=int, default=15)
+    discover.add_argument("--limit", type=int, default=12)
+    discover.set_defaults(func=_cmd_discover)
 
     capabilities = sub.add_parser("capabilities",
                                   help="show the high-risk capability policy")
@@ -609,6 +684,11 @@ def build_parser() -> argparse.ArgumentParser:
                            help="agent role (general|reverse|engineer|researcher|security|mobile|writer|data)")
     agent_run.add_argument("--permission", default="execute",
                            choices=["read", "execute", "write"])
+    agent_run.add_argument("--mode", default="",
+                           choices=["", "ask", "build", "modify", "optimize",
+                                    "autonomous", "direct", "reconstruction",
+                                    "modernisation"],
+                           help="interaction mode; it changes the contract, not the safety rules")
     agent_run.add_argument("--max-steps", type=int, default=24, dest="max_steps")
     agent_run.add_argument("--save", metavar="DIR", help="save the job record JSON here")
     agent_run.set_defaults(func=_cmd_agent_run)

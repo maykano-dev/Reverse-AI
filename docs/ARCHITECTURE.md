@@ -29,6 +29,8 @@ deliberately separated from the host.
 │ Verification (verify/) · Modification (modify/) · Clone (clone/)      │
 │ strategy selector · planner · blast radius · behavioral tests ·       │
 │ durable corpora · replay · repair loop · signed report                │
+│ Intelligence: world · discovery · science · causal · twin · design ·  │
+│ product · proof · orchestration · learning · adapters · extensions    │
 │ Checkpoints · CFG · Decompile · Mobile · OCR · Bench                  │
 ├──────────────────────────────────────────────────────────────────────┤
 │ Security: validation · limits · archive safety · SSRF-safe net ·      │
@@ -50,30 +52,36 @@ deliberately separated from the host.
    server emits a natural `reason` event before the result.
 5. **Observe.** Tools append `Finding`s at the right tier. Research appends
    sources. The conversation tracks sources and artifact metadata.
-6. **Choose, plan, implement.** For a change request, the engine scores the
+6. **Model and discover.** The agent can build a world model and engineering
+   graph, ask it questions, and discover ranked opportunities. Each opportunity
+   points to evidence and a falsifiable next step; it is not permission to act.
+7. **Choose, plan, implement.** For a change request, the engine scores the
    five strategies from the analysis and the goal, recommends or accepts a mode,
    identifies the likely components, estimates the blast radius, and asks a
    clarifying question when the request is ambiguous. `plan_and_modify` then
    runs the smallest strategy that fits through the existing executors.
-7. **Snapshot and locate.** Before a write, the workspace is checkpointed so
+8. **Experiment and simulate.** Hypotheses are tested with predictions and
+   controlled observations; causal claims require explicit mechanisms; the twin
+   names what is simulated and what must be tested live.
+9. **Snapshot and locate.** Before a write, the workspace is checkpointed so
    the change is reversible. The agent can review a bounded diff or restore the
    snapshot. Control-flow analysis and the readiness preflight give it a map and
    an honest answer about whether the target can run here.
-8. **Verify before delivery.** If a binary modification exists and no passing
+10. **Verify before delivery.** If a binary modification exists and no passing
    behavioral test is recorded for this turn, the delivery gate runs
    `verify_modification`. A failure can feed a bounded repair loop; a missing
    expectation is a refusal, not a pass. A scoped change also runs regression
    cases over the untouched behavior. Captured corpora can be loaded with
    `use_corpus`. A site bundle is delivered without a native execution test and
    marked unobtrusively as such.
-9. **Replay.** The signed report includes target and artifact hashes and a
+11. **Replay.** The signed report includes target and artifact hashes and a
    command that reproduces the verification with `reverseai verify`, without a
    model. `reverseai report verify` checks the signature.
-10. **Stream + persist.** Every event is appended to
+12. **Stream + persist.** Every event is appended to
    `<store>/events/<job>.jsonl`; the SSE endpoint replays from `?after=N` and
    then tails the log. Conversation state is saved to
    `<store>/conversations/<cid>.json` after each turn.
-11. **Conclude.** The final answer, evidence summary, sources, usage, mode,
+13. **Conclude.** The final answer, evidence summary, sources, usage, mode,
    strategy, plan, and artifact meta are streamed and saved as a `Job`.
    Unverified artifacts are withheld. `GET /jobs/<id>/report(.html)` builds a
    signed report on demand from the saved record, including the sandbox
@@ -100,6 +108,10 @@ deliberately separated from the host.
 - **Security contracts**: `security.capabilities.CapabilityPolicy` (is the
   feature allowed?), `security.approvals.ApprovalLedger` (did a human approve
   this exact action?), and `security.gate.ActionGate` (both, plus an audit row).
+- **Intelligence contracts**: `WorldModel` / `EngineeringRecord`,
+  `Opportunity`, `Hypothesis` / `Experiment`, `CausalGraph`, `TwinSimulation`,
+  `ProofPackage`, `CapabilityRecord`, `Mission`, and `ToolManifest`. They are
+  plain JSON-serializable structures with provenance, not hidden state.
 
 ## Durable state
 
@@ -113,6 +125,8 @@ deliberately separated from the host.
   corpora/<sha>.json    captured original behavior by target hash
   artifacts/            delivered files keyed by job id
   memory.json           long-term notes
+  world.json            world model / engineering graph for a job
+  proof/               proof.json + PROOF.md for a delivered change
   routines.json         scheduled tasks
   skills/*.md           optional playbooks
   feedback.jsonl        thumbs up/down

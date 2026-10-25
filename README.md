@@ -16,7 +16,7 @@
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
-  <img alt="tests" src="https://img.shields.io/badge/tests-290%2B%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-370%2B%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
   <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
@@ -27,6 +27,7 @@
   <a href="#whats-new-in-02">What's new</a> ·
   <a href="docs/UNIFIED_AGENT.md">Feature map</a> ·
   <a href="docs/POWER.md">Power map</a> ·
+  <a href="docs/INTELLIGENCE_ROADMAP.md">Intelligence roadmap</a> ·
   <a href="docs/VERIFYING.md">Reproducible verification</a> ·
   <a href="#deploy-it">Deploy</a> ·
   <a href="docs/SECURITY.md">Security</a> ·
@@ -45,6 +46,21 @@ Most "AI + reverse engineering" demos stop at describing a binary. ReverseAI clo
 - **Untrusted by default.** Analysis is pure. Execution happens only inside a hardened bubblewrap sandbox (no network, dropped capabilities, read-only system, tmpfs workdir) and is refused when nothing can contain it.
 - **A real working memory.** Durable notes, web research with citations, scheduled routines, specialist agents, and conversations that survive a reload or a server restart.
 - **Mobile first.** A PWA that works as a full chat app on a phone, with a drawer, safe areas, touch-sized controls, and an installable manifest.
+
+## What's new in 0.6
+
+| Area | What landed |
+|---|---|
+| **World model** | `build_world_model` turns a real target into components, sections, functions, dependencies, symbols, unresolved questions, and provenance. It persists and can be queried. |
+| **Autonomous discovery** | `discover_opportunities` proposes hidden features, undocumented interfaces, architecture/dependency risks, missing tests, and unlockable capabilities. Every item has evidence, impact, effort, risk, confidence, and a next step. |
+| **Experiment engine** | Hypothesis → experiment → prediction → controlled observation → update. Environment errors are not counted as evidence. Competing hypotheses are separated by discriminating tests, not votes. |
+| **Causal and twin reasoning** | Causal predictions only travel through explicit mechanisms; correlations stay labeled as hypotheses. The digital twin predicts affected components and names what still needs a live test. |
+| **Design search** | Architecture candidates are scored against weighted objectives and constraints, with a Pareto front and a measured benchmark. Algorithm optimization checks equivalence before claiming speedup. |
+| **Tool forge** | A small tool can be written, tested in the sandbox, promoted only after every test passes, and listed with a manifest. |
+| **Product and proof** | Specification-to-product planning, behavior contracts, proof packages (`proof.json` / `PROOF.md`), independent verification, calibrated confidence, and regression promotion. |
+| **Orchestration** | Model router, universal tool manifests, capability measurement, mission control, budgets, trust tiers, the intelligence foundry, verified skill learning, analogy, and failure review. |
+| **Five modes** | Ask, Build, Modify, Optimize, Autonomous Mission. The mode changes the contract with the user, not the safety rules. |
+| **Domain contracts** | Hardware, robotics, CAD, network, security, and computer-operator adapters return inventory, hypotheses, a simulation plan, and explicit refusals. They do not claim physical or live-system capability. |
 
 ## What's new in 0.5
 
@@ -135,6 +151,10 @@ python3 -m reverseai analyze /usr/bin/objdump
 # Structural diff between two binaries
 python3 -m reverseai diff ./app ./app.patched
 
+# Build an evidence-backed world model and discover opportunities
+python3 -m reverseai world ./app --unresolved
+python3 -m reverseai discover ./app --limit 8
+
 # What can this host do (sandbox backends, emulators, optional libs)?
 python3 -m reverseai caps
 
@@ -143,6 +163,11 @@ python3 -m reverseai capabilities
 
 # Can this target be executed and verified here, or only analyzed?
 python3 -m reverseai readiness ./sample
+
+# Ask the agent to discover what nobody asked for
+python3 -m reverseai agent run --mode autonomous \
+  --goal "Investigate this system and tell me what is worth changing." \
+  --target ./sample --permission read
 
 # Basic-block and call graph
 python3 -m reverseai cfg ./sample --functions 8

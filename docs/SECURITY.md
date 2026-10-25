@@ -139,6 +139,26 @@ audited encryption boundary. Until then, refusal is the correct behavior. The
 approval and vault primitives exist so a future implementation cannot invent a
 weaker boundary.
 
+## Discovery, world models, and domain adapters
+
+- `/world` and `/discover` are read-only analysis endpoints. They parse the
+  target and return a model/proposals; they do not execute or modify it.
+- Discovery output is a lead with evidence, not a finding of a vulnerability.
+  The model separates `observed` from `hypothesis`.
+- A causal prediction is only made through an explicitly supplied mechanism.
+  Correlation remains a hypothesis until an intervention or controlled
+  experiment distinguishes it.
+- A digital twin is a model, not the production system. Its hybrid plan names
+  what must be tested live and what remains unknown.
+- Hardware, robotics, CAD, network, and computer-operator adapters are
+  contracts. They do not flash hardware, move a robot, run a geometry kernel,
+  change a live network, or inject desktop input.
+- Forged tools run only in the sandbox and are promoted only after their tests
+  pass. They are not trusted just because the agent wrote them.
+- The intelligence layer does not retrain, self-modify, or self-deploy. The
+  foundry compares candidates against a baseline and a holdout; a human approves
+  a deployment.
+
 ## Verified delivery and reports
 
 - A modified binary is delivered only when `verify_modification` records a
@@ -198,6 +218,13 @@ weaker boundary.
   members, but it is not a substitute for version control.
 - **The replay recipe is not a proof by itself.** It reproduces the declared
   cases. Read the report first, then run it.
+- **Discovery heuristics can be wrong.** A string or symbol is a lead, not a
+  vulnerability, an undocumented API, or a hidden feature. The next step is an
+  experiment, not a claim.
+- **The world model is only as complete as its inputs.** Unmodeled components
+  appear as unknowns; do not treat the twin's prediction as a deployment result.
+- **The foundry and skill learner do not self-deploy.** They compare and record;
+  a human still decides. Cross-customer knowledge transfer is not enabled.
 
 ## Reporting
 

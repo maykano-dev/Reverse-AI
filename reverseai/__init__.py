@@ -5,4 +5,4 @@ loop, the sandbox lab, the modification/verification engines, optional
 decompilation/OCR/clone backends, and the HTTP service + mobile-first UI.
 """
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
