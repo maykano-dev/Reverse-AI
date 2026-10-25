@@ -1,0 +1,24 @@
+# Never bake local state or secrets into an image.
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.claude
+.github
+jobs/
+samples/
+artifacts/
+uploads/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+**/__pycache__/
+**/*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+node_modules/
+.DS_Store

@@ -41,6 +41,9 @@ class ToolContext:
     target_path: str | None = None
     sandbox_policy: Any = None  # SandboxPolicy; typed Any to avoid import cycle
     evidence: Any = None        # EvidenceLog
+    goal: str = ""
+    memory: Any = None          # MemoryStore
+    sources: list[dict[str, Any]] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 
 

@@ -1,0 +1,28 @@
+{
+  "name": "ReverseAI — Understand. Modify. Rebuild.",
+  "short_name": "ReverseAI",
+  "description": "An autonomous engineering agent with a hardened sandbox, real evidence, memory, research with sources, and routines.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fbfbfd",
+  "theme_color": "#0a84ff",
+  "categories": ["developer", "productivity", "security"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New chat",
+      "short_name": "New chat",
+      "url": "/?new=1",
+      "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}

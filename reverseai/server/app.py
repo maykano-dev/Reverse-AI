@@ -2,41 +2,70 @@
 
 Endpoints (JSON in / JSON out):
   GET  /health            -> {status, version}
+  GET  /config            -> readiness + feature flags (never the model)
   GET  /caps              -> host capabilities
+  GET  /templates         -> agent roles / squads
+  GET  /skills            -> installed playbooks
+  GET  /memory            -> long-term notes
+  POST /memory            {text, tags?}
+  DELETE /memory/<id>
+  GET  /routines          -> scheduled tasks
+  POST /routines          {name, goal, schedule, template?, target?}
+  DELETE /routines/<id>
+  POST /routines/<id>/run
+  GET  /usage             -> tokens + estimated cost
+  POST /feedback          {job_id, rating, note?}
   POST /analyze           {path}                 -> AnalysisReport
-  POST /diff              {a, b}                  -> BinaryDiff
+  POST /diff              {a, b}                 -> BinaryDiff
+  POST /modify            {target, patches}      -> patch result + download
+  POST /verify            {original, modified}   -> behavioral comparison
+  POST /clone             {url, rename_*}        -> clone result + download
   GET  /jobs              -> [job summaries]
   GET  /jobs/<id>         -> full job record
-  POST /jobs              {goal, target?, project_dir?, provider?, permission?,
-                           max_steps?}            -> full job record (runs synchronously)
+  GET  /jobs/<id>/events?after=N -> SSE (durable, replayable)
+  POST /jobs/start        {goal, target?, template?, permission?, conversation_id?}
+  POST /jobs              {goal, target?, ...}   -> full job record (synchronous)
+  PUT  /upload            raw bytes, X-Filename header
 
-Security: localhost-only by default; request bodies are size-capped; job ids are
-validated against path traversal by the store.
+Security: localhost by default; optional bearer auth via REVERSEAI_AUTH_TOKEN;
+request bodies are size-capped; job ids are validated against path traversal.
+When auth is enabled, filesystem paths are confined to the store, the working
+directory, and REVERSEAI_ALLOWED_ROOTS.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+import os
 import re
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
-
 from pathlib import Path
+from typing import Any
 
 from .. import __version__
 from ..agent import Agent, Permission, get_provider
+from ..agent.memory import MemoryStore
+from ..agent.skills import load_skills
 from ..agent.store import JobStore
-from ..core import analyze_file
-from ..core.diff import diff_files
+from ..agent.templates import all_templates
+from ..core.analyze import analyze_bytes
+from ..core.diff import diff_reports
+from ..naming import safe_download_name
+from ..routines import RoutineScheduler, RoutineStore
 from ..sandbox import detect_capabilities
-from ..security.validate import ValidationError
+from ..security.validate import ValidationError, read_target
 from ..util.logging import get_logger
 from .runs import RunManager
 
 _log = get_logger("reverseai.server")
 
 _MAX_BODY = 1 * 1024 * 1024
-_UPLOAD_MAX = 4 * 1024 * 1024 * 1024  # 4 GiB — large binaries/archives accepted
+# Large binaries/archives are accepted, but not without a bound: a public
+# instance must not be able to fill the data disk with one request.
+_UPLOAD_MAX = int(os.environ.get("REVERSEAI_UPLOAD_MAX_MB", "512")) * 1024 * 1024
 _PERM = {"read": Permission.READ, "execute": Permission.EXECUTE, "write": Permission.WRITE}
 _JOB_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)$")
 _EVENTS_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/events$")
@@ -44,25 +73,96 @@ _JOB_ARTIFACT_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/artifact$")
 _ARTIFACT_PATH = re.compile(r"^/conversations/(conv_[A-Za-z0-9]+)/artifact$")
 _FILES_PATH = re.compile(r"^/files/([a-f0-9]{12})/([A-Za-z0-9._-]+)$")
 _PREVIEW_PATH = re.compile(r"^/preview/(conv_[A-Za-z0-9]+)/(.*)$")
+_MEMORY_PATH = re.compile(r"^/memory/(mem_[A-Za-z0-9]+)$")
+_ROUTINE_PATH = re.compile(r"^/routines/(rt_[A-Za-z0-9]+)$")
+_ROUTINE_RUN_PATH = re.compile(r"^/routines/(rt_[A-Za-z0-9]+)/run$")
+_JOB_CANCEL_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/cancel$")
+_VENDOR_PATH = re.compile(r"^/vendor/([A-Za-z0-9._-]+)$")
 _STATIC_DIR = Path(__file__).parent / "static"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
+
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: https:; "
+    "font-src 'self' data:; "
+    "connect-src 'self'; "
+    "frame-src 'self'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
 
 
 class _Handler(BaseHTTPRequestHandler):
     store: JobStore = None  # type: ignore[assignment]
     runs: RunManager = None  # type: ignore[assignment]
+    memory: MemoryStore = None  # type: ignore[assignment]
+    routines: RoutineStore = None  # type: ignore[assignment]
+    skills: list = []
     server_version = f"ReverseAI/{__version__}"
 
     # Quieter logging; override to integrate a real logger later.
     def log_message(self, fmt, *args):  # noqa: N802
         pass
 
-    # --- helpers ---
+    # --- auth -----------------------------------------------------------
+    @staticmethod
+    def _token() -> str:
+        return os.environ.get("REVERSEAI_AUTH_TOKEN", "").strip()
+
+    def _token_hash(self) -> str:
+        return hashlib.sha256(self._token().encode("utf-8")).hexdigest()
+
+    def _authorized(self) -> bool:
+        token = self._token()
+        if not token:
+            return True
+        supplied = ""
+        auth = self.headers.get("Authorization", "")
+        if auth.lower().startswith("bearer "):
+            supplied = auth[7:].strip()
+        if not supplied:
+            qs = urllib.parse.urlparse(self.path).query
+            supplied = (urllib.parse.parse_qs(qs).get("token") or [""])[0]
+        if supplied and hmac.compare_digest(supplied, token):
+            self._auth_ok = True
+            return True
+        cookie = self.headers.get("Cookie", "")
+        if f"rvai_auth={self._token_hash()}" in cookie:
+            return True
+        return False
+
+    def _auth_headers(self) -> None:
+        token = self._token()
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        if token and getattr(self, "_auth_ok", False):
+            self.send_header(
+                "Set-Cookie",
+                f"rvai_auth={self._token_hash()}; Path=/; HttpOnly; SameSite=Lax")
+
+    def _require_auth(self) -> bool:
+        if self._authorized():
+            return True
+        self.send_response(401)
+        self._auth_headers()
+        self.send_header("WWW-Authenticate", 'Bearer realm="ReverseAI"')
+        body = json.dumps({"error": "unauthorized"}).encode()
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        return False
+
+    # --- helpers --------------------------------------------------------
     def _send(self, code: int, payload: dict[str, Any]) -> None:
-        _log.info("%s %s -> %s", self.command, self.path, code)
+        _log.info("%s %s -> %s", self.command, self.path.split("?")[0], code)
         body = json.dumps(payload).encode("utf-8")
         self.send_response(code)
+        self._auth_headers()
         self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -81,29 +181,92 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(400, {"error": "invalid JSON body"})
             return None
         if not isinstance(data, dict):
-            self._send(400, {"error": "body must be a JSON object"})
+            self._send(400, {"body must be a JSON object"})
             return None
         return data
 
-    # --- routing ---
+    def _allowed_roots(self) -> list[Path]:
+        # Local mode (no token) may read the working directory for convenience.
+        # A public instance is confined to the store and explicit roots.
+        roots = [self.store.dir]
+        if not self._token():
+            roots.append(Path.cwd())
+        extra = os.environ.get("REVERSEAI_ALLOWED_ROOTS", "")
+        roots += [Path(p) for p in extra.split(os.pathsep) if p.strip()]
+        out: list[Path] = []
+        for p in roots:
+            try:
+                out.append(p.resolve())
+            except OSError:
+                continue
+        return out
+
+    def _path_error(self, path: str | None) -> str | None:
+        """Return an error when a public deployment is asked for an outside path."""
+        if not path or not self._token():
+            return None
+        try:
+            target = Path(path).resolve()
+        except OSError:
+            return "invalid path"
+        for root in self._allowed_roots():
+            try:
+                target.relative_to(root)
+                return None
+            except ValueError:
+                continue
+        return "path is outside the allowed roots for this server"
+
+    def _analyze_path(self, path: str):
+        p = Path(path)
+        # Resolve a symlink (e.g. /usr/bin/objdump on Debian) before the
+        # no-symlink read guard; the resolved path is what gets size-capped.
+        if p.is_symlink():
+            p = p.resolve()
+        data = read_target(p)
+        return analyze_bytes(data, path=str(p))
+
+    # --- routing --------------------------------------------------------
     def do_GET(self):  # noqa: N802
         path = self.path.split("?", 1)[0]
         if path in ("/", "/index.html"):
-            return self._send_static("index.html", "text/html; charset=utf-8")
-        if path == "/app.js":
-            return self._send_static("app.js", "application/javascript; charset=utf-8")
+            # The shell is public so the login screen can load; every API call
+            # behind it is still authenticated.
+            return self._send_static("index.html", "text/html; charset=utf-8", csp=True)
+        if path in ("/app.js", "/style.css", "/manifest.webmanifest", "/sw.js", "/icon.svg"):
+            return self._serve_asset(path)
+        vm = _VENDOR_PATH.match(path)
+        if vm:
+            return self._serve_asset(f"/vendor/{vm.group(1)}")
         if path == "/health":
             return self._send(200, {"status": "ok", "version": __version__})
         if path == "/config":
-            return self._send(200, {"ready": self._provider_ready()})
+            return self._send(200, self._config_payload())
+
+        if not self._require_auth():
+            return
+
         if path == "/caps":
             caps = detect_capabilities()
             payload = caps.to_dict()
             payload["can_run_untrusted"] = caps.can_run_untrusted()
             payload["best_isolation"] = caps.best_isolation()
             return self._send(200, payload)
+        if path == "/templates":
+            return self._send(200, {"templates": [t.to_dict() for t in all_templates()]})
+        if path == "/skills":
+            return self._send(200, {"skills": [s.to_dict() for s in self.skills]})
+        if path == "/memory":
+            return self._send(200, {"notes": self.memory.all()})
+        if path == "/routines":
+            return self._send(200, {"routines": [_routine_json(r) for r in self.routines.all()]})
+        if path == "/usage":
+            return self._send(200, self.store.usage_summary())
+        if path == "/feedback":
+            return self._send(200, {"feedback": self.store.feedback()})
         if path == "/jobs":
             return self._send(200, {"jobs": self.store.list_summaries()})
+
         em = _EVENTS_PATH.match(path)
         if em:
             return self._stream_events(em.group(1))
@@ -130,6 +293,8 @@ class _Handler(BaseHTTPRequestHandler):
         return self._send(404, {"error": "not found"})
 
     def do_POST(self):  # noqa: N802
+        if not self._require_auth():
+            return
         body = self._read_json()
         if body is None:
             return
@@ -147,24 +312,81 @@ class _Handler(BaseHTTPRequestHandler):
             return self._run_job(body)
         if self.path == "/jobs/start":
             return self._start_run(body)
+        cm = _JOB_CANCEL_PATH.match(self.path)
+        if cm:
+            ok = self.runs.cancel(cm.group(1))
+            return self._send(200 if ok else 404,
+                              {"cancelled": ok, "id": cm.group(1)})
+        if self.path == "/memory":
+            return self._memory_add(body)
+        if self.path == "/routines":
+            return self._routine_create(body)
+        rm = _ROUTINE_RUN_PATH.match(self.path)
+        if rm:
+            return self._routine_run(rm.group(1))
+        if self.path == "/feedback":
+            return self._feedback(body)
         return self._send(404, {"error": "not found"})
 
     def do_PUT(self):  # noqa: N802
+        if not self._require_auth():
+            return
         # File upload: raw bytes with X-Filename header, streamed to disk.
         if self.path == "/upload":
             return self._upload()
         return self._send(404, {"error": "not found"})
 
     def do_DELETE(self):  # noqa: N802
-        m = _JOB_PATH.match(self.path.split("?", 1)[0])
+        if not self._require_auth():
+            return
+        path = self.path.split("?", 1)[0]
+        mm = _MEMORY_PATH.match(path)
+        if mm:
+            ok = self.memory.delete(mm.group(1))
+            return self._send(200 if ok else 404, {"deleted": ok, "id": mm.group(1)})
+        rm = _ROUTINE_PATH.match(path)
+        if rm:
+            ok = self.routines.delete(rm.group(1))
+            return self._send(200 if ok else 404, {"deleted": ok, "id": rm.group(1)})
+        m = _JOB_PATH.match(path)
         if m:
             ok = self.store.delete(m.group(1))
             return self._send(200 if ok else 404,
                               {"deleted": ok, "id": m.group(1)})
         return self._send(404, {"error": "not found"})
 
-    # --- static + streaming ---
-    def _send_static(self, name: str, content_type: str) -> None:
+    # --- static + streaming --------------------------------------------
+    def _serve_asset(self, path: str) -> None:
+        rel = path.lstrip("/")
+        if ".." in rel or rel.startswith("/"):
+            return self._send(404, {"error": "not found"})
+        full = (_STATIC_DIR / rel).resolve()
+        try:
+            full.relative_to(_STATIC_DIR.resolve())
+        except ValueError:
+            return self._send(404, {"error": "not found"})
+        mime = {
+            ".html": "text/html; charset=utf-8",
+            ".js": "application/javascript; charset=utf-8",
+            ".css": "text/css; charset=utf-8",
+            ".svg": "image/svg+xml",
+            ".webmanifest": "application/manifest+json",
+        }.get(full.suffix.lower(), "application/octet-stream")
+        try:
+            data = full.read_bytes()
+        except OSError:
+            return self._send(404, {"error": "not found"})
+        self.send_response(200)
+        self._auth_headers()
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        if full.suffix == ".html":
+            self.send_header("Content-Security-Policy", _CSP)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_static(self, name: str, content_type: str, csp: bool = False) -> None:
         path = _STATIC_DIR / name
         try:
             data = path.read_bytes()
@@ -172,31 +394,58 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send(404, {"error": "UI not found"})
         _log.info("GET %s -> 200 (static)", self.path)
         self.send_response(200)
+        self._auth_headers()
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        if csp:
+            self.send_header("Content-Security-Policy", _CSP)
         self.end_headers()
         self.wfile.write(data)
 
     @staticmethod
-    def _provider_ready() -> bool:
-        """True if the server-configured model provider can be constructed
-        (its API key is present). Never reveals which provider it is."""
+    def _config_payload() -> dict[str, Any]:
+        """Readiness + features. Never reveals which model/provider is active."""
         import os
 
         from ..agent import get_provider
+        from ..ocr import ocr_available, unlimited_ocr_available
 
         name = os.environ.get("REVERSEAI_PROVIDER", "deepseek")
         try:
             get_provider(name)
-            return True
+            ready = True
         except Exception:
-            return False
+            ready = False
+        return {
+            "ready": ready,
+            "auth_required": bool(os.environ.get("REVERSEAI_AUTH_TOKEN", "").strip()),
+            "version": __version__,
+            "provider": "configured" if ready else "missing",
+            "features": {
+                "memory": True,
+                "research": True,
+                "routines": True,
+                "templates": True,
+                "sources": True,
+                "usage": True,
+                "feedback": True,
+                "durable_runs": True,
+            },
+            "ocr": {
+                "unlimited": unlimited_ocr_available(),
+                "tesseract": ocr_available(),
+            },
+            "budget_usd": _budget(),
+            "templates": [t.id for t in all_templates()],
+        }
 
     def _start_run(self, body) -> None:
         stream_id, conversation_id, error = self.runs.start(body)
         if error:
-            return self._send(400, {"error": error})
+            code = 402 if error.startswith("monthly budget") else (
+                409 if "no longer available" in error else 400)
+            return self._send(code, {"error": error})
         return self._send(200, {"job_id": stream_id, "conversation_id": conversation_id})
 
     def _upload(self) -> None:
@@ -208,8 +457,6 @@ class _Handler(BaseHTTPRequestHandler):
         raw_name = self.headers.get("X-Filename", "upload.bin")
         safe = _SAFE_NAME.sub("_", Path(raw_name).name)[:200] or "upload.bin"
         import uuid
-        # Store under a per-upload subdir so the original filename is preserved
-        # (and never leaks an id prefix into a delivered artifact's name).
         uploads = Path(self.store.dir) / "uploads" / uuid.uuid4().hex[:12]
         uploads.mkdir(parents=True, exist_ok=True)
         dest = uploads / safe
@@ -229,18 +476,16 @@ class _Handler(BaseHTTPRequestHandler):
         except OSError as exc:
             dest.unlink(missing_ok=True)
             return self._send(400, {"error": f"upload failed: {exc}"})
-        # Identify the uploaded file (format or archive type) for the UI, and —
-        # for a reasonably sized binary — a quick arch/bits preview.
         kind, arch, bits = "unknown", None, None
         try:
             from ..core.identify import detect_format
             from ..security.archive import is_archive
-            head = dest.open("rb").read(512)
+            with dest.open("rb") as fh:
+                head = fh.read(512)
             fmt = detect_format(head)
             kind = fmt.value if fmt.value != "unknown" else (is_archive(head) or "unknown")
             if fmt.value != "unknown" and written <= 256 * 1024 * 1024:
-                from ..core import analyze_file
-                rep = analyze_file(str(dest))
+                rep = self._analyze_path(str(dest))
                 arch, bits = rep.arch.value, rep.bits
         except Exception:
             pass
@@ -262,9 +507,9 @@ class _Handler(BaseHTTPRequestHandler):
             data = Path(path).read_bytes()
         except OSError as exc:
             return self._send(404, {"error": str(exc)})
-        # Strip the "<job_id>__" storage prefix from the download name if present.
-        name = Path(path).name.split("__", 1)[-1]
+        name = safe_download_name(Path(path).name.split("__", 1)[-1])
         self.send_response(200)
+        self._auth_headers()
         self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Disposition", f'attachment; filename="{name}"')
         self.send_header("Content-Length", str(len(data)))
@@ -272,26 +517,36 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _stream_events(self, job_id: str) -> None:
+        qs = urllib.parse.urlparse(self.path).query
+        after = (urllib.parse.parse_qs(qs).get("after") or ["0"])[0]
+        try:
+            after_n = int(after)
+        except ValueError:
+            after_n = 0
         self.send_response(200)
+        self._auth_headers()
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
         self.send_header("X-Accel-Buffering", "no")
         self.end_headers()
         try:
-            for chunk in self.runs.stream(job_id):
+            for chunk in self.runs.stream(job_id, after=after_n):
                 self.wfile.write(chunk)
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
-            pass  # client disconnected; nothing to do
+            pass
 
-    # --- handlers ---
+    # --- handlers -------------------------------------------------------
     def _analyze(self, body):
         path = body.get("path")
         if not path:
             return self._send(400, {"error": "missing 'path'"})
+        err = self._path_error(path)
+        if err:
+            return self._send(403, {"error": err})
         try:
-            report = analyze_file(path)
+            report = self._analyze_path(path)
         except (ValidationError, OSError) as exc:
             return self._send(400, {"error": str(exc)})
         return self._send(200, report.to_dict())
@@ -300,14 +555,17 @@ class _Handler(BaseHTTPRequestHandler):
         a, b = body.get("a"), body.get("b")
         if not a or not b:
             return self._send(400, {"error": "missing 'a' or 'b'"})
+        for p in (a, b):
+            err = self._path_error(p)
+            if err:
+                return self._send(403, {"error": err})
         try:
-            d = diff_files(a, b)
+            d = diff_reports(self._analyze_path(a), self._analyze_path(b))
         except (ValidationError, OSError) as exc:
             return self._send(400, {"error": str(exc)})
         return self._send(200, d.to_dict())
 
-    # --- engine REST endpoints (binary modification / verification / clone) ---
-
+    # --- engine REST endpoints -----------------------------------------
     def _api_out(self) -> tuple[Path, str]:
         import uuid
 
@@ -323,13 +581,16 @@ class _Handler(BaseHTTPRequestHandler):
         patches_in = body.get("patches")
         if not target or not isinstance(patches_in, list) or not patches_in:
             return self._send(400, {"error": "need 'target' and non-empty 'patches'"})
+        err = self._path_error(target)
+        if err:
+            return self._send(403, {"error": err})
         try:
             patches = [
                 BytePatch(offset=int(p["offset"]), data=bytes.fromhex(p["hex"]),
                           expected_original=bytes.fromhex(p["expect_hex"]) if p.get("expect_hex") else None)
                 for p in patches_in
             ]
-        except (KeyError, ValueError) as exc:
+        except (KeyError, ValueError, PatchError) as exc:
             return self._send(400, {"error": f"bad patch spec: {exc}"})
         out, token = self._api_out()
         try:
@@ -346,6 +607,10 @@ class _Handler(BaseHTTPRequestHandler):
         original, modified = body.get("original"), body.get("modified")
         if not original or not modified:
             return self._send(400, {"error": "need 'original' and 'modified'"})
+        for p in (original, modified):
+            err = self._path_error(p)
+            if err:
+                return self._send(403, {"error": err})
         report = compare_execution(original, modified, body.get("args", []))
         return self._send(200 if report.ran else 400, report.to_dict())
 
@@ -370,10 +635,7 @@ class _Handler(BaseHTTPRequestHandler):
         return self._send(200, d)
 
     def _proxy_browse(self) -> None:
-        """Browsing proxy: fetch an external URL and serve it embeddable."""
-        import urllib.parse
-
-        from ..clone.proxy import PROXY_PREFIX, ProxyError, fetch, rewrite_html
+        from ..clone.proxy import ProxyError, fetch, rewrite_html
 
         qs = urllib.parse.urlparse(self.path).query
         url = urllib.parse.parse_qs(qs).get("url", [None])[0]
@@ -387,7 +649,8 @@ class _Handler(BaseHTTPRequestHandler):
                     f"<h3>Could not open this page</h3><p>{_html_escape(str(exc))}</p>"
                     "</body>")
             return self._serve_raw(page.encode(), "text/html; charset=utf-8")
-        is_html = "text/html" in ctype.lower() or (not ctype and data[:15].lstrip().lower().startswith(b"<!doctype") )
+        is_html = "text/html" in ctype.lower() or (
+            not ctype and data[:15].lstrip().lower().startswith(b"<!doctype"))
         if is_html:
             html = rewrite_html(data.decode("utf-8", "replace"), final_url)
             return self._serve_raw(html.encode("utf-8"), "text/html; charset=utf-8")
@@ -395,10 +658,10 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _serve_raw(self, data: bytes, ctype: str) -> None:
         self.send_response(200)
+        self._auth_headers()
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
-        # Explicitly do NOT set X-Frame-Options so the preview can embed it.
         self.end_headers()
         try:
             self.wfile.write(data)
@@ -406,7 +669,6 @@ class _Handler(BaseHTTPRequestHandler):
             pass
 
     def _serve_preview(self, cid: str, relpath: str) -> None:
-        """Serve a cloned/built site live so it can render in the preview pane."""
         import mimetypes
 
         conv = self.runs.conversation(cid)
@@ -431,6 +693,7 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send(404, {"error": "not found"})
         ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
         self.send_response(200)
+        self._auth_headers()
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
@@ -450,37 +713,117 @@ class _Handler(BaseHTTPRequestHandler):
         goal = body.get("goal")
         if not goal:
             return self._send(400, {"error": "missing 'goal'"})
-        provider_name = body.get("provider", "deepseek")
+        for p in (body.get("target"), body.get("project_dir")):
+            err = self._path_error(p)
+            if err:
+                return self._send(403, {"error": err})
+        provider_name = os.environ.get("REVERSEAI_PROVIDER") or body.get("provider", "deepseek")
         perm = _PERM.get(body.get("permission", "execute"))
         if perm is None:
             return self._send(400, {"error": "permission must be read|execute|write"})
         try:
             provider = get_provider(provider_name)
-        except Exception as exc:  # provider/config error
+        except Exception as exc:
             return self._send(400, {"error": f"provider error: {exc}"})
 
         agent = Agent(provider, max_permission=perm,
-                      max_steps=int(body.get("max_steps", 24)))
+                      max_steps=max(1, min(int(body.get("max_steps", 24)), 64)),
+                      template=body.get("template", "general"),
+                      memory=self.memory, skills=self.skills)
         try:
             job = agent.run(goal, target_path=body.get("target"),
                             project_dir=body.get("project_dir"))
         except Exception as exc:
             return self._send(500, {"error": f"job failed: {exc}"})
+        if job.artifact_meta.get("path"):
+            self.store.save_artifact(job.id, job.artifact_meta["path"])
         self.store.save(job)
         return self._send(200, job.to_dict())
 
+    # --- memory / routines / feedback ----------------------------------
+    def _memory_add(self, body):
+        text = body.get("text")
+        if not text:
+            return self._send(400, {"error": "missing 'text'"})
+        try:
+            note = self.memory.add(text, tags=body.get("tags"), source="user")
+        except ValueError as exc:
+            return self._send(400, {"error": str(exc)})
+        return self._send(200, {"note": note})
+
+    def _routine_create(self, body):
+        goal = body.get("goal")
+        schedule = body.get("schedule")
+        if not goal or not isinstance(schedule, dict):
+            return self._send(400, {"error": "need 'goal' and 'schedule' object"})
+        perm = str(body.get("permission", "write")).lower()
+        if perm not in _PERM:
+            return self._send(400, {"error": "permission must be read|execute|write"})
+        try:
+            r = self.routines.add(
+                body.get("name") or goal, goal, schedule,
+                template=body.get("template", "general"),
+                target=body.get("target"), permission=perm)
+        except (ValueError, TypeError) as exc:
+            return self._send(400, {"error": str(exc)})
+        return self._send(200, {"routine": _routine_json(r)})
+
+    def _routine_run(self, routine_id: str):
+        r = self.routines.get(routine_id)
+        if r is None:
+            return self._send(404, {"error": "no such routine"})
+        stream_id, _cid, error = self.runs.start({
+            "goal": r.goal, "target": r.target, "template": r.template,
+            "permission": r.permission,
+        })
+        if error:
+            return self._send(400, {"error": error})
+        import time
+
+        r.last_run = time.time()
+        r.last_job = stream_id
+        from ..routines import compute_next
+
+        if r.schedule.get("kind") == "once":
+            r.next_run = None
+            r.enabled = False
+        else:
+            r.next_run = compute_next(r.schedule, last_run=r.last_run)
+        self.routines.update(r)
+        return self._send(200, {"job_id": stream_id, "routine": _routine_json(r)})
+
+    def _feedback(self, body):
+        rating = body.get("rating")
+        if rating not in ("up", "down"):
+            return self._send(400, {"error": "rating must be 'up' or 'down'"})
+        row = self.store.add_feedback(
+            str(body.get("job_id") or ""), rating, str(body.get("note") or ""))
+        return self._send(200, {"ok": True, "feedback": row})
+
 
 class ReverseAIServer:
-    """Thin wrapper owning the ThreadingHTTPServer and its store."""
+    """Thin wrapper owning the ThreadingHTTPServer, store, memory, and scheduler."""
 
     def __init__(self, host: str = "127.0.0.1", port: int = 8077,
                  store_dir: str = "./jobs") -> None:
         store = JobStore(store_dir)
-        runs = RunManager(store)
-        handler = type("BoundHandler", (_Handler,), {"store": store, "runs": runs})
+        memory = MemoryStore(Path(store_dir) / "memory.json")
+        skills_dir = os.environ.get("REVERSEAI_SKILLS") or (Path(store_dir) / "skills")
+        skills = load_skills(skills_dir)
+        routines = RoutineStore(Path(store_dir) / "routines.json")
+        runs = RunManager(store, memory=memory, skills=skills, routines=routines)
+        self.scheduler = RoutineScheduler(routines, runs)
+        handler = type("BoundHandler", (_Handler,), {
+            "store": store, "runs": runs, "memory": memory,
+            "routines": routines, "skills": skills,
+        })
         self.httpd = ThreadingHTTPServer((host, port), handler)
         self.store = store
+        self.memory = memory
+        self.routines = routines
         self.runs = runs
+        self.skills = skills
+        self.scheduler.start()
 
     @property
     def address(self) -> tuple[str, int]:
@@ -490,8 +833,27 @@ class ReverseAIServer:
         self.httpd.serve_forever()
 
     def shutdown(self) -> None:
+        self.scheduler.stop()
         self.httpd.shutdown()
         self.httpd.server_close()
+
+
+def _routine_json(r) -> dict[str, Any]:
+    d = r.to_dict()
+    for key in ("next_run", "last_run"):
+        if d.get(key):
+            import time
+
+            d[key + "_iso"] = time.strftime("%Y-%m-%d %H:%M", time.localtime(d[key]))
+    return d
+
+
+def _budget() -> float | None:
+    raw = os.environ.get("REVERSEAI_MONTHLY_BUDGET", "").strip()
+    try:
+        return float(raw) if raw else None
+    except ValueError:
+        return None
 
 
 def _html_escape(s: str) -> str:
@@ -501,8 +863,11 @@ def _html_escape(s: str) -> str:
 def serve(host: str = "127.0.0.1", port: int = 8077, store_dir: str = "./jobs") -> None:
     srv = ReverseAIServer(host, port, store_dir)
     h, p = srv.address
-    print(f"ReverseAI control API on http://{h}:{p}  (store: {store_dir})")
-    print("Local-only control surface — do not expose to untrusted networks.")
+    auth = "on" if os.environ.get("REVERSEAI_AUTH_TOKEN", "").strip() else "off"
+    print(f"ReverseAI control API on http://{h}:{p}  (store: {store_dir}, auth: {auth})")
+    if auth == "off":
+        print("Auth is off. Keep this bound to localhost, or set "
+              "REVERSEAI_AUTH_TOKEN before exposing it.")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

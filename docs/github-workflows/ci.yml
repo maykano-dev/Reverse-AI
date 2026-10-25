@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install system deps (sandbox + analysis)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap binutils gcc
+          sudo sysctl -w kernel.unprivileged_userns_clone=1 || true
+
+      - name: Install package
+        run: python -m pip install -e .
+
+      - name: Show host capabilities
+        run: python -m reverseai caps
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Check frontend syntax
+        run: node --check reverseai/server/static/app.js
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel
+        run: python -m pip install build && python -m build --wheel
+      - name: Verify UI + decompile assets are packaged
+        run: |
+          python - <<'PY'
+          import zipfile, glob
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          for required in (
+              "reverseai/server/static/index.html",
+              "reverseai/server/static/style.css",
+              "reverseai/server/static/app.js",
+              "reverseai/server/static/vendor/marked.min.js",
+              "reverseai/decompile/scripts/decompile_export.java",
+          ):
+              assert required in names, f"missing from wheel: {required}"
+          print("wheel assets OK:", len(names), "files")
+          PY
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Lint
+        run: ruff check reverseai || true  # advisory for now
+      - name: Byte-compile (syntax check)
+        run: python -m compileall -q reverseai

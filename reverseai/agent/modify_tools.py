@@ -7,9 +7,11 @@ copy in the job workspace; the original is never touched.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from ..modify import BytePatch, PatchError, apply_byte_patches
+from ..naming import artifact_name
 from ..verify import compare_execution
-from .evidence import Confidence
 from .tools import Permission, Tool, ToolContext, ToolResult
 
 
@@ -17,13 +19,6 @@ def _require_target(ctx: ToolContext) -> str:
     if not ctx.target_path:
         raise PatchError("no target set for this job")
     return ctx.target_path
-
-
-def _slug(text: str) -> str:
-    import re
-
-    s = re.sub(r"[^A-Za-z0-9]+", "-", (text or "").strip().lower()).strip("-")
-    return (s or "output")[:48]
 
 
 class ApplyBytePatchTool(Tool):
@@ -63,6 +58,8 @@ class ApplyBytePatchTool(Tool):
         from pathlib import Path
 
         target = _require_target(ctx)
+        if len(args["patches"]) > 1000:
+            return ToolResult.failure("too many patches in one request (max 1000)")
         try:
             patches = [
                 BytePatch(
@@ -75,15 +72,18 @@ class ApplyBytePatchTool(Tool):
         except (ValueError, KeyError) as exc:
             return ToolResult.failure(f"bad patch spec: {exc}")
 
-        # Descriptive output name: "<stem>-modified<suffix>", or the caller's.
+        # Descriptive, unique output name: "<stem>-patched-<intent>-<token>".
         tp = Path(target)
-        out_name = args.get("output_name") or f"{tp.stem}-modified{tp.suffix}"
+        out_name = args.get("output_name") or artifact_name(
+            target, ctx.goal, "patch", suffix=tp.suffix)
         try:
             result = apply_byte_patches(target, patches, ctx.workspace, out_name=out_name)
         except PatchError as exc:
             return ToolResult.failure(str(exc))
 
         ctx.extra["modified_path"] = result.output_path
+        ctx.extra["modified_operation"] = "patch"
+        ctx.extra["modified_label"] = "Patched copy"
         if ctx.evidence is not None:
             ctx.evidence.observed(
                 f"applied {result.patches_applied} patch(es), "
@@ -126,11 +126,11 @@ class VerifyAgainstOriginalTool(Tool):
         modified = ctx.extra.get("modified_path")
         if not modified:
             return ToolResult.failure(
-                "no modified artifact yet — run apply_byte_patch first")
+                "no modified artifact yet - run apply_byte_patch first")
 
         base = ctx.sandbox_policy or SandboxPolicy()
-        policy = replace(base, timeout_seconds=float(
-            args.get("timeout_seconds", base.timeout_seconds)))
+        timeout = min(max(float(args.get("timeout_seconds", base.timeout_seconds)), 0.1), 120.0)
+        policy = replace(base, timeout_seconds=timeout)
         report = compare_execution(target, modified, args.get("args", []), policy)
         if not report.ran:
             return ToolResult.failure(f"verification could not run: {report.error}")
@@ -196,12 +196,16 @@ class AddImportTool(Tool):
         from ..modify.lief_ops import LiefOpError, LiefUnavailable, add_imported_library
 
         target = _require_target(ctx)
+        out_name = artifact_name(target, ctx.goal, "imports",
+                                 suffix=Path(target).suffix)
         try:
             out = add_imported_library(target, ctx.workspace, args["library"],
-                                       args.get("functions"))
+                                       args.get("functions"), out_name=out_name)
         except (LiefUnavailable, LiefOpError) as exc:
             return ToolResult.failure(str(exc))
         ctx.extra["modified_path"] = out
+        ctx.extra["modified_operation"] = "imports"
+        ctx.extra["modified_label"] = f"Added import {args['library']}"
         if ctx.evidence is not None:
             ctx.evidence.observed(f"added import {args['library']}", source=self.name)
         return ToolResult.success(f"wrote {out} with import {args['library']}",
@@ -232,11 +236,16 @@ class AddSectionTool(Tool):
             content = bytes.fromhex(args["content_hex"])
         except ValueError as exc:
             return ToolResult.failure(f"bad content_hex: {exc}")
+        out_name = artifact_name(target, ctx.goal, "section",
+                                 suffix=Path(target).suffix)
         try:
-            out = add_section(target, ctx.workspace, args["name"], content)
+            out = add_section(target, ctx.workspace, args["name"], content,
+                              out_name=out_name)
         except (LiefUnavailable, LiefOpError) as exc:
             return ToolResult.failure(str(exc))
         ctx.extra["modified_path"] = out
+        ctx.extra["modified_operation"] = "section"
+        ctx.extra["modified_label"] = f"Added section {args['name']}"
         return ToolResult.success(f"wrote {out} with section {args['name']}",
                                   output_path=out)
 
@@ -321,14 +330,20 @@ class CloneWebsiteTool(Tool):
         except (CloneError, OSError) as exc:
             return ToolResult.failure(f"clone failed: {exc}")
 
-        # Package the replica with a meaningful name (the new brand, else host).
+        # Package the replica with a meaningful, unique name.
         import urllib.parse
+        parsed = urllib.parse.urlparse(args["url"])
         label = args.get("output_name") or args.get("rename_to") \
-            or urllib.parse.urlparse(args["url"]).hostname or "site"
-        name = _slug(label) + "-site"
+            or parsed.hostname or "site"
+        name = args.get("output_name") or artifact_name(
+            label, ctx.goal, "site", suffix="")
+        if name.lower().endswith(".zip"):
+            name = name[:-4]
         base = Path(ctx.workspace) / name
         zip_path = shutil.make_archive(str(base), "zip", str(site_dir))
         ctx.extra["modified_path"] = zip_path
+        ctx.extra["modified_operation"] = "site"
+        ctx.extra["modified_label"] = "Offline site bundle"
         if ctx.evidence is not None:
             ctx.evidence.verified(
                 f"cloned {args['url']}: {res.pages} page, {res.assets} assets, "

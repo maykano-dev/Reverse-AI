@@ -1,75 +1,119 @@
-# ReverseAI — Architecture
+# ReverseAI: Architecture
 
 ReverseAI is an engineering platform with an AI agent at its center. The model
 is the engineer; the analysis tools are its instruments; the sandbox is its
-workshop. Reasoning is deliberately separated from execution.
+workshop. Reasoning is deliberately separated from execution, and execution is
+deliberately separated from the host.
 
 ## Layers
 
 ```
- ┌─────────────────────────────────────────────────────────────────┐
- │ Interface            CLI today; API + web UI planned              │
- ├─────────────────────────────────────────────────────────────────┤
- │ Agent (agent/)       orchestrator loop · tool registry ·          │
- │                      mediator (policy) · evidence · job record    │
- ├───────────────┬───────────────────────────────┬──────────────────┤
- │ Providers     │ Tools (builtins)              │ Evidence/Job      │
- │ (providers/)  │ analyze/read/strings/disasm/  │ believed/observed │
- │ deepseek·mock │ run_in_sandbox/record_finding │ /verified · audit │
- ├───────────────┴───────────────┬───────────────┴──────────────────┤
- │ Analysis core (core/)         │ Sandbox lab (sandbox/)            │
- │ identify·pe·elf·strings·      │ policy · factory · backends       │
- │ disasm·models(AnalysisReport) │ (bubblewrap·subprocess·…)         │
- ├───────────────────────────────┴───────────────────────────────────┤
- │ Security (security/)   input validation · resource limits         │
- └─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ Interface        CLI · mobile-first PWA · SSE event stream            │
+├──────────────────────────────────────────────────────────────────────┤
+│ Agent            orchestrator · conversation · registry · mediator    │
+│                  evidence · job · narrative · templates · memory      │
+│                  skills · research · routines · pricing               │
+├───────────────┬───────────────────────────────┬──────────────────────┤
+│ Providers     │ Tools                         │ Durable state        │
+│ deepseek      │ analysis · execution ·        │ Job store · events   │
+│ openai-compat │ modification · coding ·       │ conversations ·      │
+│ anthropic     │ memory · research · delegate  │ artifacts · memory   │
+│ ollama/mock   │ skills · routines             │ routines · feedback  │
+├───────────────┴───────────────┬───────────────┴──────────────────────┤
+│ Analysis core (core/)         │ Sandbox lab (sandbox/)               │
+│ identify · pe · elf · macho   │ policy · factory · bwrap · subprocess│
+│ strings · disasm · heuristics │ qiling (optional)                    │
+│ diff · models                 │                                      │
+├───────────────────────────────┴──────────────────────────────────────┤
+│ Verification (verify/) · Modification (modify/) · Clone (clone/)      │
+│ Decompile (decompile/) · Mobile (mobile/) · OCR (ocr/) · Bench        │
+├──────────────────────────────────────────────────────────────────────┤
+│ Security: validation · limits · archive safety · SSRF-safe net        │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-## Request flow (an investigation)
+## Request flow
 
-1. **Intake.** `Agent.run(goal, target)` validates the target
-   (`security.validate.read_target`: size caps, symlink/traversal guards) and
-   opens a `Job` with an ephemeral workspace.
-2. **Reason.** The orchestrator sends the system prompt + conversation + tool
-   specs to the `LLMProvider`.
-3. **Act.** If the model requests tool calls, each goes through the
-   `ToolMediator`: permission-tier check → (optional) confirmation → dispatch →
-   exception containment → audit entry. Tool results return to the model.
-4. **Observe & record.** Tools append `Finding`s to the `EvidenceLog` at the
-   right confidence tier. Execution happens only via `run_in_sandbox`.
-5. **Conclude.** When the model replies with no tool calls, that is the final
-   answer. The `Job` holds the full transcript, audit log, evidence, and usage;
-   `Job.report()` renders a tier-separated summary.
+1. **Intake.** `security.validate.read_target` enforces size caps and refuses
+   symlinks. A `Conversation` gets a persistent workspace under the store when
+   it is created by the server.
+2. **Plan.** The template and target shape a short plan. The server emits
+   `start` and `plan` events.
+3. **Reason.** The provider receives the system prompt, template addendum,
+   memory context, skill list, conversation, and tool specs.
+4. **Act.** Every tool call goes through `ToolMediator`: permission ceiling,
+   optional confirmation, dispatch, exception containment, audit entry. The
+   server emits a natural `reason` event before the result.
+5. **Observe.** Tools append `Finding`s at the right tier. Research appends
+   sources. The conversation tracks sources and artifact metadata.
+6. **Stream + persist.** Every event is appended to
+   `<store>/events/<job>.jsonl`; the SSE endpoint replays from `?after=N` and
+   then tails the log. Conversation state is saved to
+   `<store>/conversations/<cid>.json` after each turn.
+7. **Conclude.** The final answer, evidence summary, sources, usage, and
+   artifact meta are streamed and saved as a `Job`.
 
-## Key contracts (stable; change deliberately)
+## Key contracts
 
-- **`core.models.AnalysisReport`** — JSON-serializable truth about a binary.
-  Shared by tools, API, and (later) training-data collection.
-- **`agent.tools.Tool`** — name + JSON-Schema params + permission tier + `run`.
-  Adding a capability = adding a Tool; nothing else changes.
-- **`agent.providers.base.LLMProvider`** — `chat(messages, tools) -> LLMResponse`.
-  The only seam to the model. In-house model slots in here later.
-- **`sandbox.base.Sandbox`** — `run(argv, policy) -> ExecResult` + an
-  `isolation_level`. New isolation tech (qiling, qemu, gVisor) = a new backend
-  registered with the factory; the agent is unaffected.
+- **`core.models.AnalysisReport`**: JSON-serializable truth about a binary.
+- **`agent.tools.Tool`**: name + JSON-Schema parameters + permission tier + run.
+- **`agent.providers.base.LLMProvider`**: `chat(messages, tools) -> LLMResponse`.
+  The only seam to the model.
+- **`sandbox.base.Sandbox`**: `run(argv, policy) -> ExecResult` + isolation level.
+- **`agent.job.Job`**: the durable record of a turn.
+- **`agent.memory.MemoryStore`** and **`routines.RoutineStore`**: small,
+  human-editable JSON stores with atomic writes.
+- **Event stream**: `start`, `plan`, `step`, `reason`, `assistant`,
+  `tool_result`, `source`, `finding`, `final`, `error`.
 
-## Extension points (the roadmap, in code terms)
+## Durable state
+
+```
+<store>/
+  job_*.json            one record per turn
+  events/*.jsonl        replayable SSE log
+  conversations/*.json  messages, evidence, target, workspace, sources
+  workspaces/<cid>/     persistent per-conversation scratch space
+  artifacts/            delivered files keyed by job id
+  memory.json           long-term notes
+  routines.json         scheduled tasks
+  skills/*.md           optional playbooks
+  feedback.jsonl        thumbs up/down
+```
+
+The event log is the source of truth for a live stream; the job record is the
+source of truth for a finished turn. A reload can reattach to the first and a
+restart can restore the second.
+
+## Security boundaries
+
+- The model never gets raw host access; it requests tools.
+- Untrusted code runs only in the sandbox; execution is refused when no
+  isolating backend exists.
+- Server paths are allowlisted when auth is enabled.
+- Research and clone fetch only public hosts, validate every redirect, and cap
+  response size.
+- Previewed/cloned pages run in an opaque-origin iframe.
+- Headless browser rendering is opt-in; Ghidra is documented as a host parser.
+
+## Extension points
 
 | Next capability | Where it plugs in |
 |---|---|
-| Deeper disassembly / CFG | optional capstone/angr behind `core/disasm` + a new Tool |
-| Binary **modification** | new `modify/` package (LIEF-backed) + WRITE-tier tools |
-| Cross-platform execution | `QilingSandbox` backend (emulation) registered with factory |
-| Full-system VM | `QemuSandbox` backend for Windows/foreign-arch targets |
-| Ghidra decompilation | a tool that drives Ghidra headless inside the sandbox |
-| Verification/regression | a `verify/` module that diffs original vs modified behavior |
-| API + jobs at scale | FastAPI over `Agent`/`Job`; Redis workers; Postgres job store |
-| In-house model | a new `LLMProvider`; train on collected `Job` records |
+| MCP client | a new tool namespace + mediator permissions |
+| Hooks | a policy layer around mediator dispatch |
+| Docker workstation | a new sandbox/desktop backend + preview bridge |
+| Telegram | a long-poll bridge around `RunManager` |
+| Object storage | a `JobStore` backend |
+| In-house model | a new `LLMProvider` |
+| More parsers | `core/` plus an analysis tool |
+| More specialists | `agent/templates.py` |
 
 ## Design rules
 
-- The model never gets raw host access; it only requests Tools.
-- Untrusted code runs only in the sandbox, never on the host.
-- Optional heavy libraries (lief/capstone/qiling/angr) enhance but are never
-  required — the core must import and run on a clean stdlib install.
-- Every capability ships with a test. A green build is not a working feature.
+- The core must import and run on a clean stdlib install.
+- A capability ships with a test and an honest limitation note.
+- Optional heavy libraries enhance, never gate, the core.
+- Keep `AnalysisReport`, `Tool`, `LLMProvider`, and `Sandbox` stable; they are
+  the cross-layer contracts.

@@ -2,478 +2,262 @@
 <html lang="en" data-theme="auto">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<meta name="theme-color" content="#0a84ff" />
+<meta name="description" content="ReverseAI — an autonomous agent that understands, modifies, rebuilds, and verifies software. Chat, research, memory, routines, and a hardened sandbox." />
+<meta property="og:title" content="ReverseAI — Understand. Modify. Rebuild." />
+<meta property="og:description" content="An autonomous engineering agent with a hardened sandbox, real evidence, a thinking timeline, memory, research with sources, and routines." />
+<meta property="og:type" content="website" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/style.css" />
 <title>ReverseAI</title>
-<link rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
-<style>
-  :root {
-    --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
-               "Helvetica Neue", Helvetica, Arial, sans-serif;
-    --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-    --accent: #0a84ff; --accent-weak: rgba(10,132,255,.1);
-    --bg: #ffffff; --side: #f6f6f7; --elev: #ffffff; --sunken: #f3f3f5;
-    --text: #1d1d1f; --dim: #86868b; --faint:#a1a1a6;
-    --border: rgba(0,0,0,.08); --border-strong: rgba(0,0,0,.14);
-    --user-bg: #f0f3f8;
-    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 10px 30px rgba(0,0,0,.06);
-    --believed:#d08500; --observed:#0a84ff; --verified:#1a9e45;
-    --radius: 18px;
-  }
-  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-    --bg:#1b1b1d; --side:#141416; --elev:#242427; --sunken:#1f1f22;
-    --text:#f5f5f7; --dim:#9a9aa0; --faint:#6e6e75;
-    --border:rgba(255,255,255,.09); --border-strong:rgba(255,255,255,.16);
-    --user-bg:#2a2d34; --accent-weak:rgba(10,132,255,.16);
-    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 36px rgba(0,0,0,.45);
-    --believed:#ffb340; --observed:#4aa3ff; --verified:#34d158;
-  }}
-  :root[data-theme="dark"]{
-    --bg:#1b1b1d; --side:#141416; --elev:#242427; --sunken:#1f1f22;
-    --text:#f5f5f7; --dim:#9a9aa0; --faint:#6e6e75;
-    --border:rgba(255,255,255,.09); --border-strong:rgba(255,255,255,.16);
-    --user-bg:#2a2d34; --accent-weak:rgba(10,132,255,.16);
-    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 36px rgba(0,0,0,.45);
-    --believed:#ffb340; --observed:#4aa3ff; --verified:#34d158;
-  }
-  *{ box-sizing:border-box; }
-  /* Hide scrollbars everywhere; content still scrolls via wheel/trackpad. */
-  *{ scrollbar-width:none; -ms-overflow-style:none; }
-  *::-webkit-scrollbar{ width:0; height:0; background:transparent; }
-  html,body{ height:100%; margin:0; }
-  body{ font-family:var(--font-ui); background:var(--bg); color:var(--text);
-    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
-  #app{ display:flex; height:100vh; overflow:hidden; }
-
-  /* sidebar */
-  #sidebar{ width:270px; flex:none; background:var(--side); border-right:1px solid var(--border);
-    display:flex; flex-direction:column; transition:width .2s, margin .2s; overflow:hidden; }
-  #app.collapsed #sidebar{ width:0; margin-left:-1px; border-right:none; }
-  .side-head{ display:flex; align-items:center; padding:15px 14px 8px; }
-  .wordmark{ font-size:17px; font-weight:650; letter-spacing:-.02em; display:flex; align-items:center;
-    gap:8px; flex:1; }
-  .mark{ color:var(--accent); display:flex; align-items:center; }
-  .icon{ display:block; }
-  .si{ display:flex; align-items:center; color:var(--dim); }
-  .ghost{ border:1px solid var(--border); background:var(--elev); color:var(--text); width:32px;
-    height:32px; border-radius:9px; cursor:pointer; font-size:14px; display:flex; align-items:center;
-    justify-content:center; }
-  .ghost:hover{ background:var(--sunken); }
-  .ghost.sm{ width:28px; height:28px; border:none; background:none; color:var(--dim); font-size:15px; }
-  .ghost.sm:hover{ background:var(--sunken); color:var(--text); }
-  .side-search{ margin:6px 12px 8px; display:flex; align-items:center; gap:8px; padding:8px 11px;
-    background:var(--elev); border:1px solid var(--border); border-radius:11px; color:var(--dim); }
-  .side-search input{ border:none; background:none; outline:none; font-family:var(--font-ui); font-size:13px;
-    color:var(--text); width:100%; }
-  .side-nav{ padding:2px 8px 6px; }
-  .nav-item{ display:flex; align-items:center; gap:11px; padding:9px 11px; border-radius:10px;
-    font-size:13.5px; color:var(--text); cursor:pointer; }
-  .nav-item:hover{ background:var(--sunken); }
-  .nav-item .ni{ width:18px; height:18px; display:flex; align-items:center; justify-content:center; color:var(--dim); }
-  .nav-item:hover .ni, .nav-item.active .ni{ color:var(--accent); }
-  .ni-count{ margin-left:auto; font-size:11px; font-weight:600; background:var(--accent-weak);
-    color:var(--accent); border-radius:999px; padding:1px 8px; }
-  .recents-head{ padding:12px 18px 6px; font-size:11px; font-weight:600; letter-spacing:.05em;
-    text-transform:uppercase; color:var(--faint); }
-  .convos{ flex:1; overflow-y:auto; padding:2px 8px 8px; }
-  .convo{ display:flex; align-items:center; gap:9px; padding:8px 11px; border-radius:9px; font-size:13px;
-    color:var(--dim); cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .convo:hover{ background:var(--sunken); color:var(--text); }
-  .convo.active{ background:var(--accent-weak); color:var(--text); }
-  .convo .cv-ic{ color:var(--faint); font-size:12px; flex:none; }
-  .convo .cv-label{ flex:1; overflow:hidden; text-overflow:ellipsis; }
-  .convo .cv-del{ flex:none; font-size:12px; color:var(--faint); width:20px; height:20px;
-    border-radius:6px; display:flex; align-items:center; justify-content:center; opacity:0;
-    transition:opacity .12s; }
-  .convo:hover .cv-del{ opacity:1; }
-  .convo .cv-del:hover{ background:var(--border); color:#ff453a; }
-  .side-foot{ padding:10px 12px; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px; }
-  .acct{ flex:1; display:flex; align-items:center; gap:10px; padding:5px 6px; border-radius:10px; cursor:default; }
-  .acct-av{ width:30px; height:30px; border-radius:9px; background:var(--accent-weak);
-    color:var(--accent); display:flex; align-items:center; justify-content:center; flex:none; }
-  .acct-meta{ display:flex; flex-direction:column; min-width:0; }
-  .acct-meta b{ font-size:13px; } .acct-meta span{ font-size:11px; color:var(--dim); white-space:nowrap;
-    overflow:hidden; text-overflow:ellipsis; }
-  .host-dot{ width:8px; height:8px; border-radius:50%; background:var(--faint); flex:none; }
-  .host-dot.ok{ background:var(--verified); }
-  .expand-btn{ position:fixed; left:12px; top:12px; z-index:40; width:36px; height:36px; border-radius:10px;
-    border:1px solid var(--border); background:var(--elev); color:var(--text); cursor:pointer; font-size:16px;
-    display:none; box-shadow:var(--shadow); }
-  #app.collapsed .expand-btn{ display:block; }
-  /* artifacts overlay */
-  .sheet{ position:fixed; inset:0; background:rgba(0,0,0,.3); display:none; align-items:center;
-    justify-content:center; z-index:60; }
-  .sheet.show{ display:flex; }
-  .sheet-card{ width:min(540px,92vw); max-height:72vh; overflow:auto; background:var(--bg);
-    border:1px solid var(--border); border-radius:18px; box-shadow:var(--shadow); padding:20px 22px; }
-  .sheet-card h3{ margin:0 0 4px; font-size:17px; }
-  .sheet-card .sub{ color:var(--dim); font-size:13px; margin-bottom:14px; }
-
-  /* main chat */
-  #main{ flex:1; display:flex; flex-direction:column; min-width:0; position:relative; }
-  .thread{ flex:1; overflow-y:auto; scroll-behavior:smooth; }
-  .thread-inner{ max-width:760px; margin:0 auto; padding:32px 28px 24px; }
-  .welcome{ max-width:620px; margin:12vh auto 0; text-align:center; padding:0 24px; }
-  .welcome .big{ color:var(--accent); margin-bottom:18px; display:flex; justify-content:center; }
-  .welcome h1{ font-size:27px; font-weight:650; letter-spacing:-.02em; margin:0 0 8px; }
-  .welcome p{ color:var(--dim); font-size:15px; line-height:1.55; margin:0 auto; max-width:460px; }
-  .suggest{ display:flex; flex-wrap:wrap; gap:9px; justify-content:center; margin-top:22px; }
-  .chip{ font-size:13px; color:var(--text); background:var(--elev); border:1px solid var(--border);
-    border-radius:11px; padding:9px 13px; cursor:pointer; box-shadow:var(--shadow); transition:.15s; }
-  .chip:hover{ border-color:var(--accent); color:var(--accent); }
-
-  .turn{ margin-bottom:26px; animation:rise .28s ease; }
-  @keyframes rise{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
-  .turn.user{ display:flex; justify-content:flex-end; }
-  .turn.user .bubble{ background:var(--user-bg); border-radius:18px 18px 4px 18px; padding:11px 15px;
-    max-width:80%; font-size:14.5px; line-height:1.5; white-space:pre-wrap;
-    overflow-wrap:anywhere; word-break:break-word; }
-  .turn.ai{ display:flex; gap:13px; }
-  .avatar{ width:28px; height:28px; border-radius:8px; flex:none; display:flex; align-items:center;
-    justify-content:center; font-size:15px; color:#fff; margin-top:2px;
-    background:linear-gradient(135deg,#0a84ff,#0a5fd0); }
-  .ai-body{ flex:1; min-width:0; }
-
-  /* working block */
-  .work{ margin-bottom:12px; }
-  .work-head{ display:inline-flex; align-items:center; gap:8px; padding:4px 2px; cursor:pointer;
-    font-size:13.5px; font-weight:550; color:var(--dim); }
-  .work-head .wlabel{ font-weight:550; }
-  .work-head.live .wlabel{ background:linear-gradient(90deg,var(--faint) 20%,var(--text) 50%,var(--faint) 80%);
-    background-size:220% 100%; -webkit-background-clip:text; background-clip:text;
-    -webkit-text-fill-color:transparent; color:transparent; animation:shimmer 1.5s linear infinite; }
-  @keyframes shimmer{ to{ background-position:-220% 0; } }
-  .work-head .chev{ color:var(--faint); transition:transform .2s; display:flex; }
-  .work:not(.collapsed) .chev{ transform:rotate(180deg); }
-  .work-body{ padding:8px 0 2px 6px; margin-top:4px; display:flex; flex-direction:column; gap:9px;
-    border-left:2px solid var(--border); padding-left:14px; }
-  .work.collapsed .work-body{ display:none; }
-  .act{ font-size:12.5px; display:flex; align-items:flex-start; gap:9px; animation:rise .2s ease; }
-  .act .ic{ width:17px; flex:none; margin-top:1px; display:flex; align-items:center; justify-content:center; color:var(--faint); }
-  .act.ok .ic{ color:var(--verified); } .act.fail .ic{ color:#ff453a; }
-  .act .ic svg{ color:inherit; }
-  .donemark{ display:flex; align-items:center; color:var(--verified); }
-  .qlabel{ font-weight:600; color:var(--text); }
-  .act .tx{ min-width:0; color:var(--dim); }
-  .act .tx b{ font-family:var(--font-mono); font-size:12px; color:var(--text); font-weight:600; }
-  .act.tool .tx{ color:var(--text); }
-  .act .view{ color:var(--accent); cursor:pointer; font-size:11.5px; margin-left:6px; }
-  .act .view:hover{ text-decoration:underline; }
-  .tier{ font-size:9.5px; font-weight:700; padding:1px 6px; border-radius:5px; text-transform:uppercase;
-    letter-spacing:.03em; flex:none; margin-top:1px; }
-  .tier.believed{ background:rgba(208,133,0,.14); color:var(--believed); }
-  .tier.observed{ background:var(--accent-weak); color:var(--observed); }
-  .tier.verified{ background:rgba(26,158,69,.14); color:var(--verified); }
-
-  .answer{ font-size:15px; line-height:1.62; word-wrap:break-word; }
-  .answer.plain{ white-space:pre-wrap; }
-  .answer p{ margin:0 0 11px; } .answer p:last-child{ margin-bottom:0; }
-  .answer h1,.answer h2,.answer h3{ font-weight:650; letter-spacing:-.01em; margin:16px 0 8px; }
-  .answer h1{ font-size:20px; } .answer h2{ font-size:17px; } .answer h3{ font-size:15px; }
-  .answer ul,.answer ol{ margin:0 0 11px; padding-left:22px; } .answer li{ margin:3px 0; }
-  .answer code{ font-family:var(--font-mono); font-size:12.5px; background:var(--sunken);
-    border:1px solid var(--border); border-radius:5px; padding:1px 5px; }
-  .answer pre{ background:var(--sunken); border:1px solid var(--border); border-radius:12px;
-    padding:13px 15px; overflow-x:auto; margin:0 0 12px; }
-  .answer pre code{ background:none; border:none; padding:0; font-size:12.5px; line-height:1.55; }
-  .codeblock{ border:1px solid var(--border); border-radius:12px; overflow:hidden; margin:0 0 12px; }
-  .codeblock pre{ margin:0; border:none; border-radius:0; }
-  .cb-bar{ display:flex; align-items:center; justify-content:space-between; padding:6px 8px 6px 13px;
-    background:var(--sunken); border-bottom:1px solid var(--border); }
-  .cb-lang{ font-family:var(--font-mono); font-size:10.5px; color:var(--dim); text-transform:uppercase;
-    letter-spacing:.05em; }
-  .cb-copy{ border:none; background:none; color:var(--dim); cursor:pointer; padding:4px; border-radius:7px;
-    display:flex; align-items:center; }
-  .cb-copy:hover{ background:var(--border); color:var(--text); }
-  .answer a{ color:var(--accent); text-decoration:none; } .answer a:hover{ text-decoration:underline; }
-  .answer blockquote{ border-left:3px solid var(--border-strong); margin:0 0 11px; padding:2px 0 2px 14px;
-    color:var(--dim); }
-  .answer table{ border-collapse:collapse; font-size:13px; margin:0 0 12px; }
-  .answer th,.answer td{ border:1px solid var(--border); padding:6px 10px; text-align:left; }
-  .send.stop{ background:var(--text); }
-  .evi-row{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
-  .evi{ font-size:11.5px; padding:4px 10px; border-radius:8px; display:flex; align-items:center; gap:6px;
-    border:1px solid var(--border); color:var(--dim); }
-  .evi b{ color:var(--text); }
-
-  /* composer */
-  .composer-wrap{ padding:10px 20px 20px; background:linear-gradient(to top,var(--bg) 55%,transparent); }
-  .composer{ max-width:760px; margin:0 auto; background:var(--elev); border:1px solid var(--border-strong);
-    border-radius:24px; box-shadow:var(--shadow); padding:8px 8px 8px 8px; transition:border-color .15s; }
-  .composer:focus-within{ border-color:var(--accent); box-shadow:0 0 0 4px var(--accent-weak),var(--shadow); }
-  .ctools{ display:flex; gap:8px; padding:4px 8px 2px; align-items:center; flex-wrap:wrap; }
-  .ctools input, .ctools select{ font-family:var(--font-ui); font-size:12.5px; color:var(--text);
-    background:var(--sunken); border:1px solid var(--border); border-radius:9px; padding:6px 9px; outline:none; }
-  .ctools input{ flex:1; min-width:140px; }
-  .ctools select{ cursor:pointer; }
-  .ctools .lbl{ font-size:11px; color:var(--faint); }
-  .cinput{ display:flex; align-items:flex-end; gap:6px; padding:2px 4px; }
-  .cinput textarea{ flex:1; font-family:var(--font-ui); font-size:15px; color:var(--text); background:none;
-    border:none; outline:none; resize:none; padding:9px 6px; max-height:45vh; line-height:1.5;
-    overflow-y:auto; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap; }
-  .attach{ width:36px; height:36px; border-radius:50%; border:none; background:none; color:var(--dim);
-    cursor:pointer; flex:none; display:flex; align-items:center; justify-content:center; transition:.12s; }
-  .attach:hover{ background:var(--sunken); color:var(--text); }
-  .send{ width:36px; height:36px; border-radius:50%; border:none; background:var(--accent); color:#fff;
-    font-size:17px; cursor:pointer; flex:none; transition:.12s; display:flex; align-items:center; justify-content:center; }
-  .send:hover{ filter:brightness(1.08); }
-  .send:disabled{ background:var(--border-strong); cursor:default; }
-  .hint{ max-width:760px; margin:7px auto 0; text-align:center; font-size:11px; color:var(--faint); }
-  /* file chip */
-  .file-chip{ display:flex; align-items:center; gap:9px; margin:4px 6px 2px; padding:8px 12px;
-    background:var(--sunken); border:1px solid var(--border); border-radius:12px; font-size:13px; }
-  .file-chip .fi{ width:30px; height:30px; border-radius:8px; background:var(--accent-weak); color:var(--accent);
-    display:flex; align-items:center; justify-content:center; font-size:15px; flex:none; }
-  .file-chip .fname{ font-weight:550; }
-  .file-chip .fmeta{ color:var(--dim); font-size:11.5px; }
-  .file-chip .kind{ font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
-    padding:2px 7px; border-radius:6px; background:var(--accent-weak); color:var(--accent); }
-  .file-chip .kind.warn{ background:rgba(255,159,10,.16); color:var(--believed); }
-  .file-chip .rm{ margin-left:auto; cursor:pointer; color:var(--faint); font-size:15px; width:24px;
-    height:24px; border-radius:6px; display:flex; align-items:center; justify-content:center; }
-  .file-chip .rm:hover{ background:var(--border); color:var(--text); }
-  .file-chip.uploading .fmeta::after{ content:" · uploading…"; }
-  /* queued messages */
-  .queued{ max-width:760px; margin:0 auto 7px; display:flex; flex-direction:column; gap:5px; }
-  .qmsg{ display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--dim);
-    background:var(--sunken); border:1px solid var(--border); border-radius:10px; padding:7px 11px; }
-  .qmsg .qx{ margin-left:auto; cursor:pointer; color:var(--faint); }
-  .qmsg .qx:hover{ color:var(--text); }
-  /* artifact download */
-  .artifact{ display:inline-flex; align-items:center; gap:9px; margin-top:13px; padding:11px 15px;
-    background:var(--elev); border:1px solid var(--border-strong); border-radius:13px; cursor:pointer;
-    box-shadow:var(--shadow); transition:.15s; text-decoration:none; color:var(--text); }
-  .artifact:hover{ border-color:var(--accent); }
-  .artifact .ai{ width:34px; height:34px; border-radius:9px; background:var(--accent); color:#fff;
-    display:flex; align-items:center; justify-content:center; font-size:16px; }
-  .artifact .at b{ font-size:14px; } .artifact .at span{ display:block; font-size:11.5px; color:var(--dim); }
-  /* drag overlay */
-  .drop-overlay{ position:fixed; inset:0; background:rgba(10,132,255,.08); backdrop-filter:blur(3px);
-    display:none; align-items:center; justify-content:center; z-index:50; }
-  .drop-overlay.show{ display:flex; }
-  .drop-inner{ border:2px dashed var(--accent); border-radius:20px; padding:48px 64px; font-size:18px;
-    font-weight:600; color:var(--accent); background:var(--bg); box-shadow:var(--shadow); }
-
-  /* canvas */
-  #canvas{ width:0; flex:none; background:var(--bg); border-left:1px solid var(--border);
-    display:flex; flex-direction:column; overflow:hidden; transition:width .22s ease; }
-  #canvas.open{ width:46%; }
-  .canvas-head{ display:flex; align-items:center; gap:8px; padding:11px 14px; border-bottom:1px solid var(--border); }
-  .tabs{ display:flex; gap:4px; }
-  .tab{ font-size:12.5px; padding:5px 12px; border-radius:8px; cursor:pointer; color:var(--dim); font-weight:500; }
-  .tab.active{ background:var(--accent-weak); color:var(--accent); }
-  .canvas-body{ flex:1; min-height:0; display:flex; flex-direction:column; }
-  .pane{ display:none; height:100%; overflow:auto; }
-  .pane.active{ display:block; }
-  #editorPane{ padding:0; display:none; flex-direction:column; min-height:0; }
-  #editorPane.active{ display:flex; }
-  .CodeMirror{ height:100% !important; font-family:var(--font-mono) !important; font-size:12.5px;
-    background:var(--sunken) !important; }
-  .vbar{ padding:10px 12px 4px; }
-  .vdrop{ position:relative; display:inline-block; }
-  .vdrop-btn{ display:flex; align-items:center; gap:8px; font-family:var(--font-ui); font-size:12.5px;
-    color:var(--text); background:var(--sunken); border:1px solid var(--border); border-radius:9px;
-    padding:7px 11px; cursor:pointer; min-width:170px; }
-  .vdrop-btn:hover{ border-color:var(--border-strong); }
-  .vchev{ margin-left:auto; color:var(--faint); font-size:11px; }
-  .vdrop-menu{ position:absolute; top:calc(100% + 5px); left:0; min-width:220px; max-height:300px;
-    overflow-y:auto; background:var(--elev); border:1px solid var(--border); border-radius:11px;
-    box-shadow:var(--shadow); padding:5px; display:none; z-index:30; }
-  .vdrop.open .vdrop-menu{ display:block; }
-  .vopt{ font-size:12.5px; padding:8px 10px; border-radius:8px; cursor:pointer; color:var(--text);
-    font-family:var(--font-mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .vopt:hover{ background:var(--accent-weak); color:var(--accent); }
-  .vopt.sel{ background:var(--sunken); }
-  #previewPane{ padding:0; flex-direction:column; min-height:0; }
-  #previewPane.active{ display:flex; }
-  .pv-bar{ display:flex; gap:8px; padding:10px 12px; border-bottom:1px solid var(--border); }
-  .pv-bar input{ flex:1; font-family:var(--font-ui); font-size:13px; color:var(--text); background:var(--sunken);
-    border:1px solid var(--border); border-radius:9px; padding:8px 11px; outline:none; }
-  .pv-bar input:focus{ border-color:var(--accent); }
-  .pv-go{ font-family:var(--font-ui); font-size:13px; font-weight:550; color:#fff; background:var(--accent);
-    border:none; border-radius:9px; padding:8px 14px; cursor:pointer; }
-  .pv-go:hover{ filter:brightness(1.08); }
-  .pv-frame{ flex:1; min-height:0; width:100%; border:none; background:#fff; }
-  .canvas-empty{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    text-align:center; color:var(--dim); font-size:13.5px; padding:0 40px; line-height:1.5; }
-  .canvas-empty .ce-big{ font-size:30px; margin-bottom:12px; opacity:.5; color:var(--accent); }
-  .report{ padding:20px; }
-  .report h3{ font-size:16px; margin:0 0 12px; }
-  .report .kv{ font-size:13px; color:var(--dim); margin-bottom:5px; }
-  .report pre{ white-space:pre-wrap; font-family:var(--font-ui); font-size:14px; line-height:1.6;
-    background:var(--sunken); border:1px solid var(--border); border-radius:12px; padding:15px; margin-top:8px; }
-  .caps-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:18px; }
-  .cap{ display:flex; align-items:center; gap:8px; font-size:12.5px; padding:8px 11px; background:var(--sunken);
-    border:1px solid var(--border); border-radius:10px; }
-  .cap .mk{ width:7px; height:7px; border-radius:50%; background:var(--faint); }
-  .cap.on .mk{ background:var(--verified); }
-  /* Below 1200px the canvas overlays the chat instead of squeezing it. */
-  @media (max-width:1200px){
-    #canvas.open{ position:absolute; right:0; top:0; bottom:0; width:min(560px,86%); z-index:25;
-      box-shadow:var(--shadow); border-left:1px solid var(--border); }
-  }
-  @media (max-width:760px){
-    #sidebar{ position:absolute; left:0; top:0; bottom:0; z-index:35; box-shadow:var(--shadow); }
-    #canvas.open{ width:100%; }
-  }
-  /* mobile-first polish */
-  @media (max-width:600px){
-    .thread-inner{ padding:20px 16px 16px; }
-    .welcome{ margin-top:7vh; } .welcome h1{ font-size:21px; } .welcome p{ font-size:13.5px; }
-    .composer-wrap{ padding:8px 12px 14px; }
-    .composer{ border-radius:20px; }
-    .turn.user .bubble{ max-width:88%; }
-    .hint{ font-size:10.5px; }
-    .suggest{ gap:7px; } .chip{ font-size:12px; padding:8px 11px; }
-    .expand-btn{ width:40px; height:40px; }
-    .cinput textarea{ font-size:16px; } /* avoids iOS zoom-on-focus */
-    .pv-bar input{ font-size:16px; }
-  }
-
-  /* file:// block overlay */
-  .file-block{ position:fixed; inset:0; z-index:9999; display:none; align-items:center; justify-content:center;
-    background:var(--bg); }
-  .file-block.show{ display:flex; }
-  .fb-card{ max-width:440px; text-align:center; padding:36px 32px; }
-  .fb-mark{ color:var(--accent); display:flex; justify-content:center; margin-bottom:18px; }
-  .fb-card h2{ font-size:22px; font-weight:650; letter-spacing:-.02em; margin:0 0 10px; }
-  .fb-card p{ color:var(--dim); font-size:14.5px; line-height:1.55; margin:0 0 16px; }
-  .fb-card code{ display:inline-block; font-family:var(--font-mono); font-size:15px; color:var(--accent);
-    background:var(--accent-weak); border-radius:10px; padding:10px 18px; }
-  .fb-cmd{ margin-top:16px !important; font-size:13px !important; }
-  .fb-cmd b{ font-family:var(--font-mono); color:var(--text); }
-  /* icon buttons hold svgs cleanly */
-  .ghost svg, .attach svg, .send svg, .nav-item svg, .mark svg, .acct-av svg, .big svg, .si svg,
-  .ce-big svg, .fb-mark svg{ display:block; }
-</style>
 </head>
 <body>
 <div id="app">
-  <aside id="sidebar">
+  <div id="scrim"></div>
+
+  <aside id="sidebar" aria-label="Sidebar">
     <div class="side-head">
-      <div class="wordmark"><span class="mark" data-icon="logo" data-size="22"></span> ReverseAI</div>
-      <button class="ghost sm" id="collapseBtn" title="Collapse sidebar" data-icon="chevronLeft"></button>
+      <div class="wordmark"><span class="mark" data-icon="logo" data-size="19"></span> ReverseAI</div>
+      <button class="ghost sm" id="collapseBtn" title="Collapse sidebar" aria-label="Collapse sidebar" data-icon="chevronLeft"></button>
     </div>
+
+    <button class="new-chat" id="navNew">
+      <span data-icon="plus" data-size="17"></span>
+      <span>New chat</span>
+      <span class="kbd">⌘K</span>
+    </button>
+
     <div class="side-search">
-      <span class="si" data-icon="search" data-size="16"></span>
-      <input type="text" id="search" placeholder="Search" />
+      <span data-icon="search" data-size="15"></span>
+      <input type="text" id="search" placeholder="Search chats" aria-label="Search chats" />
     </div>
-    <nav class="side-nav">
-      <div class="nav-item" id="navNew"><span class="ni" data-icon="plus"></span> New chat</div>
-      <div class="nav-item" id="navBrowser"><span class="ni" data-icon="globe"></span> Browser</div>
-      <div class="nav-item" id="navArtifacts"><span class="ni" data-icon="download"></span> Artifacts
-        <span class="ni-count" id="artCount" style="display:none;">0</span></div>
-      <div class="nav-item" id="navHost"><span class="ni" data-icon="cpu"></span> Host &amp; sandbox</div>
+
+    <nav class="side-nav" aria-label="Main">
+      <button class="nav-item active" id="navChats"><span class="ni" data-icon="message"></span> Chats</button>
+      <button class="nav-item" id="navMemory"><span class="ni" data-icon="memory"></span> Memory</button>
+      <button class="nav-item" id="navRoutines"><span class="ni" data-icon="clock"></span> Routines</button>
+      <button class="nav-item" id="navUsage"><span class="ni" data-icon="chart"></span> Usage</button>
+      <button class="nav-item" id="navArtifacts"><span class="ni" data-icon="download"></span> Artifacts
+        <span class="ni-count" id="artCount" style="display:none;">0</span></button>
+      <button class="nav-item" id="navBrowser"><span class="ni" data-icon="globe"></span> Browser</button>
+      <button class="nav-item" id="navHost"><span class="ni" data-icon="cpu"></span> Host &amp; sandbox</button>
     </nav>
-    <div class="recents-head"><span>Recent</span></div>
+
+    <div class="recents-head"><span>Recent chats</span><span id="recentCount"></span></div>
     <div class="convos" id="convos"></div>
+
     <div class="side-foot">
       <div class="acct">
-        <span class="acct-av" data-icon="logo" data-size="18"></span>
-        <div class="acct-meta"><b>ReverseAI</b><span id="hostText">checking…</span></div>
+        <span class="acct-av" data-icon="logo" data-size="17"></span>
+        <div class="acct-meta"><b>ReverseAI</b><span id="hostText">Checking the host…</span></div>
         <span class="host-dot" id="hostDot"></span>
       </div>
-      <button class="ghost sm" id="themeBtn" title="Theme" data-icon="moon"></button>
+      <button class="ghost sm" id="settingsBtn" title="Settings" aria-label="Settings" data-icon="settings"></button>
+      <button class="ghost sm" id="themeBtn" title="Theme" aria-label="Theme" data-icon="moon"></button>
     </div>
   </aside>
-  <button class="expand-btn" id="expandBtn" title="Open sidebar" data-icon="menu"></button>
 
   <main id="main">
+    <div class="topbar">
+      <button class="ghost sm menu-btn" id="menuBtn" aria-label="Open sidebar" data-icon="menu"></button>
+      <span class="brand">ReverseAI</span>
+      <button class="ghost sm new-mobile" id="newMobile" aria-label="New chat" data-icon="plus"></button>
+    </div>
+
     <div class="thread" id="thread">
       <div class="thread-inner" id="threadInner">
         <div class="welcome" id="welcome">
-          <div class="big" data-icon="logo" data-size="46"></div>
-          <h1>What can I build or break down for you?</h1>
-          <p>Hand me a binary, an app, an archive, or a website, and tell me the goal.
-             I work in an isolated sandbox and hand back a finished, verified result.</p>
-          <div class="suggest" id="suggest">
-            <div class="chip" data-g="Analyze this binary: format, architecture, imports, and what it likely does.">Analyze a binary</div>
-            <div class="chip" data-g="Run this program safely in the sandbox and tell me exactly what it does.">Run it safely</div>
-            <div class="chip" data-g="Change the behavior of this binary and verify the change by running before/after.">Modify &amp; verify</div>
-          </div>
+          <div class="big" data-icon="logo" data-size="34"></div>
+          <h1>What should we build or take apart?</h1>
+          <p>Drop in a binary, an app, an archive, or a website. I work in an isolated sandbox, show my reasoning as I go, and hand back a finished, verified result.</p>
+          <div class="template-grid" id="templateGrid"></div>
+          <div class="suggest" id="suggest"></div>
         </div>
       </div>
     </div>
+
+    <button class="scroll-btn" id="scrollBtn" aria-label="Scroll to latest" data-icon="arrowDown"></button>
 
     <div class="composer-wrap">
       <div id="queued" class="queued"></div>
       <div class="composer" id="composer">
         <div id="fileChip" class="file-chip" style="display:none;"></div>
         <div class="cinput">
-          <button class="attach" id="attach" title="Attach a file" data-icon="paperclip" data-size="20"></button>
+          <button class="attach" id="attach" title="Attach a file" aria-label="Attach a file" data-icon="paperclip" data-size="20"></button>
           <input type="file" id="fileInput" style="display:none;" />
-          <textarea id="input" rows="1" placeholder="Message ReverseAI…"></textarea>
-          <button class="send" id="send" title="Send" data-icon="arrowUp" data-size="19"></button>
+          <textarea id="input" rows="1" placeholder="Message ReverseAI…" aria-label="Message"></textarea>
+          <button class="mic" id="micBtn" title="Speak" aria-label="Speak" data-icon="mic" data-size="19"></button>
+          <button class="send" id="send" title="Send" aria-label="Send" data-icon="arrowUp" data-size="19"></button>
+        </div>
+        <div class="ctools">
+          <select class="mini" id="templateSelect" aria-label="Agent role"></select>
+          <select class="mini" id="permissionSelect" aria-label="Permission">
+            <option value="read">Read only</option>
+            <option value="execute">Read + run</option>
+            <option value="write" selected>Read + run + modify</option>
+          </select>
+          <span class="grow"></span>
+          <button class="mini" id="memoryQuick" title="Memory">Memory</button>
         </div>
       </div>
-      <div class="hint">Enter to send &nbsp;·&nbsp; Shift+Enter for a new line &nbsp;·&nbsp; drop a file anywhere</div>
+      <div class="hint">Enter to send · Shift+Enter for a new line · drop a file anywhere</div>
     </div>
-    <div id="dropOverlay" class="drop-overlay"><div class="drop-inner" data-icon="download" data-size="40"></div></div>
-  <div class="sheet" id="artSheet">
-    <div class="sheet-card">
-      <h3>Delivered artifacts</h3>
-      <div class="sub">Modified files ReverseAI produced and verified this session.</div>
-      <div id="artList"></div>
-    </div>
-  </div>
   </main>
 
-  <aside id="canvas">
+  <aside id="canvas" aria-label="Workspace">
     <div class="canvas-head">
-      <div class="tabs">
-        <div class="tab" data-pane="preview">Preview</div>
-        <div class="tab active" data-pane="editor">Code / Output</div>
-        <div class="tab" data-pane="report">Report</div>
-        <div class="tab" data-pane="caps">Host</div>
+      <div class="tabs" role="tablist">
+        <button class="tab" data-pane="preview" role="tab">Preview</button>
+        <button class="tab active" data-pane="editor" role="tab">Output</button>
+        <button class="tab" data-pane="report" role="tab">Report</button>
+        <button class="tab" data-pane="caps" role="tab">Host</button>
       </div>
-      <div style="flex:1"></div>
-      <button class="ghost" id="closeCanvas" title="Close" data-icon="x"></button>
+      <button class="ghost sm" id="closeCanvas" title="Close" aria-label="Close" data-icon="x"></button>
     </div>
     <div class="canvas-body">
       <div class="pane active" id="editorPane">
         <div class="vbar">
           <div class="vdrop" id="vdrop">
-            <button class="vdrop-btn" id="vdropBtn"><span id="vdropLabel">tool output</span>
-              <span class="vchev">▾</span></button>
+            <button class="vdrop-btn" id="vdropBtn"><span id="vdropLabel">Tool output</span>
+              <span class="vchev" data-icon="chevronDown" data-size="13"></span></button>
             <div class="vdrop-menu" id="vdropMenu"></div>
           </div>
         </div>
-        <div id="editorEmpty" class="canvas-empty"><div class="ce-big" data-icon="code" data-size="30"></div>
-          Tool outputs (disassembly, hex, strings, files) show up here as I work.</div>
-        <div id="editorHolder" style="flex:1; min-height:0; display:none;"><textarea id="editor"></textarea></div>
+        <div id="editorEmpty" class="canvas-empty"><div class="ce-big" data-icon="code" data-size="28"></div>
+          Tool output, decompiled code, hex, and files appear here.</div>
+        <pre id="codeOut" class="code-out" style="display:none;"></pre>
       </div>
-      <div class="pane report" id="reportPane"><div class="canvas-empty"><div class="ce-big" data-icon="file" data-size="30"></div>
-        The plain-language report and evidence appear here when a turn completes.</div></div>
+      <div class="pane report" id="reportPane"><div class="canvas-empty"><div class="ce-big" data-icon="file" data-size="28"></div>
+        The plain-language report and evidence appear here when a turn finishes.</div></div>
       <div class="pane caps" id="capsPane"><div class="caps-grid" id="capsGrid"></div></div>
       <div class="pane preview" id="previewPane">
         <div class="pv-bar">
-          <input type="text" id="pvUrl" placeholder="Enter a URL to browse, or built sites appear here" />
+          <input type="text" id="pvUrl" placeholder="Paste a URL, or open your built site" aria-label="Preview URL" />
           <button class="pv-go" id="pvGo">Open</button>
         </div>
-        <div id="pvEmpty" class="canvas-empty"><div class="ce-big" data-icon="globe" data-size="30"></div>
-          Live preview. When I build or clone a site it renders here, or type a URL to open one.</div>
+        <div id="pvEmpty" class="canvas-empty"><div class="ce-big" data-icon="globe" data-size="28"></div>
+          Built sites and pages you ask me to open show up here.</div>
         <iframe id="pvFrame" class="pv-frame" style="display:none;"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+          sandbox="allow-scripts allow-forms allow-popups" title="Preview"></iframe>
       </div>
     </div>
   </aside>
 </div>
 
+<!-- sheets -->
+<div class="sheet" id="artSheet" role="dialog" aria-modal="true" aria-label="Artifacts">
+  <div class="sheet-card">
+    <h3>Delivered files</h3>
+    <div class="sub">Every artifact ReverseAI produced or modified in this session. The original is never changed.</div>
+    <div id="artList" class="sheet-list"></div>
+  </div>
+</div>
+
+<div class="sheet" id="memorySheet" role="dialog" aria-modal="true" aria-label="Memory">
+  <div class="sheet-card">
+    <h3>Memory</h3>
+    <div class="sub">Notes the agent keeps between chats. Inspect them, add one, or delete anything you no longer want remembered.</div>
+    <div class="form-grid">
+      <textarea id="memoryText" placeholder="Something worth remembering…"></textarea>
+      <div class="form-row">
+        <input id="memoryTags" placeholder="tags (comma separated)" />
+        <button class="primary" id="memoryAdd">Save note</button>
+      </div>
+    </div>
+    <div id="memoryList" class="sheet-list"></div>
+  </div>
+</div>
+
+<div class="sheet" id="routineSheet" role="dialog" aria-modal="true" aria-label="Routines">
+  <div class="sheet-card">
+    <h3>Routines</h3>
+    <div class="sub">Tasks that run on a schedule while the server is up. Each run becomes its own chat you can open.</div>
+    <div class="form-grid">
+      <input id="routineName" placeholder="Name (optional)" />
+      <textarea id="routineGoal" placeholder="What should it do each time?"></textarea>
+      <div class="form-row">
+        <select id="routineKind">
+          <option value="daily">Every day</option>
+          <option value="weekdays">Weekdays</option>
+          <option value="weekly">Every week</option>
+          <option value="every">Every few hours</option>
+          <option value="once">Once</option>
+        </select>
+        <input id="routineTime" type="time" value="09:00" />
+      </div>
+      <div class="form-row" id="routineExtra">
+        <select id="routineTemplate"></select>
+        <input id="routineEvery" type="number" min="1" value="120" placeholder="minutes" style="display:none;" />
+      </div>
+      <button class="primary" id="routineAdd">Create routine</button>
+    </div>
+    <div id="routineList" class="sheet-list"></div>
+  </div>
+</div>
+
+<div class="sheet" id="usageSheet" role="dialog" aria-modal="true" aria-label="Usage">
+  <div class="sheet-card">
+    <h3>Usage</h3>
+    <div class="sub">Estimated tokens and cost across all saved turns. Prices are approximate and can be overridden with <code>REVERSEAI_PRICE_*</code>.</div>
+    <div id="usageBody"></div>
+  </div>
+</div>
+
+<div class="sheet" id="settingsSheet" role="dialog" aria-modal="true" aria-label="Settings">
+  <div class="sheet-card">
+    <h3>Settings</h3>
+    <div class="sub">Local preferences. Server keys never reach this page.</div>
+    <div class="form-grid">
+      <label class="usage-day"><span>Theme</span>
+        <select id="themeSelect" class="mini">
+          <option value="auto">Match system</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <label class="usage-day"><span>Desktop notifications when a turn finishes</span>
+        <input type="checkbox" id="notifyToggle" />
+      </label>
+      <label class="usage-day"><span>Speak replies aloud</span>
+        <input type="checkbox" id="speakToggle" />
+      </label>
+      <div class="sheet-row"><div class="sr-main"><b>Access token</b><span id="tokenState">Not set</span></div>
+        <button class="mini" id="tokenBtn">Change</button></div>
+      <div class="sheet-row"><div class="sr-main"><b>Server</b><span id="serverInfo">Checking…</span></div></div>
+      <div class="sheet-row"><div class="sr-main"><b>OCR</b><span id="ocrInfo">Checking…</span></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="auth" id="authModal">
+  <div class="auth-card">
+    <div class="big" data-icon="lock" data-size="26"></div>
+    <h2>This server needs a token</h2>
+    <p>Ask the person running ReverseAI for the access token. It stays in this browser.</p>
+    <input type="password" id="authToken" placeholder="Access token" autocomplete="current-password" />
+    <div class="err" id="authErr"></div>
+    <button class="primary" id="authGo">Unlock</button>
+  </div>
+</div>
+
+<div id="dropOverlay" class="drop-overlay"><div class="drop-inner" data-icon="download" data-size="36">Drop to attach</div></div>
+
 <div id="fileBlock" class="file-block">
   <div class="fb-card">
-    <div class="fb-mark" data-icon="globe" data-size="34"></div>
+    <div class="fb-mark" data-icon="globe" data-size="32"></div>
     <h2>Open ReverseAI in your browser</h2>
-    <p>You opened the app as a file, so there's no server behind it and nothing will respond.
-       Start the server and open the address below.</p>
+    <p>You opened the app as a file, so there is no server behind it. Start the server and open the address below.</p>
     <code>http://localhost:8077</code>
     <p class="fb-cmd">If it isn't running: <b>python3 -m reverseai serve</b></p>
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/gas/gas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/13.0.3/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
-<script src="app.js"></script>
+<noscript><div style="padding:24px;font-family:system-ui">ReverseAI needs JavaScript enabled.</div></noscript>
+<script src="/vendor/marked.min.js"></script>
+<script src="/vendor/purify.min.js"></script>
+<script src="/app.js"></script>
 </body>
 </html>

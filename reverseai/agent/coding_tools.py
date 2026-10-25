@@ -11,6 +11,7 @@ workspace). All paths are resolved through ``safe_join`` so nothing escapes it.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from ..security.validate import ValidationError, safe_join
@@ -156,8 +157,8 @@ class RunCommandTool(Tool):
     name = "run_command"
     description = (
         "Run a build/test/shell command in the sandbox with the project mounted "
-        "read-write. Network is disabled and the command is time- and "
-        "resource-limited. Returns exit code, stdout, and stderr."
+        "read-write. Network is off unless the operator enabled it, and the "
+        "command is time- and resource-limited. Returns exit code, stdout, and stderr."
     )
     parameters = {
         "type": "object",
@@ -165,7 +166,6 @@ class RunCommandTool(Tool):
             "argv": {"type": "array", "items": {"type": "string"},
                      "description": "command and arguments, e.g. [\"python3\",\"-m\",\"pytest\"]"},
             "timeout_seconds": {"type": "number", "minimum": 0.1, "default": 30},
-            "allow_network": {"type": "boolean", "default": False},
         },
         "required": ["argv"],
     }
@@ -186,8 +186,9 @@ class RunCommandTool(Tool):
             base,
             workdir=root,
             rw_binds=list(base.rw_binds) + [root],
-            allow_network=bool(args.get("allow_network", False)),
-            timeout_seconds=float(args.get("timeout_seconds", 30)),
+            # Network egress is an operator decision, never a model decision.
+            allow_network=os.environ.get("REVERSEAI_ALLOW_CODING_NETWORK") == "1",
+            timeout_seconds=min(max(float(args.get("timeout_seconds", 30)), 0.1), 300.0),
             # allow reasonable PATH for dev tools
             env={**base.env, "PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": root},
         )

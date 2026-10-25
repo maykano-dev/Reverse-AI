@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import re
 import urllib.parse
-import urllib.request
 
-from .web import TIMEOUT, _UA, _is_public_host
+from ..security.net import NetworkError, fetch as safe_fetch
+from .web import TIMEOUT, _UA
 
 PROXY_PREFIX = "/proxy?url="
 MAX_PROXY_BYTES = 20 * 1024 * 1024
@@ -27,23 +27,12 @@ class ProxyError(Exception):
 
 
 def fetch(url: str, allow_private: bool = False) -> tuple[bytes, str, str]:
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise ProxyError("only http/https URLs are supported")
-    if not parsed.hostname or (not allow_private and not _is_public_host(parsed.hostname)):
-        raise ProxyError("refusing to fetch a non-public host")
-    req = urllib.request.Request(url, headers={"User-Agent": _UA,
-                                               "Accept": "*/*"})
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            data = resp.read(MAX_PROXY_BYTES + 1)
-            ctype = resp.headers.get("Content-Type", "")
-            final_url = resp.geturl()
-    except Exception as exc:  # network/HTTP errors -> ProxyError
-        raise ProxyError(f"fetch failed: {exc}") from exc
-    if len(data) > MAX_PROXY_BYTES:
-        raise ProxyError("response too large")
-    return data, ctype, final_url  # type: ignore[return-value]
+        return safe_fetch(url, max_bytes=MAX_PROXY_BYTES,
+                          allow_private=allow_private, timeout=TIMEOUT,
+                          user_agent=_UA)
+    except NetworkError as exc:
+        raise ProxyError(str(exc)) from exc
 
 
 def _proxify(abs_url: str) -> str:

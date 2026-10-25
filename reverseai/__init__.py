@@ -1,7 +1,8 @@
-"""ReverseAI — an autonomous reverse-engineering engineer.
+"""ReverseAI: an autonomous engineering agent for software and the web.
 
-This top-level package currently exposes the analysis core. Future layers
-(agent, sandbox, modification engine, API) build on top of it.
+Understand, modify, rebuild. The package contains the analysis core, the agent
+loop, the sandbox lab, the modification/verification engines, optional
+decompilation/OCR/clone backends, and the HTTP service + mobile-first UI.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

@@ -1,24 +1,36 @@
-"""Background run manager for live, streamable investigations.
+"""Background run manager for live, streamable, durable investigations.
 
-Starting a job spawns a daemon thread running the agent; its live events are
-pushed to a per-run queue that the SSE endpoint drains. This is what lets the
-web UI show the agent working step by step instead of blocking on a result.
+Starting a job spawns a daemon thread running the agent. Every event is appended
+to a per-job JSONL log, which gives us three things at once:
+
+  * live streaming over SSE
+  * replay after a reconnect (``?after=N``)
+  * survival across a page reload or a server restart
+
+Conversation state is persisted too (messages, evidence, target, workspace), so
+a follow-up continues the same work instead of silently starting over.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import queue
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from ..agent import Agent, Permission, get_provider
+from ..agent.conversation import Conversation
 from ..agent.store import JobStore
 
 _PERM = {"read": Permission.READ, "execute": Permission.EXECUTE, "write": Permission.WRITE}
 _TERMINAL = {"final", "error"}
+
+_MAX_RUNS = 300       # keep recent run event-streams in memory
+_MAX_CONVOS = 150     # keep recent conversations resumable in memory
 
 
 @dataclass
@@ -28,15 +40,17 @@ class Run:
     done: threading.Event = field(default_factory=threading.Event)
     record: dict[str, Any] | None = None
     created_at: float = field(default_factory=time.time)
-
-
-_MAX_RUNS = 300       # keep recent run event-streams in memory
-_MAX_CONVOS = 150     # keep recent conversations resumable
+    conversation_id: str | None = None
+    cancel: threading.Event = field(default_factory=threading.Event)
 
 
 class RunManager:
-    def __init__(self, store: JobStore) -> None:
+    def __init__(self, store: JobStore, memory=None, skills: list | None = None,
+                 routines=None) -> None:
         self.store = store
+        self.memory = memory
+        self.skills = skills or []
+        self.routines = routines
         self._runs: dict[str, Run] = {}
         self._convos: dict[str, Any] = {}  # conversation_id -> Conversation
         self._lock = threading.Lock()
@@ -54,53 +68,56 @@ class RunManager:
             for cid, _ in oldest[: len(self._convos) - _MAX_CONVOS]:
                 self._convos.pop(cid, None)
 
+    # ------------------------------------------------------------------
+    # Start / restore
+    # ------------------------------------------------------------------
     def start(self, body: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
-        """Validate + launch a turn. Returns (stream_id, conversation_id, error).
-
-        A ``conversation_id`` in the body continues an existing conversation
-        (same target, evidence, and modified artifacts); otherwise a new one is
-        created from the provider/permission in the body.
-        """
+        """Validate + launch a turn. Returns (stream_id, conversation_id, error)."""
         goal = body.get("goal")
         if not goal:
             return None, None, "missing 'goal'"
 
         cid = body.get("conversation_id")
-        with self._lock:
-            conv = self._convos.get(cid) if cid else None
+        conv = None
+        if cid:
+            with self._lock:
+                conv = self._convos.get(cid)
+            if conv is None:
+                conv = self._restore(cid, body)
+            if conv is None:
+                return None, None, (
+                    "this chat is no longer available on the server. "
+                    "Start a new chat to continue.")
 
         if conv is None:
-            # The AI decides its own mode, so it gets the full toolset (WRITE
-            # ceiling). The model/provider is server-chosen and never exposed.
-            perm = _PERM.get(body.get("permission", "write"))
-            if perm is None:
-                return None, None, "permission must be read|execute|write"
-            try:
-                provider = get_provider(os.environ.get("REVERSEAI_PROVIDER",
-                                                        body.get("provider", "deepseek")))
-            except Exception as exc:
-                return None, None, f"provider error: {exc}"
-            agent = Agent(provider, max_permission=perm,
-                          max_steps=int(body.get("max_steps", 24)))
-            conv = agent.open(target_path=body.get("target"),
-                              project_dir=body.get("project_dir"))
-            cid = _new_id("conv")
-            with self._lock:
-                self._convos[cid] = conv
+            budget_error = self._budget_error()
+            if budget_error:
+                return None, None, budget_error
+            conv, cid, error = self._new_conversation(body)
+            if error:
+                return None, None, error
 
         from ..agent.job import _job_id
 
         stream_id = _job_id()
-        run = Run(job_id=stream_id)
+        run = Run(job_id=stream_id, conversation_id=cid)
         with self._lock:
             self._runs[stream_id] = run
             self._evict()
 
+        # Truncate any stale log for this id (ids are random, but be strict).
+        try:
+            (self.store.events_dir / f"{stream_id}.jsonl").write_text("", "utf-8")
+        except OSError:
+            pass
+
         def _worker():
             def on_event(ev: dict) -> None:
+                self.store.append_event(stream_id, ev)
                 run.events.put(ev)
+
             try:
-                job = conv.run_turn(goal, on_event=on_event)
+                job = conv.run_turn(goal, on_event=on_event, stop_event=run.cancel)
                 job.id = stream_id  # align stored id with the streamed one
                 job.conversation_id = cid
                 # Persist any delivered artifact durably, keyed by job id.
@@ -109,24 +126,116 @@ class RunManager:
                     saved = self.store.save_artifact(job.id, mp)
                     if saved:
                         from pathlib import Path as _P
-                        job.artifact = _P(mp).name
+                        from ..naming import safe_download_name
+
+                        job.artifact = safe_download_name(_P(mp).name)
                 self.store.save(job)
+                self._save_conversation(cid, conv, body)
                 run.record = job.to_dict()
             except Exception as exc:  # pragma: no cover - defensive
-                run.events.put({"type": "error", "error": f"run crashed: {exc}"})
+                err = {"type": "error", "error": f"run crashed: {exc}"}
+                self.store.append_event(stream_id, err)
+                run.events.put(err)
             finally:
                 run.done.set()
 
         threading.Thread(target=_worker, daemon=True).start()
         return stream_id, cid, None
 
+    def _new_conversation(self, body: dict[str, Any]):
+        perm_name = str(body.get("permission", "write")).lower()
+        perm = _PERM.get(perm_name)
+        if perm is None:
+            return None, None, "permission must be read|execute|write"
+        template = str(body.get("template") or "general").lower()
+        provider_name = os.environ.get("REVERSEAI_PROVIDER") or body.get("provider", "deepseek")
+        try:
+            provider = get_provider(provider_name)
+        except Exception as exc:
+            return None, None, f"provider error: {exc}"
+
+        cid = _new_id("conv")
+        agent = Agent(provider, max_permission=perm,
+                      max_steps=max(1, min(int(body.get("max_steps", 24)), 64)),
+                      template=template, memory=self.memory, skills=self.skills)
+        workspace = str(self.store.workspaces_dir / cid)
+        conv = agent.open(target_path=body.get("target"),
+                          project_dir=body.get("project_dir"),
+                          workspace=workspace)
+        conv.ctx.extra["routine_store"] = self.routines
+        conv._permission = perm_name
+        conv._provider_name = provider.name
+        with self._lock:
+            self._convos[cid] = conv
+        return conv, cid, None
+
+    def _restore(self, cid: str, body: dict[str, Any]) -> Conversation | None:
+        state = self.store.load_conversation(cid)
+        if not state:
+            return None
+        perm_name = str(state.get("permission") or "write").lower()
+        perm = _PERM.get(perm_name, Permission.WRITE)
+        provider_name = (os.environ.get("REVERSEAI_PROVIDER")
+                         or state.get("provider")
+                         or body.get("provider")
+                         or "deepseek")
+        try:
+            provider = get_provider(provider_name)
+        except Exception:
+            return None
+        agent = Agent(provider, max_permission=perm,
+                      max_steps=max(1, min(int(body.get("max_steps", 24)), 64)),
+                      template=state.get("template") or "general",
+                      memory=self.memory, skills=self.skills)
+        conv = Conversation.from_state(agent, state)
+        conv.ctx.extra["routine_store"] = self.routines
+        conv._permission = perm_name
+        conv._provider_name = provider.name
+        with self._lock:
+            self._convos[cid] = conv
+            self._evict()
+        return conv
+
+    def _save_conversation(self, cid: str, conv, body: dict[str, Any]) -> None:
+        try:
+            state = conv.to_state()
+            state["permission"] = getattr(conv, "_permission",
+                                          str(body.get("permission", "write")))
+            state["provider"] = getattr(conv, "_provider_name",
+                                        os.environ.get("REVERSEAI_PROVIDER", "deepseek"))
+            self.store.save_conversation(cid, state)
+        except Exception:
+            pass
+
+    def _budget_error(self) -> str | None:
+        usage = self.store.usage_summary()
+        budget = usage.get("budget_usd")
+        cost = usage.get("cost_usd") or 0.0
+        if budget is not None and cost >= budget:
+            return (f"monthly budget reached (${cost:.2f} of ${budget:.2f}). "
+                    "Raise REVERSEAI_MONTHLY_BUDGET or use a local model.")
+        return None
+
+    # ------------------------------------------------------------------
+    # Lookups / streaming
+    # ------------------------------------------------------------------
     def get(self, job_id: str) -> Run | None:
         with self._lock:
             return self._runs.get(job_id)
 
+    def cancel(self, job_id: str) -> bool:
+        run = self.get(job_id)
+        if run is None or run.done.is_set():
+            return False
+        run.cancel.set()
+        return True
+
     def conversation(self, cid: str):
         with self._lock:
-            return self._convos.get(cid)
+            conv = self._convos.get(cid)
+        if conv is not None:
+            return conv
+        return self._restore(cid, {})
 
     def artifact_path(self, cid: str) -> str | None:
         """Path of the final modified file a conversation produced, if any."""
@@ -141,34 +250,42 @@ class RunManager:
             return path if os.path.isfile(path) else None
         return None
 
-    def stream(self, job_id: str, heartbeat: float = 15.0):
+    def stream(self, job_id: str, after: int = 0, heartbeat: float = 15.0):
         """Yield SSE-encoded bytes for a run until a terminal event.
 
-        Yields heartbeats during quiet periods so proxies don't time out.
+        ``after`` replays from a durable event index, which is what lets the UI
+        reconnect after a dropped connection or a page reload. Heartbeats keep
+        proxies from closing a quiet stream.
         """
         run = self.get(job_id)
-        if run is None:
+        if run is None and not (self.store.events_dir / f"{job_id}.jsonl").exists():
             yield _sse({"type": "error", "error": "unknown run"})
             return
 
+        idx = max(0, int(after or 0))
+        last_beat = time.monotonic()
         while True:
-            try:
-                ev = run.events.get(timeout=heartbeat)
-            except queue.Empty:
-                if run.done.is_set():
-                    break
+            rows = self.store.read_events(job_id)
+            while idx < len(rows):
+                ev = rows[idx]
+                idx += 1
+                yield _sse(ev)
+                if ev.get("type") in _TERMINAL:
+                    return
+            if run is not None and run.done.is_set() and idx >= len(rows):
+                return
+            if run is None and idx >= len(rows):
+                if rows and rows[-1].get("type") not in _TERMINAL:
+                    yield _sse({"type": "error",
+                                "error": "This run was interrupted by a server restart. "
+                                         "The saved events are still available."})
+                elif not rows:
+                    yield _sse({"type": "error", "error": "no events for this run"})
+                return
+            if time.monotonic() - last_beat >= heartbeat:
                 yield b": heartbeat\n\n"
-                continue
-            yield _sse(ev)
-            if ev.get("type") in _TERMINAL:
-                break
-        # Drain any trailing events already queued.
-        while True:
-            try:
-                ev = run.events.get_nowait()
-            except queue.Empty:
-                break
-            yield _sse(ev)
+                last_beat = time.monotonic()
+            time.sleep(0.15)
 
 
 def _new_id(prefix: str) -> str:
@@ -178,6 +295,4 @@ def _new_id(prefix: str) -> str:
 
 
 def _sse(event: dict) -> bytes:
-    import json
-
     return f"data: {json.dumps(event)}\n\n".encode("utf-8")

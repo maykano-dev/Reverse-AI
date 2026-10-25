@@ -13,6 +13,7 @@ from ..core import analyze_file
 from ..core.disasm import capstone_available, disassemble_bytes
 from ..security.validate import ValidationError, read_target
 from .evidence import Confidence
+from .templates import all_templates, get_template
 from .tools import Permission, Tool, ToolContext, ToolResult
 
 _HEX_WINDOW_MAX = 4096
@@ -131,8 +132,9 @@ class ListStringsTool(Tool):
         target = _require_target(ctx)
         data = read_target(target)
         needle = args.get("contains")
-        limit = int(args.get("limit", 100))
-        found = extract_strings(data, min_len=int(args.get("min_length", 5)))
+        limit = max(1, min(int(args.get("limit", 100)), 2000))
+        min_len = max(2, min(int(args.get("min_length", 5)), 64))
+        found = extract_strings(data, min_len=min_len)
         if needle:
             found = [s for s in found if needle in s]
         shown = found[:limit]
@@ -223,10 +225,11 @@ class RunInSandboxTool(Tool):
 
         target = _require_target(ctx)
         base = ctx.sandbox_policy or SandboxPolicy()
+        timeout = min(max(float(args.get("timeout_seconds", base.timeout_seconds)), 0.1), 120.0)
         policy = replace(
             base,
             allow_untrusted_execution=True,
-            timeout_seconds=float(args.get("timeout_seconds", base.timeout_seconds)),
+            timeout_seconds=timeout,
             ro_binds=list(base.ro_binds) + [target],
         )
         try:
@@ -306,21 +309,25 @@ class ReadTextFromImageTool(Tool):
     permission = Permission.READ
 
     def run(self, args, ctx) -> ToolResult:
-        from ..ocr import ocr_available, ocr_image, ocr_pdf
+        from ..ocr import ocr_any_available, ocr_best
 
-        if not ocr_available():
+        if not ocr_any_available():
             return ToolResult.failure(
-                "OCR engine not installed (needs tesseract + pytesseract)")
+                "No OCR engine is configured. Install tesseract + pytesseract, or "
+                "point REVERSEAI_OCR_URL at an Unlimited-OCR / vLLM / SGLang server.")
         path = args.get("path") or ctx.target_path
         if not path:
             return ToolResult.failure("no image path")
-        res = (ocr_pdf(path) if str(path).lower().endswith(".pdf") else ocr_image(path))
+        res = ocr_best(path)
         if not res.ok:
             return ToolResult.failure(res.error or "OCR failed")
         if ctx.evidence is not None:
-            ctx.evidence.observed(f"OCR extracted {len(res.text)} chars", source=self.name)
-        return ToolResult.success(res.text[:8000] or "(no text found)",
-                                  chars=len(res.text), pages=res.pages)
+            ctx.evidence.observed(
+                f"OCR extracted {len(res.text)} chars via {res.engine or 'ocr'}",
+                source=self.name)
+        return ToolResult.success(res.text[:12000] or "(no text found)",
+                                  chars=len(res.text), pages=res.pages,
+                                  engine=res.engine)
 
 
 class DecompileTool(Tool):
@@ -347,7 +354,8 @@ class DecompileTool(Tool):
         if not ghidra_available():
             return ToolResult.failure("Ghidra is not installed on this host")
         target = _require_target(ctx)
-        res = decompile(target, max_functions=int(args.get("max_functions", 300)))
+        max_fn = max(1, min(int(args.get("max_functions", 300)), 2000))
+        res = decompile(target, max_functions=max_fn)
         if not res.ok:
             return ToolResult.failure(res.error or "decompilation failed")
         code = res.code
@@ -391,7 +399,7 @@ class ListFunctionsTool(Tool):
         needle = args.get("contains")
         if needle:
             funcs = [f for f in funcs if needle in f["name"]]
-        limit = int(args.get("limit", 100))
+        limit = max(1, min(int(args.get("limit", 100)), 2000))
         shown = funcs[:limit]
         if not report.functions:
             return ToolResult.success(
@@ -469,6 +477,278 @@ class RecordFindingTool(Tool):
         return ToolResult.success(f"recorded [{tier.label}] {args['claim']}")
 
 
+class RememberTool(Tool):
+    name = "remember"
+    description = (
+        "Save a durable note about the user or the work so later conversations "
+        "start with context. Use for stable preferences, decisions, and facts "
+        "worth keeping. Never store secrets, credentials, or raw private data."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string"},
+            "tags": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["text"],
+    }
+    permission = Permission.WRITE
+
+    def run(self, args, ctx) -> ToolResult:
+        if ctx.memory is None:
+            return ToolResult.failure("long-term memory is not enabled for this job")
+        try:
+            note = ctx.memory.add(args["text"], tags=args.get("tags"), source="agent")
+        except ValueError as exc:
+            return ToolResult.failure(str(exc))
+        return ToolResult.success(f"remembered ({note['id']}): {note['text']}",
+                                  note=note)
+
+
+class RecallTool(Tool):
+    name = "recall"
+    description = (
+        "Search long-term memory for notes that might be relevant. Call this when "
+        "the user refers to something from an earlier conversation."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"},
+            "limit": {"type": "integer", "minimum": 1, "default": 10},
+        },
+    }
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        if ctx.memory is None:
+            return ToolResult.failure("long-term memory is not enabled for this job")
+        notes = ctx.memory.search(args.get("query", ""), limit=int(args.get("limit", 10)))
+        if not notes:
+            return ToolResult.success("(no matching notes)")
+        body = "\n".join(f"- ({n['id']}) {n['text']}" for n in notes)
+        return ToolResult.success(body, notes=notes)
+
+
+class ForgetTool(Tool):
+    name = "forget"
+    description = "Delete a saved memory note by id."
+    parameters = {
+        "type": "object",
+        "properties": {"id": {"type": "string"}},
+        "required": ["id"],
+    }
+    permission = Permission.WRITE
+
+    def run(self, args, ctx) -> ToolResult:
+        if ctx.memory is None:
+            return ToolResult.failure("long-term memory is not enabled for this job")
+        ok = ctx.memory.delete(args["id"])
+        return (ToolResult.success(f"forgot {args['id']}") if ok
+                else ToolResult.failure(f"no note with id {args['id']}"))
+
+
+class WebSearchTool(Tool):
+    name = "web_search"
+    description = (
+        "Search the public web and return titles, URLs, and snippets. Use for "
+        "current information, comparisons, and research. Follow up with web_read "
+        "on the best results. Cite the URLs you actually use."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"},
+            "max_results": {"type": "integer", "minimum": 1, "maximum": 10,
+                            "default": 5},
+        },
+        "required": ["query"],
+    }
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        from ..research import ResearchError, search_web, source_card
+
+        try:
+            results = search_web(args["query"], int(args.get("max_results", 5)))
+        except ResearchError as exc:
+            return ToolResult.failure(f"search failed: {exc}")
+        if not results:
+            return ToolResult.success("(no results)")
+        sources = [source_card(r.url, r.title, r.snippet) for r in results]
+        body = "\n\n".join(
+            f"{i + 1}. {r.title}\n   {r.url}\n   {r.snippet}" for i, r in enumerate(results))
+        return ToolResult.success(body, results=[r.to_dict() for r in results],
+                                  sources=sources)
+
+
+class WebReadTool(Tool):
+    name = "web_read"
+    description = (
+        "Fetch a public web page and return its readable text, title, and "
+        "description. Use after web_search. Refuses private/internal hosts."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "max_chars": {"type": "integer", "minimum": 500, "maximum": 40000,
+                          "default": 16000},
+        },
+        "required": ["url"],
+    }
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        from ..research import ResearchError, read_page, source_card
+
+        try:
+            page = read_page(args["url"], int(args.get("max_chars", 16000)))
+        except ResearchError as exc:
+            return ToolResult.failure(f"could not read page: {exc}")
+        source = source_card(page.url, page.title, page.description)
+        body = f"# {page.title}\n{page.url}\n\n{page.text}"
+        return ToolResult.success(body[:20000], page=page.to_dict(), sources=[source])
+
+
+class ListSkillsTool(Tool):
+    name = "list_skills"
+    description = "List reusable playbooks (skills) available on this host."
+    parameters = {"type": "object", "properties": {}}
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        skills = ctx.extra.get("skills") or []
+        if not skills:
+            return ToolResult.success("(no skills installed)")
+        body = "\n".join(f"- {s.name}: {s.description}" for s in skills)
+        return ToolResult.success(body, skills=[s.to_dict() for s in skills])
+
+
+class ReadSkillTool(Tool):
+    name = "read_skill"
+    description = "Load the full instructions of a named skill/playbook."
+    parameters = {
+        "type": "object",
+        "properties": {"name": {"type": "string"}},
+        "required": ["name"],
+    }
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        from .skills import find_skill
+
+        skills = ctx.extra.get("skills") or []
+        skill = find_skill(skills, args["name"])
+        if skill is None:
+            return ToolResult.failure(f"no skill named {args['name']!r}")
+        return ToolResult.success(skill.body[:14000], skill=skill.to_dict())
+
+
+class DelegateTool(Tool):
+    name = "delegate"
+    description = (
+        "Hand a self-contained piece of work to a specialist agent (researcher, "
+        "engineer, reverse engineer, reviewer, writer, data). Use for a focused "
+        "sub-task that benefits from a separate perspective. Returns that agent's "
+        "conclusion and evidence."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "specialist": {
+                "type": "string",
+                "enum": [t.id for t in all_templates()],
+            },
+            "task": {"type": "string"},
+            "target": {"type": "string",
+                       "description": "optional file path; defaults to this job's target"},
+        },
+        "required": ["specialist", "task"],
+    }
+    permission = Permission.EXECUTE
+
+    def run(self, args, ctx) -> ToolResult:
+        from .orchestrator import Agent
+
+        provider = ctx.extra.get("provider")
+        if provider is None:
+            return ToolResult.failure("delegation needs a configured model provider")
+        depth = int(ctx.extra.get("delegate_depth", 0) or 0)
+        if depth >= 2:
+            return ToolResult.failure("delegation depth limit reached")
+        specialist = args.get("specialist", "researcher")
+        tmpl = get_template(specialist)
+        maxp = ctx.extra.get("max_permission") or Permission.WRITE
+        agent = Agent(
+            provider,
+            max_permission=maxp,
+            max_steps=8,
+            template=tmpl.id,
+            memory=ctx.memory,
+            skills=ctx.extra.get("skills"),
+            delegate_depth=depth + 1,
+        )
+        job = agent.run(args["task"], target_path=args.get("target") or ctx.target_path,
+                        project_dir=ctx.extra.get("project_dir"))
+        if ctx.evidence is not None:
+            for f in job.evidence.all():
+                ctx.evidence.add(f.claim, f.confidence,
+                                 source=f"delegate:{specialist}", detail=f.detail)
+        summary = (
+            f"{tmpl.name} finished ({job.status}, {job.steps} steps).\n\n"
+            f"{job.final_answer or '(no conclusion)'}"
+        )
+        return ToolResult(ok=job.status == "completed", content=summary,
+                          data={"sources": job.sources, "status": job.status,
+                                "steps": job.steps, "usage": job.usage},
+                          error=None if job.status == "completed" else job.status)
+
+
+class ScheduleRoutineTool(Tool):
+    name = "schedule_routine"
+    description = (
+        "Schedule a recurring task for the user (daily, weekdays, weekly, every N "
+        "minutes, or once). Use when they say things like 'every morning at 8, "
+        "brief me on ...'. Requires the routine scheduler to be enabled."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "goal": {"type": "string"},
+            "schedule": {
+                "type": "object",
+                "description": (
+                    'e.g. {"kind":"daily","time":"08:00"} or '
+                    '{"kind":"weekdays","time":"09:00"} or '
+                    '{"kind":"weekly","weekday":0,"time":"09:00"} or '
+                    '{"kind":"every","minutes":120} or '
+                    '{"kind":"once","at":"2026-10-25T09:00"}'),
+            },
+            "template": {"type": "string"},
+        },
+        "required": ["goal", "schedule"],
+    }
+    permission = Permission.WRITE
+
+    def run(self, args, ctx) -> ToolResult:
+        store = ctx.extra.get("routine_store")
+        if store is None:
+            return ToolResult.failure("routines are not enabled in this session")
+        permission = getattr(ctx.extra.get("max_permission"), "label", "write")
+        try:
+            routine = store.add(
+                args.get("name") or args["goal"], args["goal"], args["schedule"],
+                template=args.get("template") or "general",
+                target=ctx.target_path, permission=permission)
+        except (ValueError, TypeError) as exc:
+            return ToolResult.failure(f"could not schedule: {exc}")
+        return ToolResult.success(
+            f"scheduled {routine.name} (next run {routine.next_run})",
+            routine=routine.to_dict())
+
+
 def default_tools() -> list[Tool]:
     tools = [
         HostCapabilitiesTool(),
@@ -481,6 +761,15 @@ def default_tools() -> list[Tool]:
         AssessHeuristicsTool(),
         RunInSandboxTool(),
         RecordFindingTool(),
+        RememberTool(),
+        RecallTool(),
+        ForgetTool(),
+        WebSearchTool(),
+        WebReadTool(),
+        ListSkillsTool(),
+        ReadSkillTool(),
+        DelegateTool(),
+        ScheduleRoutineTool(),
     ]
     # Real decompilation when Ghidra is installed — a big capability upgrade.
     try:
@@ -490,11 +779,11 @@ def default_tools() -> list[Tool]:
             tools.insert(5, DecompileTool())
     except Exception:
         pass
-    # OCR when an engine is installed.
+    # OCR when either a local engine or an Unlimited-OCR endpoint is configured.
     try:
-        from ..ocr import ocr_available
+        from ..ocr import ocr_any_available
 
-        if ocr_available():
+        if ocr_any_available():
             tools.append(ReadTextFromImageTool())
     except Exception:
         pass

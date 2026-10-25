@@ -196,7 +196,12 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
 
 def _cmd_agent_run(args: argparse.Namespace) -> int:
+    import os
+    from pathlib import Path
+
     from .agent import Agent, Permission, get_provider
+    from .agent.memory import MemoryStore, default_memory_path
+    from .agent.skills import load_skills
     from .agent.providers.deepseek import ProviderError
 
     perm = {"read": Permission.READ, "execute": Permission.EXECUTE,
@@ -207,7 +212,13 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    agent = Agent(provider, max_permission=perm, max_steps=args.max_steps)
+    skills_root = os.environ.get("REVERSEAI_SKILLS")
+    agent = Agent(
+        provider, max_permission=perm, max_steps=args.max_steps,
+        template=getattr(args, "template", "general"),
+        memory=MemoryStore(default_memory_path()),
+        skills=load_skills(Path(skills_root) if skills_root else None),
+    )
     job = agent.run(args.goal, target_path=args.target, project_dir=args.project_dir)
 
     print(job.report())
@@ -273,6 +284,8 @@ def build_parser() -> argparse.ArgumentParser:
                            help="project directory for coding tasks")
     agent_run.add_argument("--provider", default="deepseek",
                            help="llm provider (deepseek|mock)")
+    agent_run.add_argument("--template", default="general",
+                           help="agent role (general|reverse|engineer|researcher|security|mobile|writer|data)")
     agent_run.add_argument("--permission", default="execute",
                            choices=["read", "execute", "write"])
     agent_run.add_argument("--max-steps", type=int, default=24, dest="max_steps")

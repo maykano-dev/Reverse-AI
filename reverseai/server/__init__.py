@@ -1,10 +1,11 @@
-"""ReverseAI local control API (stdlib-only HTTP server).
+"""ReverseAI control API and web app (stdlib HTTP server).
 
-A localhost control surface over the agent and analysis engine. It is a
-single-user developer/control API, not a hardened multi-tenant service — it
-accepts server-side file paths and runs jobs in-process. Bind it to 127.0.0.1
-(the default) and do not expose it to untrusted networks. The multi-tenant,
-upload-based product API is a later milestone.
+The server exposes the agent, analysis engine, durable runs, memory, routines,
+research, and artifacts over JSON + SSE. It binds to localhost by default and
+supports optional bearer auth (``REVERSEAI_AUTH_TOKEN``) plus a path allowlist
+(``REVERSEAI_ALLOWED_ROOTS``) for public deployments.
+
+See ``docs/SECURITY.md`` before exposing it to an untrusted network.
 """
 
 from .app import ReverseAIServer, serve

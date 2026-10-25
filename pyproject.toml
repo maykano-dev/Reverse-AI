@@ -4,23 +4,50 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reverseai"
-version = "0.1.0"
-description = "An autonomous reverse-engineering engineer: understand, modify, rebuild."
+version = "0.2.0"
+description = "An autonomous engineering agent: understand, modify, rebuild, and verify software."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = []
+keywords = ["reverse-engineering", "ai-agent", "binary-analysis", "security", "sandbox", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Disassemblers",
+]
+
+[project.urls]
+Homepage = "https://github.com/maykano-dev/Reverse-AI"
+Repository = "https://github.com/maykano-dev/Reverse-AI"
+Issues = "https://github.com/maykano-dev/Reverse-AI/issues"
+Changelog = "https://github.com/maykano-dev/Reverse-AI/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 # Optional analysis backends — enhance the core, never required to run it.
 enhanced = ["lief>=0.14", "capstone>=5.0", "pyelftools>=0.31"]
+ocr = ["pytesseract>=0.3", "pillow>=10", "pymupdf>=1.24"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
 reverseai = "reverseai.cli:main"
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.packages.find]
 include = ["reverseai*"]
+
+[tool.setuptools.package-data]
+"reverseai.server" = ["static/*", "static/vendor/*"]
+"reverseai.decompile" = ["scripts/*.py", "scripts/*.java"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

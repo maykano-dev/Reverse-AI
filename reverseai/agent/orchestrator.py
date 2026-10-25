@@ -31,14 +31,23 @@ class Agent:
         temperature: float = 0.0,
         enable_coding: bool = True,
         max_context_chars: int = DEFAULT_MAX_CHARS,
+        template: str = "general",
+        memory=None,
+        skills: list | None = None,
+        delegate_depth: int = 0,
     ) -> None:
         self.provider = provider
+        self.max_permission = max_permission
         self.registry = registry or self._default_registry(max_permission, enable_coding)
         self.mediator = ToolMediator(self.registry, max_permission=max_permission, confirm=confirm)
         self.max_steps = max_steps
         self.sandbox_policy = sandbox_policy or SandboxPolicy()
         self.temperature = temperature
         self.max_context_chars = max_context_chars
+        self.template = template
+        self.memory = memory
+        self.skills = skills or []
+        self.delegate_depth = delegate_depth
 
     @staticmethod
     def _default_registry(max_permission: Permission, enable_coding: bool = True) -> ToolRegistry:
@@ -56,15 +65,19 @@ class Agent:
         return reg
 
     def open(self, target_path: str | None = None,
-             project_dir: str | None = None) -> Conversation:
+             project_dir: str | None = None,
+             workspace: str | None = None) -> Conversation:
         """Start a stateful conversation (multi-turn). Call run_turn per message."""
-        return Conversation(self, target_path=target_path, project_dir=project_dir)
+        return Conversation(self, target_path=target_path, project_dir=project_dir,
+                            workspace=workspace)
 
     def run(self, goal: str, target_path: str | None = None,
-            project_dir: str | None = None, on_event=None) -> Job:
+            project_dir: str | None = None, on_event=None,
+            workspace: str | None = None) -> Job:
         """Run a single-turn investigation and return the Job.
 
         ``on_event(dict)`` receives live progress events
-        (start/step/assistant/tool_result/finding/final/error) as they occur.
+        (start/plan/reason/step/assistant/tool_result/source/finding/final/error).
         """
-        return self.open(target_path, project_dir).run_turn(goal, on_event=on_event)
+        return self.open(target_path, project_dir, workspace).run_turn(
+            goal, on_event=on_event)

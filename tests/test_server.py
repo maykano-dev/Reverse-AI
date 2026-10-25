@@ -26,7 +26,10 @@ def _get(url):
         with urllib.request.urlopen(url, timeout=5) as r:
             return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read())
+        try:
+            return e.code, json.loads(e.read())
+        finally:
+            e.close()
 
 
 def _post(url, payload):
@@ -38,7 +41,10 @@ def _post(url, payload):
         with urllib.request.urlopen(req, timeout=15) as r:
             return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read())
+        try:
+            return e.code, json.loads(e.read())
+        finally:
+            e.close()
 
 
 class ServerTests(unittest.TestCase):

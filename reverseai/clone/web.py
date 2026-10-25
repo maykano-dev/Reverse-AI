@@ -11,16 +11,14 @@ Safety: only http/https; blocks requests to private/loopback/link-local hosts
 
 from __future__ import annotations
 
-import ipaddress
 import re
-import socket
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
+from ..security.net import NetworkError, fetch as safe_fetch, is_public_host
 from ..security.validate import safe_join
 
 _UA = "Mozilla/5.0 (compatible; ReverseAI-Clone/1.0)"
@@ -77,34 +75,16 @@ class _AssetCollector(HTMLParser):
 
 
 def _is_public_host(host: str) -> bool:
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except OSError:
-        return False
-    for info in infos:
-        ip = info[4][0]
-        try:
-            addr = ipaddress.ip_address(ip)
-        except ValueError:
-            continue
-        if (addr.is_private or addr.is_loopback or addr.is_link_local
-                or addr.is_reserved or addr.is_multicast):
-            return False
-    return True
+    return is_public_host(host)
 
 
 def _fetch(url: str, limit: int, allow_private: bool = False) -> tuple[bytes, str]:
-    parsed = urllib.parse.urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise CloneError(f"unsupported scheme: {parsed.scheme}")
-    if not parsed.hostname or (not allow_private and not _is_public_host(parsed.hostname)):
-        raise CloneError(f"refusing to fetch non-public host: {parsed.hostname}")
-    req = urllib.request.Request(url, headers={"User-Agent": _UA})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-        data = resp.read(limit + 1)
-        if len(data) > limit:
-            raise CloneError(f"resource exceeds {limit} bytes: {url}")
-        ctype = resp.headers.get("Content-Type", "")
+    try:
+        data, ctype, _final = safe_fetch(
+            url, max_bytes=limit, allow_private=allow_private,
+            timeout=TIMEOUT, user_agent=_UA)
+    except NetworkError as exc:
+        raise CloneError(str(exc)) from exc
     return data, ctype
 
 

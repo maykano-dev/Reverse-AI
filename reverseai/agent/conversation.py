@@ -5,24 +5,30 @@ and workspace across turns, so follow-up messages continue the same
 investigation (same target, same modified artifacts, accumulated evidence) —
 the difference between a chatbot and a stateful engineer you can keep talking to.
 
+A conversation can also be serialized (``to_state`` / ``from_state``) so the
+server can restore it after a restart or an eviction. That is what makes a
+"durable turn" possible: close the tab, come back, keep going.
+
 A one-shot ``Agent.run`` is just a Conversation with a single turn.
 """
 
 from __future__ import annotations
 
 import tempfile
+import threading
 import time
 from pathlib import Path
 
-import threading
-
+from ..naming import artifact_meta
 from ..security.validate import ValidationError, read_target
 from ..util.text import strip_dashes
 from .context import compact_messages
-from .evidence import EvidenceLog
+from .evidence import Confidence, EvidenceLog, Finding
 from .job import Job
+from .narrative import describe_tool, plan_for
 from .prompts import SYSTEM_PROMPT
-from .providers.base import Message, Role
+from .providers.base import Message, Role, ToolCall
+from .templates import prompt_addendum
 from .tools import ToolContext
 
 
@@ -45,53 +51,109 @@ def tool_perm(registry, name: str) -> str:
     return tool.permission.label if tool else "unknown"
 
 
+_SAFE_EXTRA = {"project_dir", "modified_path", "extracted_dir", "routine_id"}
+
+
 class Conversation:
     def __init__(self, agent, target_path: str | None = None,
-                 project_dir: str | None = None) -> None:
+                 project_dir: str | None = None, workspace: str | None = None,
+                 intake: bool = True) -> None:
         self.agent = agent
         self.target_path = target_path
+        self.template = getattr(agent, "template", "general")
         self.evidence = EvidenceLog()
-        self.workspace = tempfile.mkdtemp(prefix="reverseai-conv-")
+        if workspace:
+            self.workspace = str(Path(workspace).resolve())
+            Path(self.workspace).mkdir(parents=True, exist_ok=True)
+            self._temp_workspace = False
+        else:
+            self.workspace = tempfile.mkdtemp(prefix="reverseai-conv-")
+            self._temp_workspace = True
+
         self.ctx = ToolContext(
             job_id="",
             workspace=self.workspace,
             target_path=target_path,
             sandbox_policy=agent.sandbox_policy,
             evidence=self.evidence,
-            extra={"project_dir": project_dir or self.workspace},
+            goal="",
+            memory=getattr(agent, "memory", None),
+            sources=[],
+            extra={
+                "project_dir": project_dir or self.workspace,
+                "provider": getattr(agent, "provider", None),
+                "max_permission": getattr(agent, "max_permission", None),
+                "delegate_depth": getattr(agent, "delegate_depth", 0),
+                "skills": getattr(agent, "skills", []),
+            },
         )
-        self.messages: list[Message] = [Message(Role.SYSTEM, SYSTEM_PROMPT)]
+        self.messages: list[Message] = [Message(Role.SYSTEM, self._system_prompt())]
         self._first = True
         self.refused: str | None = None
         self.turns = 0
         self.created_at = time.time()
         self._lock = threading.Lock()  # serialize turns on one conversation
 
-        if target_path:
+        if target_path and intake:
             try:
                 data = read_target(target_path)
                 self.evidence.observed(f"target is {len(data)} bytes", source="intake")
             except ValidationError as exc:
                 self.refused = f"target rejected: {exc}"
 
+    # ------------------------------------------------------------------
+    # Prompt
+    # ------------------------------------------------------------------
+    def _system_prompt(self) -> str:
+        parts = [SYSTEM_PROMPT.rstrip(), "", "Current mode:", prompt_addendum(self.template)]
+        skills = getattr(self.agent, "skills", None) or []
+        if skills:
+            from .skills import skills_prompt
+
+            block = skills_prompt(skills)
+            if block:
+                parts += ["", block]
+        memory = getattr(self.agent, "memory", None)
+        if memory is not None:
+            try:
+                block = memory.prompt_context()
+            except Exception:
+                block = ""
+            if block:
+                parts += ["", block]
+        parts += [
+            "",
+            "Reasoning display: the interface shows a short, human timeline of what "
+            "you do. Keep your interim notes specific and natural (what you are "
+            "checking and why), never mention tool names, and do not narrate the "
+            "interface itself.",
+        ]
+        return "\n".join(parts)
+
+    # ------------------------------------------------------------------
+    # Turns
+    # ------------------------------------------------------------------
     def add_user(self, goal: str) -> None:
         """Queue a follow-up user message without running (used before run_turn)."""
         self.messages.append(Message(Role.USER, goal))
         self._first = False
 
-    def run_turn(self, goal: str, on_event=None) -> Job:
+    def run_turn(self, goal: str, on_event=None, stop_event=None) -> Job:
         # Serialize: a follow-up can't corrupt state while a turn is still
         # running (e.g. a long clone). It waits for the previous turn to finish.
         with self._lock:
-            return self._run_turn_locked(goal, on_event)
+            return self._run_turn_locked(goal, on_event, stop_event)
 
-    def _run_turn_locked(self, goal: str, on_event=None) -> Job:
+    def _run_turn_locked(self, goal: str, on_event=None, stop_event=None) -> Job:
         agent = self.agent
         job = Job(goal=goal, target_path=self.target_path)
         job.workspace = self.workspace
+        job.template = self.template
         emit = make_emitter(on_event)
+        plan = plan_for(self.template, bool(self.target_path), goal)
         emit({"type": "start", "job_id": job.id, "goal": goal,
-              "target": self.target_path, "provider": agent.provider.name})
+              "target": self.target_path, "provider": agent.provider.name,
+              "template": self.template, "plan": plan})
 
         if self.refused:
             job.status = "refused"
@@ -99,8 +161,10 @@ class Conversation:
             emit({"type": "error", "error": job.error})
             return self._finish(job)
 
+        emit({"type": "plan", "steps": plan, "template": self.template})
         self.turns += 1
         self.ctx.job_id = job.id
+        self.ctx.goal = goal
         if self._first:
             self.messages.append(Message(
                 Role.USER, _initial_user_message(goal, self.target_path)))
@@ -112,18 +176,30 @@ class Conversation:
                 self.messages.append(Message(Role.USER, goal))
 
         job.status = "running"
-        self._loop(job, emit)
+        self._loop(job, emit, stop_event)
         job = self._finish(job)
+
         artifact = self.ctx.extra.get("modified_path")
-        artifact_name = Path(artifact).name if artifact else None
+        meta = artifact_meta(artifact) if artifact else {}
+        if meta.get("name"):
+            job.artifact = meta["name"]
+            job.artifact_meta = meta
+        job.sources = list(self.ctx.sources)
+
         emit({"type": "final", "status": job.status, "answer": job.final_answer,
               "evidence_summary": self.evidence.summary(), "steps": job.steps,
-              "usage": job.usage, "artifact": artifact_name})
+              "usage": job.usage, "artifact": job.artifact,
+              "artifact_meta": job.artifact_meta, "sources": job.sources,
+              "template": self.template, "plan": plan})
         return job
 
-    def _loop(self, job: Job, emit) -> None:
+    def _loop(self, job: Job, emit, stop_event=None) -> None:
         agent = self.agent
         for step in range(1, agent.max_steps + 1):
+            if stop_event is not None and stop_event.is_set():
+                job.status = "cancelled"
+                job.final_answer = "Stopped. Nothing else was changed."
+                return
             job.steps = step
             emit({"type": "step", "step": step})
             self.messages = compact_messages(self.messages, agent.max_context_chars)
@@ -136,7 +212,7 @@ class Conversation:
                 job.error = f"provider error: {exc}"
                 emit({"type": "error", "error": job.error})
                 return
-            _acc_usage(job, resp)
+            _acc_usage(job, resp, agent.provider)
 
             self.messages.append(Message(
                 Role.ASSISTANT, content=resp.content, tool_calls=resp.tool_calls))
@@ -153,7 +229,16 @@ class Conversation:
                 return
 
             for tc in resp.tool_calls:
+                if stop_event is not None and stop_event.is_set():
+                    job.status = "cancelled"
+                    job.final_answer = "Stopped. Nothing else was changed."
+                    return
                 before = len(self.evidence.all())
+                info = describe_tool(tc.name, tc.arguments)
+                emit({"type": "reason", "step": step, "tool": tc.name,
+                      "title": info["title"], "detail": info["detail"],
+                      "icon": info["icon"]})
+
                 result = agent.mediator.dispatch(tc.name, tc.arguments, self.ctx)
                 self.messages.append(Message(
                     Role.TOOL, content=result.content,
@@ -161,22 +246,135 @@ class Conversation:
                 emit({"type": "tool_result", "step": step, "name": tc.name,
                       "ok": result.ok,
                       "permission": tool_perm(agent.registry, tc.name),
+                      "title": info["title"],
                       "content": (result.content or "")[:4000]})
                 for f in self.evidence.all()[before:]:
                     emit({"type": "finding", "tier": f.confidence.label,
                           "claim": f.claim, "source": f.source})
 
-        job.status = "completed"
-        job.final_answer = job.final_answer or "(reached step limit without a summary)"
+                sources = _result_sources(result.data)
+                if sources:
+                    known = {s.get("url") for s in self.ctx.sources}
+                    for s in sources:
+                        if s.get("url") and s["url"] not in known:
+                            self.ctx.sources.append(s)
+                            known.add(s["url"])
+                            emit({"type": "source", **s})
+
+        job.status = "incomplete"
+        job.final_answer = job.final_answer or (
+            "I reached the step limit before I could wrap this up. "
+            "Ask me to continue and I'll pick up where I stopped.")
 
     def _finish(self, job: Job) -> Job:
         job.evidence = self.evidence
         job.audit = self.agent.mediator.audit_log()
         job.transcript = [m.to_openai() for m in self.messages]
+        job.usage = dict(job.usage)
+        job.sources = list(self.ctx.sources)
         job.finished_at = time.time()
         if job.status == "running":
             job.status = "failed"
         return job
+
+    # ------------------------------------------------------------------
+    # Durable state
+    # ------------------------------------------------------------------
+    def to_state(self) -> dict:
+        return {
+            "target_path": self.target_path,
+            "workspace": self.workspace,
+            "template": self.template,
+            "turns": self.turns,
+            "created_at": self.created_at,
+            "refused": self.refused,
+            "messages": [_message_state(m) for m in self.messages],
+            "evidence": [f.to_dict() for f in self.evidence.all()],
+            "sources": list(self.ctx.sources),
+            "extra": {k: v for k, v in self.ctx.extra.items() if k in _SAFE_EXTRA},
+        }
+
+    @classmethod
+    def from_state(cls, agent, state: dict, intake: bool = False) -> "Conversation":
+        conv = cls(
+            agent,
+            target_path=state.get("target_path"),
+            workspace=state.get("workspace"),
+            intake=intake,
+        )
+        conv.template = state.get("template") or getattr(agent, "template", "general")
+        conv.turns = int(state.get("turns") or 0)
+        conv.created_at = float(state.get("created_at") or time.time())
+        conv.refused = state.get("refused")
+        messages = state.get("messages") or []
+        if messages:
+            conv.messages = [_message_from_state(m) for m in messages]
+        conv.evidence = EvidenceLog()
+        for row in state.get("evidence") or []:
+            try:
+                tier = Confidence[row.get("confidence", "observed").upper()]
+            except KeyError:
+                tier = Confidence.OBSERVED
+            conv.evidence.add(
+                row.get("claim", ""), tier,
+                source=row.get("source", ""), detail=row.get("detail", ""))
+        conv.ctx.evidence = conv.evidence
+        conv.ctx.sources = list(state.get("sources") or [])
+        conv.ctx.extra.update(state.get("extra") or {})
+        conv.ctx.target_path = conv.target_path
+        conv.ctx.workspace = conv.workspace
+        conv.ctx.memory = getattr(agent, "memory", None)
+        conv.ctx.extra["provider"] = getattr(agent, "provider", None)
+        conv.ctx.extra["max_permission"] = getattr(agent, "max_permission", None)
+        conv.ctx.extra["delegate_depth"] = getattr(agent, "delegate_depth", 0)
+        conv.ctx.extra["skills"] = getattr(agent, "skills", [])
+        if not conv.messages:
+            conv.messages = [Message(Role.SYSTEM, conv._system_prompt())]
+        elif conv.messages[0].role == Role.SYSTEM:
+            # Refresh the prompt with current memory/skills.
+            conv.messages[0] = Message(Role.SYSTEM, conv._system_prompt())
+        conv._first = False
+        return conv
+
+    def close(self) -> None:
+        """Remove the scratch workspace, but never a persistent one."""
+        if not self._temp_workspace:
+            return
+        import shutil
+
+        shutil.rmtree(self.workspace, ignore_errors=True)
+
+
+def _result_sources(data) -> list[dict]:
+    if not isinstance(data, dict):
+        return []
+    rows = data.get("sources")
+    if isinstance(rows, list):
+        return [r for r in rows if isinstance(r, dict) and r.get("url")]
+    return []
+
+
+def _message_state(m: Message) -> dict:
+    return {
+        "role": m.role.value,
+        "content": m.content,
+        "tool_calls": [{"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+                       for tc in m.tool_calls],
+        "tool_call_id": m.tool_call_id,
+        "name": m.name,
+    }
+
+
+def _message_from_state(d: dict) -> Message:
+    try:
+        role = Role(d.get("role", "user"))
+    except ValueError:
+        role = Role.USER
+    calls = [ToolCall(id=c.get("id", ""), name=c.get("name", ""),
+                      arguments=c.get("arguments") or {})
+             for c in (d.get("tool_calls") or []) if isinstance(c, dict)]
+    return Message(role, content=d.get("content"), tool_calls=calls,
+                   tool_call_id=d.get("tool_call_id"), name=d.get("name"))
 
 
 def _initial_user_message(goal: str, target_path: str | None) -> str:
@@ -192,13 +390,20 @@ def _initial_user_message(goal: str, target_path: str | None) -> str:
     return (
         f"{goal}\n\n[Attached target: {Path(target_path).name} "
         f"(path: {target_path})]\n"
-        "Investigate it and proceed toward the goal: work on a copy in the "
-        "sandbox, verify your work, finish with a clear plain-language summary, "
-        "and deliver the final file if you produce one.")
+        "Work on a copy in the sandbox, verify your work, finish with a clear "
+        "plain-language summary, and deliver the final file if you produce one."
+    )
 
 
-def _acc_usage(job: Job, resp) -> None:
+def _acc_usage(job: Job, resp, provider=None) -> None:
     u = resp.usage
     job.usage["prompt_tokens"] = job.usage.get("prompt_tokens", 0) + u.prompt_tokens
     job.usage["completion_tokens"] = job.usage.get("completion_tokens", 0) + u.completion_tokens
     job.usage["total_tokens"] = job.usage.get("total_tokens", 0) + u.total_tokens
+    if provider is not None:
+        from .pricing import estimate_cost
+
+        cost = estimate_cost(provider.name, getattr(provider, "model", ""),
+                             u.prompt_tokens, u.completion_tokens)
+        if cost is not None:
+            job.usage["cost_usd"] = round(job.usage.get("cost_usd", 0.0) + cost, 6)

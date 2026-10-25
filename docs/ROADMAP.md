@@ -1,77 +1,94 @@
-# ReverseAI — Roadmap & Status
+# ReverseAI: Roadmap and Status
 
-A living map of what exists and what comes next. Update it as milestones land.
+A living map of what exists and what comes next. Updated with v0.2.0.
 
-## Done (v0.1.x)
+## Done
 
-- **Analysis core** — PE/ELF/Mach-O (incl. fat/universal iOS). PE imports+
-  exports; ELF dynamic imports, DT_NEEDED, function recovery; Mach-O LC_SYMTAB
-  symbols/functions. Entropy, strings, packer heuristics, malware-indicator
-  (suspicious-API) detection, structural diff. Cross-platform.
-- **Sandbox lab** — bubblewrap (hardened), subprocess, experimental qiling;
-  factory auto-selects; refuses uncontained untrusted execution. Bomb-safe
-  archive extraction; ephemeral per-run isolation contains crashes/bombs.
-- **Agent** — ReAct loop, multi-turn stateful conversations (shared target/
-  evidence/artifacts), permission-tiered mediator + audit, evidence tiers,
-  context compaction, Job + store. AI decides its own mode, asks clarifying
-  questions, verifies before finishing, delivers the final file.
-- **Tools** — analysis, execution, byte-patch + regression verify + diff,
-  archive extraction, LIEF structural edits (optional), coding (file ops +
-  sandboxed run_command).
-- **Providers** — DeepSeek + generic OpenAI-compatible + Anthropic + mock; the
-  model is server-chosen and never exposed to users.
-- **Service + UI** — stdlib HTTP API with SSE streaming; premium web UI (chat,
-  live inline tool work, markdown, upload + drag-drop, message queue, artifact
-  delivery, custom controls, sidebar with search/artifacts/host/recents).
-- **Benchmark** — task harness with ground-truth checkers.
-- **~150 tests**, CI workflow (push with a workflow-scoped token).
+### v0.2.0: the unified, visible agent
+
+- **Natural reasoning UI**: plan, chain-of-thought timeline, tool cards, findings,
+  elapsed time, collapsible steps, real cancel.
+- **Memory**: durable notes, `remember` / `recall` / `forget`, Memory panel.
+- **Research**: `web_search` / `web_read`, SSRF-safe redirect handling, Source
+  cards and citations, optional SearXNG.
+- **Routines**: daily, weekdays, weekly, every-N-minutes, once; scheduler;
+  Routines panel.
+- **Specialists**: eight templates and a `delegate` tool.
+- **Durable turns**: replayable JSONL event log, conversation persistence,
+  reattach after reload/restart.
+- **Usage and budget**: token/cost estimates, `/usage`, monthly gate.
+- **Feedback and notifications**: stored ratings, desktop notifications.
+- **Mobile first + PWA**: rewritten UI, manifest, service worker, speech input.
+- **Artifact naming**: descriptive, unique names with size and SHA-256.
+- **Unlimited-OCR adapter**: OpenAI-compatible vLLM/SGLang endpoint, Tesseract
+  fallback.
+- **Security**: optional bearer auth, path allowlists, operator-controlled
+  network, browser-render gate, preview origin isolation, `.dockerignore`.
+- **Packaging**: static assets and the Ghidra script ship in the wheel; CI
+  builds and verifies the package.
+- **Tests**: 200+ tests, including the new features and HTTP surface.
+
+### Earlier
+
+- Analysis core for PE/ELF/Mach-O/APK, entropy, imports/exports, functions,
+  strings, disassembly, heuristics, diff.
+- Bubblewrap/subprocess/qiling sandbox with hard refusal.
+- Agent ReAct loop, mediator, evidence tiers, jobs, providers.
+- Byte patching, LIEF edits, behavioral regression.
+- Ghidra decompilation (including a Java script for modern Ghidra).
+- Static website cloning and an opt-in rendered clone.
+- Bomb-safe archives.
+- CLI, HTTP API, SSE, web UI, benchmark.
 
 ## Next (priority order)
 
-### M1 finish — analysis depth
-- [ ] capstone/angr function-level CFG + call-graph tool (optional backends).
-- [ ] Ghidra-headless decompile tool (run inside the sandbox).
-- [ ] PE: resources/version info, TLS callbacks, rich header.
-- [ ] Mach-O: LC_DYLD_INFO exports trie, dylib dependencies, fat-binary slices.
-- [ ] seccomp-bpf profile for the sandbox (defense-in-depth; see SECURITY.md gap).
-- [ ] cgroup v2 limits for the subprocess/bubblewrap backends.
+### M2: depth and safety
+- [ ] seccomp-bpf and landlock profile for the sandbox.
+- [ ] cgroup v2 limits for bubblewrap and subprocess.
+- [ ] MCP client with mediator permissions.
+- [ ] pre/post tool hooks with an operator policy.
+- [ ] checkpoints and undo for conversations.
+- [ ] inline diff review and a patch approval surface.
+- [ ] more PE/Mach-O structure (resources, TLS, dyld export trie).
+- [ ] automatic test generation from observed behavior.
 
-### M2 — modification breadth
-- [ ] LIEF: add/replace functions, patch imports, resource edits (beyond bytes).
-- [ ] Code-cave / trampoline patching helpers.
-- [ ] Automatic test generation from observed behavior (record → replay).
-- [ ] Repair loop hardening: structured failure diagnosis between attempts.
+### M3: product surface
+- [ ] per-user accounts, quotas, and usage metering.
+- [ ] upload-based multi-tenant API and object storage for artifacts.
+- [ ] Redis/worker queue + Postgres job store; resume/cancel across workers.
+- [ ] shareable conversations and artifact links.
+- [ ] a public landing page (GitHub Pages) and a hosted demo.
 
-### M3 — product surface
-- [ ] Upload-based multi-tenant API (replace path-based control API); per-job
-      isolation; object storage for artifacts.
-- [ ] Async job queue (Redis/worker) + Postgres job store; resume/cancel.
-- [ ] Web UI (upload, chat, live investigation view, artifact + report download).
-- [ ] AuthN/Z, quotas, usage metering.
+### M4: the model
+- [ ] harvest verified job traces into a dataset, respecting licensing.
+- [ ] fine-tune an open-weight model on reverse-engineering tasks.
+- [ ] evaluate against DeepSeek on the benchmark.
+- [ ] hybrid routing (in-house model + external fallback).
 
-### M4 — the model
-- [ ] Harvest verified Job traces from the benchmark + real runs into a dataset
-      (filter by verified-tier outcomes; respect licensing).
-- [ ] Fine-tune an open-weight model on RE tasks; evaluate vs DeepSeek on the
-      benchmark.
-- [ ] Hybrid routing: in-house model for what it does well, external fallback
-      for hard reasoning.
+### The personal-agent layer (deferred, deliberately)
+- [ ] Docker workstation per agent with a live desktop and take-over.
+- [ ] Telegram remote control and pairing.
+- [ ] encrypted vault for credentials and payment approval.
+- [ ] persistent multi-agent squads with shared artifacts.
 
-## How to continue (for any engineer or agent)
+These are real product surfaces, not one-line features. They need a separate
+threat model and should not be rushed into an unaudited local app.
 
-1. Read `CLAUDE.md` (principles + contracts) and `docs/ARCHITECTURE.md`.
-2. Add a capability as a **Tool** (`reverseai/agent/`) or a **Sandbox backend**
-   (`reverseai/sandbox/backends/`) — the agent and API pick it up automatically.
-3. Every feature ships with a test. Keep the core importable with zero deps.
-4. Run `python3 -m unittest discover -s tests` before every commit.
-5. Never run untrusted code outside the sandbox; keep evidence tiers honest.
+## Known gaps and debts
 
-## Known gaps / debts
+- Ghidra and optional headless Chromium run on the host; see `SECURITY.md`.
+- No multi-tenant isolation yet.
+- A single access token, no per-user accounts.
+- `read_target` refuses symlinked agent targets (conservative default).
+- Workstation, Telegram, vault, MCP, and hooks are not implemented.
+- The CI/Pages workflows are staged in `docs/github-workflows/` until a token
+  with the `workflow` scope can push them.
+- Cost estimates are approximate and must be overridden for exact pricing.
 
-- No seccomp/landlock filter yet (namespaces + caps only).
-- Qiling/QEMU execution of PE/iOS binaries is wired but needs a configured
-  rootfs / VM image to actually run foreign-platform targets.
-- Control API is single-user/localhost; not yet multi-tenant.
-- `read_target` refuses symlinked targets (conservative default).
-- CI workflow lives at `.github/workflows/ci.yml` but is gitignored because the
-  stored token lacks the `workflow` scope — push it with a scoped token.
+## How to continue
+
+1. Read `CLAUDE.md` and `docs/ARCHITECTURE.md`.
+2. Add a capability as a **Tool**, a **Sandbox backend**, or a **Provider**.
+3. Ship a test and an honest limitation note with it.
+4. Keep the core importable with zero dependencies.
+5. Run `python3 -m unittest discover -s tests` before every commit.

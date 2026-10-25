@@ -36,5 +36,9 @@ jobs/
 # Secrets / local env
 .env
 
-# CI workflow: push manually with a workflow-scoped token (see docs)
-.github/
+# CI workflows are tracked (see .github/workflows).
+
+# Local runtime data
+jobs/
+data/
+*.log
