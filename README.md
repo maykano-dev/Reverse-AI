@@ -18,9 +18,11 @@
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
   <img alt="tests" src="https://img.shields.io/badge/tests-200%2B%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
+  <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
 
 <p align="center">
+  <a href="https://maykano-dev.github.io/Reverse-AI/">Live site</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#whats-new-in-02">What's new</a> ·
   <a href="docs/UNIFIED_AGENT.md">Feature map</a> ·
