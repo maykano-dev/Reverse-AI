@@ -83,8 +83,15 @@ def verification_from_diff(report: DiffReport,
     passed = _passed(report)
     failed = _failed(report)
     verified = bool(report.ran and passed and not failed)
+    run_errors = [
+        c.original.error or c.modified.error
+        for c in report.cases
+        if c.original.error or c.modified.error
+    ]
     if not report.ran:
         reason = f"verification could not run: {report.error}"
+    elif run_errors and not passed:
+        reason = f"verification could not run: {run_errors[0]}"
     elif verified:
         reason = report.summary or "behavioral test passed"
     else:
@@ -97,6 +104,15 @@ def verification_from_diff(report: DiffReport,
         if not passed:
             parts.append("no declared expectation passed")
         reason = "; ".join(parts) or "the behavioral test did not pass"
+
+    try:
+        original_sha = sha256_file(original_path)
+    except ReplayError:
+        original_sha = ""
+    try:
+        modified_sha = sha256_file(modified_path)
+    except ReplayError:
+        modified_sha = ""
 
     attempt = {
         "attempt": 1,
@@ -121,8 +137,8 @@ def verification_from_diff(report: DiffReport,
         },
         "differential": report.summary,
         "artifact_path": str(Path(modified_path).resolve()),
-        "modified_sha256": sha256_file(modified_path),
-        "original_sha256": sha256_file(original_path),
+        "modified_sha256": modified_sha,
+        "original_sha256": original_sha,
         "corpus_controls": sum(1 for c in report.cases
                                if (c.expected or {}).get("same_as_original") is True),
     }
@@ -138,17 +154,35 @@ def replay_record(
     output_files: list[str] | None = None,
     timeout_seconds: float = 10.0,
 ) -> dict[str, Any]:
-    report = run_differential(
-        original_path, modified_path, cases, policy=policy,
-        output_files=output_files, timeout_seconds=timeout_seconds)
-    verification = verification_from_diff(report, original_path, modified_path)
+    missing = [p for p in (original_path, modified_path)
+               if not Path(p).is_file()]
+    if missing:
+        verification = {
+            "verified": False, "kind": "behavioral", "turn": "cli",
+            "reason": f"verification could not run: not a file: {missing[0]}",
+            "passed_tests": 0, "tests_run": 0, "attempts": [],
+            "test_summary": {}, "differential": "", "artifact_path": "",
+            "modified_sha256": "", "original_sha256": "",
+            "corpus_controls": 0,
+        }
+        report = DiffReport(ran=False, error=verification["reason"])
+    else:
+        report = run_differential(
+            original_path, modified_path, cases, policy=policy,
+            output_files=output_files, timeout_seconds=timeout_seconds)
+        verification = verification_from_diff(report, original_path,
+                                               modified_path)
     delivery = {
         "allowed": bool(verification["verified"]),
         "reason": ("behavioral test passed in the sandbox"
                    if verification["verified"] else verification["reason"]),
     }
+    try:
+        size = Path(modified_path).stat().st_size
+    except OSError:
+        size = None
     record = {
-        "id": "cli_" + verification["modified_sha256"][:12],
+        "id": "cli_" + (verification["modified_sha256"] or "unknown")[:12],
         "goal": goal or "Verify a modification against a behavioral corpus",
         "target_path": str(Path(original_path).resolve()),
         "status": "completed",
@@ -156,7 +190,7 @@ def replay_record(
         "artifact_meta": {
             "name": Path(modified_path).name,
             "path": str(Path(modified_path).resolve()),
-            "size": Path(modified_path).stat().st_size,
+            "size": size,
             "sha256": verification["modified_sha256"],
         },
         "verification": verification,

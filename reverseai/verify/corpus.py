@@ -177,6 +177,10 @@ def capture_corpus(
         if source is None:
             continue
         snap = result.original
+        if snap.error or snap.timed_out:
+            raise CorpusError(
+                f"case {result.name!r} did not run cleanly: "
+                f"{snap.error or 'timed out'}")
         expect: dict[str, Any] = {
             "same_as_original": True,
             "stdout": snap.stdout,

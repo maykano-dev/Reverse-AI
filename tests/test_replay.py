@@ -87,6 +87,15 @@ class ReplayTests(unittest.TestCase):
             with self.assertRaises(ReplayError):
                 load_cases(p)
 
+    def test_missing_modified_file_fails_honestly(self):
+        with tempfile.TemporaryDirectory() as td:
+            record = replay_record(
+                "/bin/ls", str(Path(td) / "does-not-exist"),
+                [InputCase("smoke", ["--version"])])
+            self.assertFalse(record["verification"]["verified"])
+            self.assertFalse(record["delivery"]["allowed"])
+            self.assertIn("could not run", record["verification"]["reason"])
+
     @unittest.skipUnless(CC and SANDBOX, "cc or isolating sandbox unavailable")
     def test_signed_report_has_a_replay_recipe(self):
         tmp, binary = compile_fixture()
