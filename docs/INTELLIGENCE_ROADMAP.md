@@ -227,6 +227,6 @@ python3 -m unittest tests.test_intelligence_orchestration -v
 python3 -m unittest tests.test_intelligence_tools -v
 ```
 
-The full suite is 509 tests at the time of this ledger. Counts change; the
+The full suite is 519 tests at the time of this ledger. Counts change; the
 checklist is about coverage of the capability, not the number.
 

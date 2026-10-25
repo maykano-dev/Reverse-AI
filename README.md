@@ -16,7 +16,7 @@
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
-  <img alt="tests" src="https://img.shields.io/badge/tests-505%2B%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-519%2B%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
   <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
@@ -24,13 +24,14 @@
 <p align="center">
   <a href="https://maykano-dev.github.io/Reverse-AI/">Live site</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="#whats-new-in-02">What's new</a> ·
+  <a href="#whats-new-in-080">What's new</a> ·
   <a href="docs/UNIFIED_AGENT.md">Feature map</a> ·
   <a href="docs/POWER.md">Power map</a> ·
   <a href="docs/INTELLIGENCE_ROADMAP.md">Intelligence roadmap</a> ·
   <a href="docs/TESTING.md">Testing and evaluation</a> ·
   <a href="docs/AUDIT_REMEDIATION.md">Audit remediation</a> ·
   <a href="docs/DANGEROUS_AND_OPEN_ITEMS.md">Dangerous surfaces</a> ·
+  <a href="docs/AUDIT_0_8_0.md">0.8.0 audit</a> ·
   <a href="docs/VERIFYING.md">Reproducible verification</a> ·
   <a href="#deploy-it">Deploy</a> ·
   <a href="docs/SECURITY.md">Security</a> ·
@@ -50,7 +51,7 @@ Most "AI + reverse engineering" demos stop at describing a binary. ReverseAI clo
 - **A real working memory.** Durable notes, web research with citations, scheduled routines, specialist agents, and conversations that survive a reload or a server restart.
 - **Mobile first.** A PWA that works as a full chat app on a phone, with a drawer, safe areas, touch-sized controls, and an installable manifest.
 
-## What's new in 0.8
+## What's new in 0.8.0
 
 | Area | What landed |
 |---|---|
@@ -65,7 +66,7 @@ Most "AI + reverse engineering" demos stop at describing a binary. ReverseAI clo
 
 The details and honest statuses are in `docs/DANGEROUS_AND_OPEN_ITEMS.md`.
 
-## What's new in 0.7
+## What's new in 0.7.0
 
 | Area | What landed |
 |---|---|
@@ -80,7 +81,7 @@ The details and honest statuses are in `docs/DANGEROUS_AND_OPEN_ITEMS.md`.
 | **Repository audit** | `reverseai audit` checks version consistency, zero required dependencies, required assets, tool narration/UI labels, doc links, secret hygiene, and test presence. |
 | **Persistent evidence** | Jobs and signed reports now carry the world-model summary, ranked opportunities, hypotheses, and mutation strength. |
 
-## What's new in 0.6
+## What's new in 0.6.0
 
 | Area | What landed |
 |---|---|
@@ -95,7 +96,7 @@ The details and honest statuses are in `docs/DANGEROUS_AND_OPEN_ITEMS.md`.
 | **Five modes** | Ask, Build, Modify, Optimize, Autonomous Mission. The mode changes the contract with the user, not the safety rules. |
 | **Domain contracts** | Hardware, robotics, CAD, network, security, and computer-operator adapters return inventory, hypotheses, a simulation plan, and explicit refusals. They do not claim physical or live-system capability. |
 
-## What's new in 0.5
+## What's new in 0.5.0
 
 | Area | What landed |
 |---|---|
@@ -109,7 +110,7 @@ The details and honest statuses are in `docs/DANGEROUS_AND_OPEN_ITEMS.md`.
 | **Approvals + gate** | Irreversible actions need a capability opt-in *and* a live, scoped, single-use HMAC approval. Every decision is audited. There is no ambient authority. |
 | **Encrypted vault** | Optional Fernet vault with PBKDF2-HMAC-SHA256, mode 0600, deny-by-default capability, and no plaintext fallback. |
 
-## What's new in 0.4
+## What's new in 0.4.0
 
 | Area | What landed |
 |---|---|
@@ -121,7 +122,7 @@ The details and honest statuses are in `docs/DANGEROUS_AND_OPEN_ITEMS.md`.
 | **Environment fingerprint** | Signed reports now record the sandbox backend, isolation level, network/filesystem controls, capability dropping, and seccomp status that were actually applied. |
 | **High-risk capability policy** | Remote control, vault, payments, live workstation, persistent squads, MCP, and hooks are denied by default. Enabling any of them requires a master opt-in, a per-capability opt-in, and (for secrets) a vault key. |
 
-## What's new in 0.3
+## What's new in 0.3.0
 
 | Area | What landed |
 |---|---|
@@ -131,7 +132,7 @@ The details and honest statuses are in `docs/DANGEROUS_AND_OPEN_ITEMS.md`.
 | **Signed verification reports** | Every job exposes `GET /jobs/<id>/report` (JSON) and `/report.html` (self-contained HTML) with the goal, change, evidence tiers, tests, differential summary, artifact SHA-256, and a deterministic signature. HMAC-SHA256 when `REVERSEAI_REPORT_KEY` is set, SHA-256 otherwise. |
 | **Honest blocked state** | A blocked artifact is replaced by a plain-language reason in the chat and report. The model's optimistic draft is not allowed to stand as the conclusion. |
 
-## What's new in 0.2
+## What's new in 0.2.0
 
 | Area | What landed |
 |---|---|
@@ -447,7 +448,7 @@ Copy [`.env.example`](.env.example) to `.env` for a local setup. Never commit it
 - Previewed and cloned sites run in an opaque-origin iframe with no access to the app.
 - Secrets are redacted from logs; the model key never reaches the browser.
 
-Known gaps are listed honestly in [`docs/SECURITY.md`](docs/SECURITY.md): the sandbox still shares the host kernel, Ghidra runs on the host, Landlock/cgroup enforcement is detected but not yet applied, and multi-tenant isolation is not built. High-risk capabilities (remote control, payments, live workstation, squads, MCP, hooks) are not implemented and are denied by default in `security/capabilities.py`; a future implementation must also pass the approval and audit gate in `security/gate.py`.
+Known gaps are listed honestly in [`docs/SECURITY.md`](docs/SECURITY.md): the sandbox still shares the host kernel, Ghidra runs on the host, Landlock/cgroup enforcement is detected but not yet applied, and multi-tenant isolation is not built. High-risk capabilities (desktop, Telegram, payments, MCP, hooks, self-training, deployment) are **gated surfaces**, not live authorities; they are denied by default and any irreversible action also requires the approval gate in `security/gate.py`. See [`docs/DANGEROUS_AND_OPEN_ITEMS.md`](docs/DANGEROUS_AND_OPEN_ITEMS.md) for what is enabled and what backend is still absent.
 
 Use ReverseAI for interoperability, security research, debugging, recovering your own work, and authorized testing. Analyze and modify only software and sites you own or are authorized to work on.
 

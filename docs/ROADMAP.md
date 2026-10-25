@@ -20,7 +20,7 @@ A living map of what exists and what comes next. Updated with v0.8.0.
   rollback; no auto-deploy.
 - **Open items**: differential fuzzing, PE/Mach-O depth, Landlock/cgroup/QEMU
   surfaces, mission persistence, per-token quota, readiness verdict.
-- **Tests**: 509.
+- **Tests**: 519.
 
 ### v0.7.0: audit remediation and evidence hardening
 

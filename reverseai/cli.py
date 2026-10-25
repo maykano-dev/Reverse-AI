@@ -8,6 +8,7 @@ Commands:
   xrefs <file>              direct call/jump cross-references
   repo <dir>                map a source repository
   audit                     check repository invariants
+  release check             verify versions, test baseline, and feature claims
   surfaces                  inventory dangerous surfaces (not enable them)
   mcp validate <json>       validate an MCP server manifest
   hooks validate <json>     validate a signed hook manifest
@@ -292,6 +293,24 @@ def _cmd_hooks(args: argparse.Namespace) -> int:
         for p in problems:
             print(f"  - {p}")
     return 0 if not problems and signed else 1
+
+
+def _cmd_release(args: argparse.Namespace) -> int:
+    from .release import FEATURE_CLAIMS, feature_issues, release_truth
+
+    truth = release_truth(args.root)
+    issues = truth.issues + feature_issues(args.root)
+    if args.json:
+        print(json.dumps({"release": truth.to_dict(), "features": [
+            f.to_dict() for f in FEATURE_CLAIMS], "issues": issues}, indent=2))
+    else:
+        print(f"release: {truth.version}")
+        print(f"tests baseline: {truth.tests}")
+        print(f"tools: {truth.tools}")
+        print("issues:" if issues else "consistency: PASS")
+        for issue in issues:
+            print(f"  - {issue}")
+    return 0 if not issues else 1
 
 
 def _cmd_surfaces(args: argparse.Namespace) -> int:
@@ -709,6 +728,13 @@ def build_parser() -> argparse.ArgumentParser:
     hooks_validate.add_argument("manifest")
     hooks_validate.add_argument("--json", action="store_true")
     hooks_validate.set_defaults(func=_cmd_hooks)
+
+    release = sub.add_parser("release", help="release metadata and feature-claim checks")
+    release_sub = release.add_subparsers(dest="release_cmd", required=True)
+    release_check = release_sub.add_parser("check", help="check release consistency")
+    release_check.add_argument("--root", default=".")
+    release_check.add_argument("--json", action="store_true")
+    release_check.set_defaults(func=_cmd_release)
 
     surfaces = sub.add_parser("surfaces",
                               help="inventory dangerous surfaces without enabling them")

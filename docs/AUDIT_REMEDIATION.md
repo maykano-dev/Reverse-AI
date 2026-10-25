@@ -4,8 +4,8 @@ This is the working checklist for the full-repository audit. It follows the
 audit's own order: establish the baseline, prove the central workflow, strengthen
 verification, then improve learning and platform quality.
 
-Status: **in progress**. Each item is checked only when the code and an offline
-test exist.
+Status: **living**. Each item is checked only when the code and an offline test
+exist; `~` is a foundation, not a complete product.
 
 ## Phase 1 — baseline and measurement
 
@@ -26,7 +26,7 @@ test exist.
       cost, and time.
 - [x] Add mutation testing to measure whether a corpus can actually detect a
       broken candidate.
-- [ ] Add differential fuzzing over seeds (bounded, sandbox-only). Not yet supplied.
+- [x] Add differential fuzzing over seeds (bounded, sandbox-only) and a report.
 - [x] Add a benchmark quality test that proves each checker can fail.
 - [x] Make the benchmark runnable without an API key for deterministic tools.
 
@@ -47,8 +47,9 @@ test exist.
 - [x] Link requirements, experiments, modifications, tests, and decisions in the
       engineering graph.
 - [x] Add verified-skill records with a holdout and staleness.
-- [ ] Add long-running mission recovery across process restarts (foundation
-      exists; worker resume is not built).
+- [~] Add long-running mission recovery across process restarts: persisted
+      state, checkpoints, and resume contract are built; a worker restart is not
+      wired.
 
 ## Phase 5 — safety and sandbox
 
@@ -89,8 +90,8 @@ test exist.
 ## Current baseline
 
 - Date: 2026-10-25
-- Version: 0.7.0
-- Tests: 509 passing, 4 environment-dependent skips
+- Version: 0.8.0
+- Tests: 519 passing, 4 environment-dependent skips
 - Tools: 56 (every one covered by the contract suite)
 - Known skips: no-sandbox refusal path (because a sandbox exists), LIEF absence
   (because LIEF is installed), missing-provider-key paths (because a key is

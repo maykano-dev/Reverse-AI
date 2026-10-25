@@ -30,6 +30,21 @@ class MissionTests(unittest.TestCase):
             self.assertEqual(resumed["resume_count"], 1)
             self.assertTrue(store.list())
 
+    def test_recovery_after_process_restart(self):
+        with tempfile.TemporaryDirectory() as td:
+            first = MissionStore(td)
+            first.save({"id": "mission_restart", "status": "planned",
+                        "objective": "resume me"})
+            first.checkpoint("mission_restart", "analysis complete",
+                             status="running")
+            del first
+            second = MissionStore(td)
+            loaded = second.load("mission_restart")
+            self.assertEqual(loaded["status"], "running")
+            self.assertEqual(loaded["checkpoints"][-1]["note"],
+                             "analysis complete")
+            self.assertEqual(second.resume("mission_restart")["resume_count"], 1)
+
     def test_invalid_id_is_refused(self):
         with tempfile.TemporaryDirectory() as td:
             self.assertIsNone(MissionStore(td).load("../../etc/passwd"))

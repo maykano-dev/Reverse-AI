@@ -110,34 +110,43 @@ actually enforced.
 
 ## High-risk capabilities are denied by default
 
-Remote control, credential vaults, payments, live desktop workstations,
-persistent squads, MCP servers, and hooks are **not implemented** in this
-release. The `reverseai.security.capabilities` policy exists so a future
-implementation cannot be switched on by accident:
+The 0.8 release adds **gated surfaces**, not enabled authorities:
 
-- Every capability is denied by default.
-- Enabling one requires both `REVERSEAI_ENABLE_DANGEROUS_CAPABILITIES=1` and its
-  own `REVERSEAI_ENABLE_*` variable.
-- A vault or payment capability additionally requires `REVERSEAI_VAULT_KEY`.
-- Any future feature must call `CapabilityPolicy.require()` before touching the
-  host, the network, or stored credentials.
-- `/config` reports only which high-risk capabilities are enabled, never the
-  secrets.
-- **A second gate covers irreversibility.** `security/gate.py` requires a live,
-  scoped, single-use approval issued by `security/approvals.py` (HMAC-SHA256,
-  short TTL, action and scope bound) and writes an append-only audit row. A
-  capability switch alone is not permission to charge a card, take over a
-  desktop, or run a remote command.
-- **The vault is optional and refuses to weaken.** `security/vault.py` requires
-  the `cryptography` package, derives a key with PBKDF2-HMAC-SHA256, stores
-  Fernet ciphertext at mode 0600, and raises rather than falling back to a
-  homemade cipher or plaintext.
+- Desktop session broker and loopback listener (no VNC/input backend).
+- Read-only Telegram channel (no shell/payment/deployment commands).
+- Payment intent ledger and provider boundary (mock provider; operator-supplied
+  HTTPS/loopback adapter; no card data, no bundled live processor).
+- MCP JSON-RPC client (host transport is explicit and dangerous).
+- Signed, sandboxed hooks.
+- Verified-trace dataset and benchmark-gated improvement pipeline.
+- Deployment plan/controller with dry run, approval, injected transport, and
+  separately approved rollback.
 
-A payments vault and a remote desktop are not "features to add quickly." They
-need a separate threat model, human approval for irreversible actions, and an
-audited encryption boundary. Until then, refusal is the correct behavior. The
-approval and vault primitives exist so a future implementation cannot invent a
-weaker boundary.
+Every one is denied by default. Enabling one requires both
+`REVERSEAI_ENABLE_DANGEROUS_CAPABILITIES=1` and its own
+`REVERSEAI_ENABLE_*` variable. A vault/payment capability also requires
+`REVERSEAI_VAULT_KEY`. Any future feature must call
+`CapabilityPolicy.require()` before touching the host, the network, or stored
+credentials. `/config` and `/surfaces` report which surfaces are enabled, never
+their secrets.
+
+**A second gate covers irreversibility.** `security/gate.py` requires a live,
+scoped, single-use approval issued by `security/approvals.py` (HMAC-SHA256,
+short TTL, action and scope bound) and writes an append-only audit row. A
+capability switch alone is not permission to charge a card, take over a
+desktop, deploy an artifact, or run a remote command.
+
+**The vault is optional and refuses to weaken.** `security/vault.py` requires
+the `cryptography` package, derives a key with PBKDF2-HMAC-SHA256, stores Fernet
+ciphertext at mode 0600, and raises rather than falling back to a homemade cipher
+or plaintext.
+
+Still **not bundled**: a real VNC/input backend, a live payment processor, a
+public Telegram bot token, automatic training/weight deployment, automatic
+production deployment, Landlock/cgroup enforcement, a QEMU guest runner, and
+multi-tenant accounts. Those need a specific backend, credential, and threat
+model; the interfaces and gates are present so they can be added without
+inventing a weaker boundary.
 
 ## Gated dangerous surfaces
 

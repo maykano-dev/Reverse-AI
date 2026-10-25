@@ -25,7 +25,7 @@
 - Landlock ABI/ruleset plan, cgroup v2 detection/optional scope, QEMU VM command
   surface and honest refusal, mission persistence/resume, per-token quota module.
 - `reverseai surfaces`, `mcp validate`, `hooks validate`, `/surfaces`.
-- 55 new tests; total 509; 56 tools covered by contract tests.
+- 65 new tests; total 519; 56 tools covered by contract tests.
 
 ## 0.7.0: audit remediation and evidence hardening
 

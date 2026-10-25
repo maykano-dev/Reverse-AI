@@ -137,6 +137,13 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(self.calls, ["deploy"])
         self.assertEqual(out.status, "deployed")
 
+    def test_duplicate_deploy_is_blocked_by_single_use_approval(self):
+        p = self.controller.plan("staging", "app.tar")
+        grant = self.approvals.grant("deployment.deploy", "staging")
+        self.assertTrue(self.controller.deploy(p.id, approval_token=grant.token).ok)
+        with self.assertRaises(DeploymentRefused):
+            self.controller.deploy(p.id, approval_token=grant.token)
+
     def test_rollback_requires_its_own_approval(self):
         p = self.controller.plan("prod", "app.tar")
         grant = self.approvals.grant("deployment.deploy", "prod")

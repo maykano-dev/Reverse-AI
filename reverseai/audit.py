@@ -81,6 +81,16 @@ def run_audit(root: str | Path) -> AuditReport:
         "pyproject dependencies must stay empty")
     add("Python 3.11+",
         "requires-python" in pyproject and "3.11" in pyproject)
+    try:
+        from .release import feature_issues, release_truth
+
+        truth = release_truth(root)
+        add("release metadata agrees", not truth.issues, "; ".join(truth.issues))
+        facts = feature_issues(root)
+        add("feature claims have source and tests", not facts, "; ".join(facts))
+    except Exception as exc:
+        add("release consistency check", False,
+            f"{type(exc).__name__}: {exc}")
 
     # Required assets.
     required = [
@@ -92,6 +102,7 @@ def run_audit(root: str | Path) -> AuditReport:
         "docs/SECURITY.md", "docs/ARCHITECTURE.md",
         "docs/INTELLIGENCE_ROADMAP.md", "docs/AUDIT_REMEDIATION.md",
         "docs/TESTING.md", "docs/DANGEROUS_AND_OPEN_ITEMS.md",
+        "docs/AUDIT_0_8_0.md",
     ]
     missing = [p for p in required if not (root / p).is_file()]
     add("required files exist", not missing, ", ".join(missing))
