@@ -50,7 +50,8 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | Provider layer | **working** | DeepSeek, OpenAI-compatible, Anthropic, Ollama, mock |
 | Sandbox/testing | **working** | bubblewrap, subprocess, experimental qiling, hard refusal |
 | Evidence/verify | **working** | tiers + audit + differential tests + repair loop + verified gate + signed reports |
-| Modification engine | **working** | byte patches, LIEF structural edits, on a copy |
+| Modification engine | **working** | strategy selector, planner, scoped blast radius, byte patches, LIEF edits |
+| Autonomous modify | **working** | choose -> plan -> implement -> verify -> signed report; mode override |
 | Decompile | **working** | Ghidra headless + Java script for modern releases |
 | Clone | **working** | static fetch; opt-in headless render |
 | Memory/research/routines | **working** | durable notes, web sources, schedules |
@@ -58,7 +59,7 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | API + UI | **working** | stdlib HTTP + SSE, mobile-first PWA |
 | Multi-tenant product layer | **planned** | accounts, quotas, object storage, worker queue |
 
-## Current capability (v0.3.0)
+## Current capability (v0.4.0)
 
 Zero third-party dependencies required (stdlib + binutils; optional libs enhance):
 
@@ -80,9 +81,9 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 - **Research:** SSRF-safe search and page reading with sources and citations.
 - **Skills:** markdown playbooks under `REVERSEAI_SKILLS` / `<store>/skills`,
   loaded on demand with `read_skill`.
-- **Tools:** analysis, execution, modification, verification, differential
-  testing, coding, memory, research, delegate, routines, archive extraction,
-  website cloning, OCR.
+- **Tools:** analysis, execution, strategy selection, modification planning,
+  modification, verification, differential testing, coding, memory, research,
+  delegate, routines, archive extraction, website cloning, OCR.
 - **Modify + verify:** byte patch on a copy + behavioral regression in the
   sandbox; LIEF structural edits when installed.
 - **Verified delivery gate:** `verify_modification` runs declared behavioral
@@ -98,8 +99,21 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   flagged.
 - **Signed verification reports:** `GET /jobs/<id>/report` (JSON) and
   `/report.html` (self-contained HTML), covering the goal, change, evidence
-  tiers, tests, differential summary, artifact SHA-256, and a deterministic
-  signature (HMAC-SHA256 when `REVERSEAI_REPORT_KEY` is set, else SHA-256).
+  tiers, tests, differential summary, artifact SHA-256, mode/strategy/plan,
+  sandbox environment fingerprint, and a deterministic signature (HMAC-SHA256
+  when `REVERSEAI_REPORT_KEY` is set, else SHA-256).
+- **Autonomous modification engine:** `choose_modification_strategy` scores
+  resource_edit, byte_patch, component_replace, rebuild, and reimplement from
+  real analysis plus the goal, with rationale, confidence, alternatives, and a
+  clarifying question. `plan_and_modify` runs the selected strategy through the
+  existing executors, estimates blast radius, supports "change X, preserve the
+  rest" with regression cases, and then runs the Batch 1 verify+repair loop.
+  Modes: Direct, Reconstruction, Modernisation. The engine recommends a mode; the
+  user may override it, and the chosen mode is recorded on the Job.
+- **High-risk capability policy:** remote control, vault, payments, live
+  workstation, persistent squads, MCP, and hooks are denied by default. A future
+  implementation must pass `security/capabilities.py` (master opt-in + specific
+  opt-in + vault key) before it can touch the host, network, or secrets.
 - **Decompile:** Ghidra headless with a Java GhidraScript for modern Ghidra and
   JDK-range detection. Optional.
 - **OCR:** Baidu Unlimited-OCR via an OpenAI-compatible vLLM/SGLang endpoint,
@@ -132,7 +146,10 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 | `reverseai/sandbox/` | Isolation backends + policy, including bounded stdin |
 | `reverseai/verify/` | Behavioral comparison, differential corpus, repair loop, signed report |
 | `reverseai/agent/verify_tools.py` | `verify_modification` and `differential_test` |
-| `reverseai/security/` | Validation, limits, archives, SSRF-safe fetch |
+| `reverseai/modify/strategy.py` | Strategy scoring, mode mapping, confidence, clarification |
+| `reverseai/modify/planner.py` | Ordered plan, components, blast radius, scoped requests |
+| `reverseai/agent/modify_engine.py` | `choose_modification_strategy` and `plan_and_modify` |
+| `reverseai/security/` | Validation, limits, archives, SSRF-safe fetch, capability policy |
 | `reverseai/server/static/` | Mobile-first UI (no build step) |
 
 ## Stack
@@ -150,7 +167,7 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 python3 -m reverseai analyze /path/to/binary
 python3 -m reverseai analyze /path/to/binary --json
 python3 -m reverseai serve
-python3 -m unittest discover -s tests -v   # 230+ tests, no API key
+python3 -m unittest discover -s tests -v   # 240+ tests, no API key
 ```
 
 Verification/report endpoints:
@@ -172,9 +189,15 @@ GET /jobs/<id>/report.html  self-contained HTML
   claims that a build equals a verified change.
 - Never deliver a modified binary without a passing behavioral test recorded by
   `verify_modification`. If the sandbox cannot run, refuse and withhold the file.
+- Prefer the smallest strategy that fits. A resource/string edit beats a byte
+  patch, which beats a component swap, which beats a rebuild/reimplementation.
+  If the evidence is thin, ask instead of guessing.
+- A scoped "preserve the rest" request needs regression cases. Do not call it
+  verified if only the intended input was tested.
 - Signed reports are integrity evidence, not proof of truth: they show what was
   tested. Do not imply that a SHA-256/HMAC makes a weak test strong.
-- Do not add a vault, payments, or remote control without a separate threat
-  model. Those are deliberately deferred.
+- Do not add a vault, payments, remote control, live workstation, or persistent
+  squads without a separate threat model. They are denied by
+  `security/capabilities.py`; keep that default.
 - Update `docs/UNIFIED_AGENT.md` when a capability moves from partial/deferred
   to implemented.

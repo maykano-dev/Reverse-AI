@@ -66,6 +66,14 @@ def make_record() -> dict:
                     "name": "switch", "matched": False,
                     "differences": ["stdout"], "expected_met": True,
                     "unexpected": False,
+                    "original": {"isolation": {
+                        "backend": "bubblewrap", "level": 40,
+                        "network_blocked": True, "filesystem": "namespaced",
+                        "capabilities_dropped": True, "seccomp": False}},
+                    "modified": {"isolation": {
+                        "backend": "bubblewrap", "level": 40,
+                        "network_blocked": True, "filesystem": "namespaced",
+                        "capabilities_dropped": True, "seccomp": False}},
                 }],
             },
         }],
@@ -76,6 +84,13 @@ def make_record() -> dict:
         },
     }
     job.delivery = {"allowed": True, "reason": "behavioral test passed"}
+    job.mode = "direct"
+    job.modification_plan = {
+        "strategy": "byte_patch",
+        "steps": [{"id": "investigate", "title": "Investigate", "status": "done"},
+                  {"id": "verify", "title": "Verify", "status": "done"}],
+        "blast_radius": {"level": "medium"},
+    }
     job.differential = {
         "summary": "2 input(s): 1 matched, 1 differed; expected delta met",
         "matched": ["default"], "differed": ["switch"],
@@ -102,6 +117,9 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(r["tests_passed"], 1)
         self.assertTrue(r["differential"]["expected_delta_met"])
         self.assertTrue(r["delivery"]["allowed"])
+        self.assertEqual(r["mode"], "direct")
+        self.assertEqual(r["strategy"], "byte_patch")
+        self.assertEqual(r["environment"]["isolation"]["backend"], "bubblewrap")
 
     def test_signature_is_deterministic_and_tamper_evident(self):
         self.assertTrue(verify_signature(self.report))
@@ -152,6 +170,8 @@ class ReportTests(unittest.TestCase):
         html = render_html(self.report)
         self.assertIn(SHA, html)
         self.assertIn("Verification report", html)
+        self.assertIn("Environment", html)
+        self.assertIn("bubblewrap", html)
         for forbidden in ("<script", "<link", "http://", "https://", "@import",
                           "src="):
             self.assertNotIn(forbidden, html.lower())
@@ -181,6 +201,8 @@ class ReportServerTests(unittest.TestCase):
         job.artifact_meta = rec["artifact_meta"]
         job.verification = rec["verification"]
         job.delivery = rec["delivery"]
+        job.mode = rec.get("mode", "")
+        job.modification_plan = rec.get("modification_plan", {})
         cls.srv.store.save(job)
         cls.job_id = job.id
 

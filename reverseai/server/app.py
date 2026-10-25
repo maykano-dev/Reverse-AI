@@ -425,10 +425,18 @@ class _Handler(BaseHTTPRequestHandler):
             ready = True
         except Exception:
             ready = False
+        from ..security.capabilities import CapabilityPolicy
+
+        cap_policy = CapabilityPolicy().status()
+        enabled_high_risk = [n for n, d in cap_policy.items() if d.get("allowed")]
         return {
             "ready": ready,
             "auth_required": bool(os.environ.get("REVERSEAI_AUTH_TOKEN", "").strip()),
             "version": __version__,
+            "capability_policy": {
+                "default": "deny",
+                "enabled_high_risk": enabled_high_risk,
+            },
             "provider": "configured" if ready else "missing",
             "features": {
                 "memory": True,
@@ -777,10 +785,12 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             return self._send(400, {"error": f"provider error: {exc}"})
 
+        from ..agent.templates import resolve_template
         agent = Agent(provider, max_permission=perm,
                       max_steps=max(1, min(int(body.get("max_steps", 24)), 64)),
-                      template=body.get("template", "general"),
-                      memory=self.memory, skills=self.skills)
+                      template=resolve_template(body.get("template"), goal),
+                      memory=self.memory, skills=self.skills,
+                      mode=body.get("mode"))
         try:
             job = agent.run(goal, target_path=body.get("target"),
                             project_dir=body.get("project_dir"))

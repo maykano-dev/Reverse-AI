@@ -10,5 +10,18 @@ file into the job workspace.
 """
 
 from .patch import BytePatch, PatchError, PatchResult, apply_byte_patches
+from .planner import BlastRadius, Component, ModificationPlan, PlanStep, build_plan
+from .strategy import (
+    DIRECT,
+    MODERNISATION,
+    RECONSTRUCTION,
+    StrategyChoice,
+    choose_strategy,
+)
 
-__all__ = ["BytePatch", "PatchError", "PatchResult", "apply_byte_patches"]
+__all__ = [
+    "BytePatch", "PatchError", "PatchResult", "apply_byte_patches",
+    "StrategyChoice", "choose_strategy", "DIRECT", "RECONSTRUCTION",
+    "MODERNISATION", "ModificationPlan", "PlanStep", "Component",
+    "BlastRadius", "build_plan",
+]

@@ -143,6 +143,14 @@
 </section>
 
 <section class="wrap">
+  <div class="kicker">Autonomous modification</div>
+  <h2>It chooses the smallest change that fits.</h2>
+  <p class="sub">A resource edit beats a byte patch, which beats a component swap, which beats a rebuild. The engine scores the real analysis, explains why, estimates the blast radius, and asks instead of guessing when the request is ambiguous. Then it plans, implements on a copy, and proves the result.</p>
+  <pre><code>choose_modification_strategy -> plan_and_modify -> apply_* -> verify_modification -> signed report</code></pre>
+  <p class="muted" style="font-size:12px;color:var(--dim);margin-top:11px">Direct, Reconstruction, and Modernisation modes. "Change X, preserve everything else" runs regression cases over the rest of the program.</p>
+</section>
+
+<section class="wrap">
   <div class="kicker">Verified delivery</div>
   <h2>It will not hand you an unverified file.</h2>
   <p class="sub">The agent declares a behavioral expectation, runs the original and changed artifacts in the sandbox, and compares real outputs. If the test fails, the file stays in the workspace, the delivery is blocked, and you get the reason. A bounded repair loop can ask for another candidate. The signed report proves exactly what was tested.</p>
@@ -194,7 +202,7 @@ python3 -m reverseai serve
 # open http://127.0.0.1:8077</code></pre>
   <div class="cta" style="margin-top:22px">
     <h2 style="margin-bottom:8px">Deploy your own</h2>
-    <p class="sub" style="margin:0 auto 20px">The blueprint creates a web service, a data disk, an auth token, and a monthly budget. Set the model key in the dashboard.</p>
+    <p class="sub" style="margin:0 auto 20px">The blueprint creates a web service, a data disk, an auth token, and a monthly budget. Set the model key in the dashboard. High-risk capabilities (remote control, vault, payments, live desktop) stay disabled unless an operator explicitly opts in.</p>
     <div class="hero-actions" style="margin-bottom:0">
       <a class="btn primary" href="https://render.com/deploy?repo=https://github.com/maykano-dev/Reverse-AI">Deploy to Render</a>
       <a class="btn" href="https://github.com/maykano-dev/Reverse-AI/blob/main/docs/DEPLOY.md">Deployment guide</a>

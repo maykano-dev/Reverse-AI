@@ -750,6 +750,7 @@ class ScheduleRoutineTool(Tool):
 
 
 def default_tools() -> list[Tool]:
+    from .modify_engine import ChooseModificationStrategyTool, PlanAndModifyTool
     from .verify_tools import DifferentialTestTool, VerifyModificationTool
 
     tools = [
@@ -774,6 +775,8 @@ def default_tools() -> list[Tool]:
         ScheduleRoutineTool(),
         VerifyModificationTool(),
         DifferentialTestTool(),
+        ChooseModificationStrategyTool(),
+        PlanAndModifyTool(),
     ]
     # Real decompilation when Ghidra is installed — a big capability upgrade.
     try:

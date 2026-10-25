@@ -1,8 +1,28 @@
 # ReverseAI: Roadmap and Status
 
-A living map of what exists and what comes next. Updated with v0.3.0.
+A living map of what exists and what comes next. Updated with v0.4.0.
 
 ## Done
+
+### v0.4.0: autonomous modification engine
+
+- **Strategy selector**: scores resource_edit, byte_patch, component_replace,
+  rebuild, and reimplement from the real analysis and the goal, with rationale,
+  confidence, alternatives, warnings, and clarification.
+- **Three modes**: Direct, Reconstruction, Modernisation, with user override and
+  the chosen mode recorded on the Job.
+- **Planner**: ordered investigate -> locate -> impact -> implement -> verify
+  steps, component identification, blast-radius estimate, and scoped requests.
+- **`plan_and_modify`**: end-to-end implementation through existing executors,
+  then the Batch 1 verify+repair loop and signed report. Ambiguous requests ask
+  instead of guessing; scoped changes require regression cases.
+- **Environment fingerprint** in reports: sandbox backend, isolation level,
+  network/filesystem controls, capability dropping, resource limits, seccomp.
+- **High-risk capability policy**: remote control, vault, payments, workstation,
+  squads, MCP, and hooks denied by default behind a master + per-capability opt-in
+  (and a vault key).
+- **Tests**: 240+, including selector, planner, scoped regression, end-to-end
+  verified/broken runs, environment fingerprints, and capability policy.
 
 ### v0.3.0: verified delivery
 
@@ -89,7 +109,10 @@ A living map of what exists and what comes next. Updated with v0.3.0.
 - [ ] persistent multi-agent squads with shared artifacts.
 
 These are real product surfaces, not one-line features. They need a separate
-threat model and should not be rushed into an unaudited local app.
+threat model and should not be rushed into an unaudited local app. A deny-by-
+default capability policy (`security/capabilities.py`) now makes accidental
+enablement impossible: a master switch, a per-capability switch, and an
+encryption key are required before any future implementation can start.
 
 ## Known gaps and debts
 
@@ -104,6 +127,10 @@ threat model and should not be rushed into an unaudited local app.
 - A passing verification proves only the declared inputs. Corpora are not
   exhaustive, and a SHA-256 report is tamper-evident but not keyed unless
   `REVERSEAI_REPORT_KEY` is set.
+- The strategy selector is heuristic, not omniscient. It asks for clarification
+  when the evidence is thin, but a confident-sounding choice still needs a
+  passing behavioral test before delivery.
+- High-risk capabilities are denied by default and remain unimplemented.
 
 ## How to continue
 

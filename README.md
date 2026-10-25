@@ -16,7 +16,7 @@
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
-  <img alt="tests" src="https://img.shields.io/badge/tests-230%2B%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-240%2B%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
   <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
@@ -43,6 +43,18 @@ Most "AI + reverse engineering" demos stop at describing a binary. ReverseAI clo
 - **Untrusted by default.** Analysis is pure. Execution happens only inside a hardened bubblewrap sandbox (no network, dropped capabilities, read-only system, tmpfs workdir) and is refused when nothing can contain it.
 - **A real working memory.** Durable notes, web research with citations, scheduled routines, specialist agents, and conversations that survive a reload or a server restart.
 - **Mobile first.** A PWA that works as a full chat app on a phone, with a drawer, safe areas, touch-sized controls, and an installable manifest.
+
+## What's new in 0.4
+
+| Area | What landed |
+|---|---|
+| **Strategy selector** | Scores resource_edit, byte_patch, component_replace, rebuild, and reimplement from the real `AnalysisReport` plus the goal. Returns rationale, confidence, alternatives, warnings, and a clarifying question when the evidence is thin. |
+| **Three modes** | Direct (resource edit, byte patch, component swap), Reconstruction (reimplement), Modernisation (rebuild or reimplement with new capabilities). The engine recommends a mode; the user can override it. The chosen mode is recorded on the Job. |
+| **Modification planner** | An explicit ordered plan: investigate, locate components, estimate blast radius, implement, verify. Each step appears in the UI. Ambiguous requests return `needs_clarification` instead of guessing. |
+| **Scoped changes** | "Change X, preserve everything else" identifies the relevant functions/sections/resources, then runs the intended-change cases plus regression cases over the rest. An unrelated behavior change blocks delivery. |
+| **`plan_and_modify`** | The end-to-end WRITE tool: choose, plan, implement through the existing executors, verify through the Batch 1 repair loop, and record the signed report. |
+| **Environment fingerprint** | Signed reports now record the sandbox backend, isolation level, network/filesystem controls, capability dropping, and seccomp status that were actually applied. |
+| **High-risk capability policy** | Remote control, vault, payments, live workstation, persistent squads, MCP, and hooks are denied by default. Enabling any of them requires a master opt-in, a per-capability opt-in, and (for secrets) a vault key. |
 
 ## What's new in 0.3
 
@@ -153,7 +165,9 @@ The included [`render.yaml`](render.yaml) creates a web service, a 1 GB data dis
 
 - **Analyze** PE / ELF / Mach-O (including fat/universal iOS), Android APK, and archives: headers, sections, entropy, imports/exports, DT_NEEDED, symbols, functions, strings, optional capstone disassembly, packer and malware indicators, and structural diff.
 - **Decompile** to readable C through Ghidra headless (optional), with a Java script for modern Ghidra releases.
+- **Modify autonomously** choose a strategy from the real analysis, plan the work, estimate blast radius, implement on a copy, and prove it. It supports Direct, Reconstruction, and Modernisation modes, and it asks instead of guessing when the request is ambiguous.
 - **Modify + verify** byte patches and LIEF structural edits on a copy, then a declared behavioral test plus a differential corpus in the sandbox. A failed test withholds the artifact and can trigger a bounded repair attempt.
+- **Scope a change** with "change X, preserve everything else": targeted cases prove the intended delta and regression cases prove the rest of the program still behaves.
 - **Clone + rebuild websites** with a static fetch engine and an opt-in headless render engine, packaged as a working offline bundle with a clean-room guardrail.
 - **Research** the web with sources, read primary pages, and keep citations attached to the answer.
 - **Remember** stable preferences and decisions across chats.
@@ -238,9 +252,21 @@ GET /jobs/<id>/report.html  -> self-contained HTML, no external calls
 ```
 
 A modification is delivered only when `verify_modification` records at least one
-passing expectation. The report includes the artifact SHA-256 and every evidence
-tier. A failed repair attempt leaves the file in the workspace but does not mark
-it delivered or verified.
+passing expectation. The report includes the artifact SHA-256, mode, strategy,
+plan steps, sandbox environment fingerprint, and every evidence tier. A failed
+repair attempt leaves the file in the workspace but does not mark it delivered or
+verified.
+
+The autonomous path is:
+
+```
+choose_modification_strategy -> plan_and_modify -> apply_* -> verify_modification
+                                                      -> signed report
+```
+
+`plan_and_modify` refuses to guess: it returns a clarifying question when the goal
+is ambiguous, when no behavioral expectation is declared, or when a scoped change
+has no regression inputs.
 
 <p align="center">
   <img src="docs/assets/verification.png" alt="A verified artifact with a signed verification report" width="880">
@@ -285,6 +311,7 @@ it delivered or verified.
 | `REVERSEAI_ALLOWED_ROOTS` | Colon-separated roots for file paths when auth is on (the store is always allowed) |
 | `REVERSEAI_MONTHLY_BUDGET` | Pause paid models after this many USD |
 | `REVERSEAI_MAX_REPAIR_ATTEMPTS` | Verification repair attempts (default 3, max 10) |
+| `REVERSEAI_ENABLE_DANGEROUS_CAPABILITIES` | Master opt-in for deferred high-risk capabilities (default off) |
 | `REVERSEAI_REPORT_KEY` | HMAC key for signed verification reports (optional) |
 | `REVERSEAI_UPLOAD_MAX_MB` | Upload ceiling (default 512 MiB) |
 | `REVERSEAI_STORE` | Job/event/conversation/artifact storage |
@@ -309,7 +336,7 @@ Copy [`.env.example`](.env.example) to `.env` for a local setup. Never commit it
 - Previewed and cloned sites run in an opaque-origin iframe with no access to the app.
 - Secrets are redacted from logs; the model key never reaches the browser.
 
-Known gaps are listed honestly in [`docs/SECURITY.md`](docs/SECURITY.md): no seccomp filter, shared-kernel namespace sandbox, Ghidra runs on the host, and no multi-tenant isolation yet.
+Known gaps are listed honestly in [`docs/SECURITY.md`](docs/SECURITY.md): no seccomp filter, shared-kernel namespace sandbox, Ghidra runs on the host, and no multi-tenant isolation yet. High-risk capabilities (remote control, vault, payments, live workstation, squads, MCP, hooks) are not implemented and are denied by default in `security/capabilities.py`.
 
 Use ReverseAI for interoperability, security research, debugging, recovering your own work, and authorized testing. Analyze and modify only software and sites you own or are authorized to work on.
 

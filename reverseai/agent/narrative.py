@@ -28,6 +28,8 @@ _TOOL_ICON = {
     "verify_against_original": "check",
     "verify_modification": "check",
     "differential_test": "bars",
+    "choose_modification_strategy": "search",
+    "plan_and_modify": "sparkle",
     "diff_modified": "bars",
     "extract_archive": "archive",
     "clone_website": "globe",
@@ -118,6 +120,12 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "differential_test":
         title = "Testing across a set of inputs"
         detail = "Comparing the original and the change for unexpected regressions."
+    elif name == "choose_modification_strategy":
+        title = "Choosing the safest way to make the change"
+        detail = "Comparing a resource edit, a byte patch, a component swap, a rebuild, and a reimplementation."
+    elif name == "plan_and_modify":
+        title = "Planning the change end to end"
+        detail = "Choosing a strategy, scoping the blast radius, implementing on a copy, and proving it."
     elif name == "diff_modified":
         title = "Checking what changed"
         detail = "Sections, imports, exports, size, and entropy."

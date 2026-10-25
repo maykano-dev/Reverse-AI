@@ -1,6 +1,6 @@
 /* ReverseAI service worker — app shell only.
    Never cache API responses, SSE streams, uploads, previews, or downloads. */
-const VERSION = "rvai-v2";
+const VERSION = "rvai-v3";
 const SHELL = [
   "/",
   "/app.js",
@@ -39,17 +39,16 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   if (!isShell(url)) return; // API, SSE, preview, files: always network
 
-  if (req.mode === "navigate") {
-    event.respondWith(
-      fetch(req).catch(() => caches.match("/"))
-    );
-    return;
-  }
+  // Network-first: always serve the latest shell, falling back to cache only
+  // when offline. (Cache-first served stale app.js/style.css after updates.)
   event.respondWith(
-    caches.match(req).then((hit) => hit || fetch(req).then((res) => {
+    fetch(req).then((res) => {
       const copy = res.clone();
       caches.open(VERSION).then((cache) => cache.put(req, copy)).catch(() => {});
       return res;
-    }))
+    }).catch(() =>
+      caches.match(req).then((hit) =>
+        hit || (req.mode === "navigate" ? caches.match("/") : undefined))
+    )
   );
 });

@@ -67,6 +67,17 @@ def _iso(ts: float | None) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(ts or 0)))
 
 
+def _environment(verification: dict[str, Any]) -> dict[str, Any]:
+    """The isolation that was actually applied, taken from the test snapshots."""
+    for attempt in reversed(verification.get("attempts") or []):
+        for case in (attempt.get("report") or {}).get("cases") or []:
+            for side in ("modified", "original"):
+                iso = (case.get(side) or {}).get("isolation")
+                if isinstance(iso, dict) and iso.get("backend"):
+                    return {"isolation": iso, "source": "sandbox"}
+    return {}
+
+
 def _compact_attempts(verification: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for a in verification.get("attempts") or []:
@@ -107,6 +118,7 @@ def build_report(record: dict[str, Any]) -> dict[str, Any]:
         "size": artifact_meta.get("size"),
         "sha256": artifact_meta.get("sha256", ""),
     }
+    plan = record.get("modification_plan") or {}
     attempts = _compact_attempts(verification)
     diff_summary = (verification.get("test_summary")
                     or record.get("differential") or {})
@@ -159,6 +171,17 @@ def build_report(record: dict[str, Any]) -> dict[str, Any]:
             "allowed": bool(delivery.get("allowed")),
             "reason": delivery.get("reason", ""),
         },
+        "mode": record.get("mode", ""),
+        "strategy": plan.get("strategy", ""),
+        "plan": {
+            "steps": [
+                {"id": s.get("id"), "title": s.get("title"),
+                 "status": s.get("status")}
+                for s in plan.get("steps") or []
+            ],
+            "blast_radius": plan.get("blast_radius") or {},
+        },
+        "environment": _environment(verification),
         "sources": record.get("sources") or [],
         "algorithm": algorithm(),
     }
@@ -209,6 +232,7 @@ def render_html(report: dict[str, Any]) -> str:
         for e in report.get("evidence") or []
     )
     delivery = report.get("delivery") or {}
+    environment = (report.get("environment") or {}).get("isolation") or {}
     blocked = not delivery.get("allowed")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -257,6 +281,15 @@ font-size:11px;border-top:1px solid var(--line);padding-top:12px}}
 <b>Status</b><span>{_e(report.get('status'))}</span>
 <b>Change</b><span>{_e(report.get('change_summary'))}</span>
 <b>Delivery</b><span>{'allowed' if not blocked else 'blocked'}: {_e(delivery.get('reason'))}</span>
+<b>Mode</b><span>{_e(report.get('mode') or '(not set)')}</span>
+<b>Strategy</b><span>{_e(report.get('strategy') or '(not set)')}</span>
+</div></div>
+<h2>Environment</h2>
+<div class="card"><div class="kv">
+<b>Sandbox</b><span>{_e(environment.get('backend') or '(not recorded)')}</span>
+<b>Isolation</b><span>{_e(environment.get('level'))} · network blocked {_e(environment.get('network_blocked'))} · filesystem {_e(environment.get('filesystem'))}</span>
+<b>Capabilities dropped</b><span>{_e(environment.get('capabilities_dropped'))}</span>
+<b>seccomp</b><span>{_e(environment.get('seccomp'))}</span>
 </div></div>
 <h2>Evidence</h2>
 <div class="card"><table><thead><tr><th>Tier</th><th>Claim</th><th>Source</th></tr></thead>

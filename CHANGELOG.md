@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.4.0: autonomous modification engine
+
+### Added
+
+- Strategy selector (`modify/strategy.py`): scores resource_edit, byte_patch,
+  component_replace, rebuild, and reimplement from the real AnalysisReport and
+  the goal. Returns rationale, confidence, alternatives, warnings, and a
+  clarifying question when the evidence is thin.
+- Three modes: Direct, Reconstruction, Modernisation. The engine recommends a
+  mode; the user may override it; the chosen mode is recorded on the Job.
+- Modification planner (`modify/planner.py`): ordered investigate -> locate ->
+  impact -> implement -> verify plan, component identification, blast-radius
+  estimate, and scoped "preserve the rest" detection.
+- `choose_modification_strategy` (READ) and `plan_and_modify` (WRITE) agent tools.
+- `plan_and_modify` runs the selected strategy through the existing executors
+  (byte patch, LIEF structural edit, rebuild artifact, reimplementation
+  artifact), then the verified delivery gate and signed report. It asks for
+  clarification instead of guessing.
+- Scoped changes require regression cases; an unrelated behavior change blocks
+  delivery. End-to-end tests cover a correct change and a broken regression.
+- Sandbox environment fingerprint in signed reports: backend, isolation level,
+  network/filesystem controls, capability dropping, resource limits, seccomp.
+- Deny-by-default capability policy (`security/capabilities.py`) for remote
+  control, vault, payments, live workstation, persistent squads, MCP, and hooks.
+  Master opt-in plus per-capability opt-in plus a vault key are required.
+- 14 new tests; total 240+.
+
+### Changed
+
+- Verification reports include mode, strategy, plan steps, blast radius, and
+  sandbox environment.
+- The generic Job record now carries `mode` and `modification_plan`.
+- High-risk features remain deliberately unimplemented, but cannot be enabled
+  accidentally.
+
 ## 0.3.0: verified delivery
 
 ### Added

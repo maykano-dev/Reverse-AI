@@ -35,6 +35,7 @@ class Agent:
         memory=None,
         skills: list | None = None,
         delegate_depth: int = 0,
+        mode: str | None = None,
     ) -> None:
         self.provider = provider
         self.max_permission = max_permission
@@ -48,6 +49,7 @@ class Agent:
         self.memory = memory
         self.skills = skills or []
         self.delegate_depth = delegate_depth
+        self.mode = (mode or "").strip().lower()
 
     @staticmethod
     def _default_registry(max_permission: Permission, enable_coding: bool = True) -> ToolRegistry:
@@ -66,18 +68,19 @@ class Agent:
 
     def open(self, target_path: str | None = None,
              project_dir: str | None = None,
-             workspace: str | None = None) -> Conversation:
+             workspace: str | None = None,
+             mode: str | None = None) -> Conversation:
         """Start a stateful conversation (multi-turn). Call run_turn per message."""
         return Conversation(self, target_path=target_path, project_dir=project_dir,
-                            workspace=workspace)
+                            workspace=workspace, mode=mode or self.mode)
 
     def run(self, goal: str, target_path: str | None = None,
             project_dir: str | None = None, on_event=None,
-            workspace: str | None = None) -> Job:
+            workspace: str | None = None, mode: str | None = None) -> Job:
         """Run a single-turn investigation and return the Job.
 
         ``on_event(dict)`` receives live progress events
         (start/plan/reason/step/assistant/tool_result/source/finding/final/error).
         """
-        return self.open(target_path, project_dir, workspace).run_turn(
+        return self.open(target_path, project_dir, workspace, mode).run_turn(
             goal, on_event=on_event)

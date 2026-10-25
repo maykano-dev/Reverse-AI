@@ -274,9 +274,11 @@ function cycleTheme() {
 let busy = false;
 let conversationId = null;
 let pendingTarget = null;
-let template = (() => { try { return localStorage.getItem("rvai-template") || "general"; } catch (_) { return "general"; } })();
+// Role is auto-delegated in the background from the request; no manual picker.
+let template = "auto";
 let permission = (() => { try { return localStorage.getItem("rvai-permission") || "write"; } catch (_) { return "write"; } })();
 let attached = null;
+let attachedPreview = null;  // object URL for an image thumbnail, when applicable
 let currentUI = null;
 let currentSrc = null;
 let currentJobId = null;
@@ -566,9 +568,16 @@ async function uploadFile(file) {
   removeWelcome();
   const chip = $("#fileChip");
   attached = null;
+  if (attachedPreview) { try { URL.revokeObjectURL(attachedPreview); } catch (_) {} attachedPreview = null; }
+  if (file.type && file.type.startsWith("image/")) {
+    try { attachedPreview = URL.createObjectURL(file); } catch (_) {}
+  }
+  const thumb = attachedPreview
+    ? `<span class="fthumb"><img src="${attachedPreview}" alt=""></span>`
+    : `<span class="fi">${ic("file", 16)}</span>`;
   chip.style.display = "flex";
   chip.classList.add("uploading");
-  chip.innerHTML = `<span class="fi">${ic("file", 16)}</span><span><span class="fname">${esc(file.name)}</span> <span class="fmeta">${fmtSize(file.size)}</span></span>`;
+  chip.innerHTML = `${thumb}<span><span class="fname">${esc(file.name)}</span> <span class="fmeta">${fmtSize(file.size)}</span></span>`;
   try {
     const r = await api("/upload", {
       method: "PUT",
@@ -593,7 +602,10 @@ function renderChip() {
   const kindLbl = attached.kind === "unknown" ? "file" : attached.kind;
   const archBit = (attached.arch && attached.arch !== "unknown")
     ? ` · ${attached.arch}${attached.bits ? " " + attached.bits + "-bit" : ""}` : "";
-  chip.innerHTML = `<span class="fi">${warn ? ic("archive", 16) : ic("file", 16)}</span>
+  const lead = attachedPreview
+    ? `<span class="fthumb"><img src="${attachedPreview}" alt=""></span>`
+    : `<span class="fi">${warn ? ic("archive", 16) : ic("file", 16)}</span>`;
+  chip.innerHTML = `${lead}
     <span><span class="fname">${esc(attached.filename)}</span> <span class="fmeta">${fmtSize(attached.size)}${esc(archBit)}</span></span>
     <span class="kind ${warn ? "warn" : ""}">${esc(kindLbl)}</span>
     <span class="rm">${ic("x", 14)}</span>`;
@@ -601,6 +613,7 @@ function renderChip() {
 }
 function clearAttachment() {
   attached = null;
+  if (attachedPreview) { try { URL.revokeObjectURL(attachedPreview); } catch (_) {} attachedPreview = null; }
   const c = $("#fileChip");
   c.style.display = "none";
   c.innerHTML = "";
@@ -730,6 +743,9 @@ function addPlan(ui, steps) {
   const body = el("div", "plan-body");
   steps.forEach((s, i) => {
     const row = el("div", "plan-step");
+    row.dataset.step = s.id || ("step-" + i);
+    if (s.status === "done") row.classList.add("done");
+    if (s.status === "running") row.classList.add("active");
     row.innerHTML = `<span class="num">${i + 1}</span><span><b>${esc(s.title)}</b>${esc(s.detail || "")}</span>`;
     body.appendChild(row);
   });
@@ -1043,6 +1059,17 @@ function handleEvent(ui, ev, jobId) {
     case "finding":
       addFinding(ui, ev);
       break;
+    case "modification_plan":
+      if (ev.plan && ev.plan.steps) addPlan(ui, ev.plan.steps);
+      break;
+    case "modification_step": {
+      const row = ui.plan.querySelector(`.plan-step[data-step="${ev.step}"]`);
+      if (row) {
+        row.classList.toggle("done", ev.status === "done");
+        row.classList.toggle("active", ev.status === "running");
+      }
+      break;
+    }
     case "verification_plan":
     case "verification_attempt":
     case "verification_repair":
@@ -1179,6 +1206,8 @@ const TOOL_LABELS = {
   verify_against_original: "Comparing both versions",
   verify_modification: "Proving the change in the sandbox",
   differential_test: "Testing across a set of inputs",
+  choose_modification_strategy: "Choosing the safest way to change it",
+  plan_and_modify: "Planning and making the change",
   diff_modified: "Checking what changed",
   extract_archive: "Unpacking the archive safely",
   clone_website: "Rebuilding the site",

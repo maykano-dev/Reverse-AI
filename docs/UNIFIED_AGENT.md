@@ -50,15 +50,21 @@ made the loop **visible**, **durable**, **personal**, and **mobile**.
 | Bounded repair loop | Claude Code, Xiryn | **Implemented** | `verify/repair.py`, model repair callback |
 | Differential testing | new / testing practice | **Implemented** | `verify/difftest.py`, `differential_test` |
 | Signed verification report | new | **Implemented** | `verify/report.py`, `/jobs/:id/report(.html)` |
+| Strategy selection | new | **Implemented** | `modify/strategy.py`, `choose_modification_strategy` |
+| Modification planning | new | **Implemented** | `modify/planner.py`, `plan_and_modify` |
+| Three product modes | product spec | **Implemented** | Direct / Reconstruction / Modernisation |
+| Blast-radius scoping | new | **Implemented** | planner components + regression cases |
+| High-risk capability gate | new | **Implemented** | `security/capabilities.py`, deny by default |
 | MCP servers | Claude Code, OpenCode | **Deferred** | needs a protocol client and permission model |
 | Hooks (pre/post tool) | Claude Code | **Deferred** | needs an operator policy and sandboxing |
 | Checkpoints / undo | Claude Code | **Deferred** | would build on conversation state |
 | Diff review UI | Claude Code | **Partial** | signed report and structural diff, no inline hunk review |
-| Computer use / live desktop | Xiryn, OpenClaw | **Deferred** | needs Docker workstations, VNC, and a new threat model |
+| Computer use / live desktop | Xiryn, OpenClaw | **Deferred** | denied by capability policy; needs Docker workstations, VNC, and a new threat model |
 | Take over / hand back | Xiryn | **Deferred** | depends on workstations |
-| Telegram remote control | Xiryn | **Deferred** | needs a bot bridge and pairing |
-| Encrypted vault / payments | Xiryn | **Deferred (deliberately)** | high-risk; out of scope until audited |
-| Persistent multi-agent squads | Xiryn | **Partial** | delegation works, shared memory is global |
+| Telegram remote control | Xiryn | **Deferred** | denied by capability policy; needs a bot bridge and pairing |
+| Encrypted vault / payments | Xiryn | **Deferred (deliberately)** | denied by capability policy; needs an audited encryption boundary |
+| Persistent multi-agent squads | Xiryn | **Partial** | delegation works; persistent authority is denied by capability policy |
+| MCP / hooks | Claude Code, OpenCode | **Deferred** | denied by capability policy; need a protocol/permission design |
 | Hosted multi-tenant accounts | product layer | **Deferred** | single token now; auth/quotas later |
 
 ## Why some things are deferred

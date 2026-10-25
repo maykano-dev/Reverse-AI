@@ -170,3 +170,55 @@ def prompt_addendum(template_id: str | None) -> str:
 
 def template_permission(template_id: str | None) -> str:
     return get_template(template_id).permission
+
+
+# Keyword signals used to auto-pick a specialist from the user's request, so the
+# role is delegated in the background instead of chosen from a dropdown. Ordered
+# most-specific first; ties break toward the earlier entry.
+_SIGNALS: list[tuple[str, tuple[str, ...]]] = [
+    ("security", ("vulnerability", "vulnerabilities", "exploit", "cve",
+                  "malware", "pentest", "penetration test", "injection",
+                  "security review", "sql injection", "buffer overflow",
+                  "harden", "backdoor", "is this safe", "scan for")),
+    ("reverse", ("reverse engineer", "decompile", "disassemble", "binary",
+                 "executable", " exe", ".exe", ".dll", "firmware", "elf",
+                 "mach-o", "assembly", "byte patch", "patch the", "unpack",
+                 "crack", "shared object", ".so ", "opcode", "port this",
+                 "port the", "port it", "legacy app", "windows app")),
+    ("mobile", ("android", "apk", " ios", "ipa", "mobile app", "smali",
+                "play store", "app store")),
+    ("data", ("csv", "json", "dataset", "spreadsheet", "parse the",
+              "log file", "logs", "data set", "analyze this data",
+              "columns", "rows of")),
+    ("researcher", ("research", "look up", "search the web", "find sources",
+                    "cite", "citation", "latest news", "look into this topic",
+                    "investigate online", "find out about")),
+    ("writer", ("write a", "draft", "email", "blog post", "essay", "article",
+                "rewrite", "proofread", "copy for", "write me a post")),
+    ("engineer", ("fix the bug", "refactor", "unit test", "add tests",
+                  "this repo", "this project", "codebase", "implement a",
+                  "compile", "build the", "pull request", "function in")),
+]
+
+
+def classify_goal(goal: str | None) -> str:
+    """Pick the best-fit specialist id for a request. Falls back to 'general'.
+
+    Deterministic keyword scoring — no model call — so background delegation is
+    instant and predictable. Returns 'general' when nothing clearly matches.
+    """
+    text = f" {(goal or '').lower()} "
+    best_id, best_score = "general", 0
+    for tid, words in _SIGNALS:
+        score = sum(1 for w in words if w in text)
+        if score > best_score:
+            best_id, best_score = tid, score
+    return best_id
+
+
+def resolve_template(template_id: str | None, goal: str | None) -> str:
+    """Resolve a requested template, auto-classifying when it's 'auto'/empty."""
+    tid = (template_id or "").strip().lower()
+    if tid in ("", "auto"):
+        return classify_goal(goal)
+    return tid if tid in _TEMPLATES else "general"

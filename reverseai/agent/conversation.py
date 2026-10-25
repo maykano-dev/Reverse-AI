@@ -55,17 +55,19 @@ _SAFE_EXTRA = {
     "project_dir", "modified_path", "modified_operation", "modified_label",
     "modified_turn", "last_patches", "extracted_dir", "routine_id",
     "verification", "delivery", "differential", "differential_turn",
+    "mode", "strategy", "modification_plan",
 }
-_GATED_OPERATIONS = {"patch", "imports", "section"}
+_GATED_OPERATIONS = {"patch", "imports", "section", "rebuild", "reimplement"}
 
 
 class Conversation:
     def __init__(self, agent, target_path: str | None = None,
                  project_dir: str | None = None, workspace: str | None = None,
-                 intake: bool = True) -> None:
+                 intake: bool = True, mode: str | None = None) -> None:
         self.agent = agent
         self.target_path = target_path
         self.template = getattr(agent, "template", "general")
+        self.mode = (mode or getattr(agent, "mode", "") or "").strip().lower()
         self.evidence = EvidenceLog()
         if workspace:
             self.workspace = str(Path(workspace).resolve())
@@ -90,6 +92,8 @@ class Conversation:
                 "max_permission": getattr(agent, "max_permission", None),
                 "delegate_depth": getattr(agent, "delegate_depth", 0),
                 "skills": getattr(agent, "skills", []),
+                "mediator": getattr(agent, "mediator", None),
+                "mode": self.mode,
             },
         )
         self.messages: list[Message] = [Message(Role.SYSTEM, self._system_prompt())]
@@ -206,6 +210,8 @@ class Conversation:
             verification = {}
         job.verification = verification
         job.delivery = dict(delivery)
+        job.mode = str(self.ctx.extra.get("mode") or self.mode or "")
+        job.modification_plan = dict(self.ctx.extra.get("modification_plan") or {})
         diff = dict(self.ctx.extra.get("differential") or {})
         if self.ctx.extra.get("differential_turn") not in (None, job.id):
             diff = {}
@@ -393,6 +399,7 @@ class Conversation:
             "target_path": self.target_path,
             "workspace": self.workspace,
             "template": self.template,
+            "mode": self.mode,
             "turns": self.turns,
             "created_at": self.created_at,
             "refused": self.refused,
@@ -412,6 +419,9 @@ class Conversation:
             intake=intake,
         )
         conv.template = state.get("template") or getattr(agent, "template", "general")
+        conv.mode = state.get("mode") or getattr(agent, "mode", "") or ""
+        conv.ctx.extra["mode"] = conv.mode
+        conv.ctx.extra["mediator"] = getattr(agent, "mediator", None)
         conv.turns = int(state.get("turns") or 0)
         conv.created_at = float(state.get("created_at") or time.time())
         conv.refused = state.get("refused")

@@ -145,7 +145,8 @@ class RunManager:
         perm = _PERM.get(perm_name)
         if perm is None:
             return None, None, "permission must be read|execute|write"
-        template = str(body.get("template") or "general").lower()
+        from ..agent.templates import resolve_template
+        template = resolve_template(body.get("template"), body.get("goal"))
         provider_name = os.environ.get("REVERSEAI_PROVIDER") or body.get("provider", "deepseek")
         try:
             provider = get_provider(provider_name)
@@ -155,7 +156,8 @@ class RunManager:
         cid = _new_id("conv")
         agent = Agent(provider, max_permission=perm,
                       max_steps=max(1, min(int(body.get("max_steps", 24)), 64)),
-                      template=template, memory=self.memory, skills=self.skills)
+                      template=template, memory=self.memory, skills=self.skills,
+                      mode=body.get("mode"))
         workspace = str(self.store.workspaces_dir / cid)
         conv = agent.open(target_path=body.get("target"),
                           project_dir=body.get("project_dir"),
@@ -184,7 +186,8 @@ class RunManager:
         agent = Agent(provider, max_permission=perm,
                       max_steps=max(1, min(int(body.get("max_steps", 24)), 64)),
                       template=state.get("template") or "general",
-                      memory=self.memory, skills=self.skills)
+                      memory=self.memory, skills=self.skills,
+                      mode=state.get("mode") or body.get("mode"))
         conv = Conversation.from_state(agent, state)
         conv.ctx.extra["routine_store"] = self.routines
         conv._permission = perm_name

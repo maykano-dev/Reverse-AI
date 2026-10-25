@@ -13,7 +13,7 @@ deliberately separated from the host.
 ├──────────────────────────────────────────────────────────────────────┤
 │ Agent            orchestrator · conversation · registry · mediator    │
 │                  evidence · job · narrative · templates · memory      │
-│                  skills · research · routines · pricing               │
+│                  skills · research · routines · pricing · modify engine│
 ├───────────────┬───────────────────────────────┬──────────────────────┤
 │ Providers     │ Tools                         │ Durable state        │
 │ deepseek      │ analysis · execution ·        │ Job store · events   │
@@ -27,7 +27,8 @@ deliberately separated from the host.
 │ diff · models                 │                                      │
 ├───────────────────────────────┴──────────────────────────────────────┤
 │ Verification (verify/) · Modification (modify/) · Clone (clone/)      │
-│ behavioral tests · differential corpus · repair loop · signed report  │
+│ strategy selector · planner · blast radius · behavioral tests ·       │
+│ differential corpus · repair loop · signed report                     │
 │ Decompile (decompile/) · Mobile (mobile/) · OCR (ocr/) · Bench        │
 ├──────────────────────────────────────────────────────────────────────┤
 │ Security: validation · limits · archive safety · SSRF-safe net        │
@@ -48,19 +49,26 @@ deliberately separated from the host.
    server emits a natural `reason` event before the result.
 5. **Observe.** Tools append `Finding`s at the right tier. Research appends
    sources. The conversation tracks sources and artifact metadata.
-6. **Verify before delivery.** If a binary modification exists and no passing
+6. **Choose, plan, implement.** For a change request, the engine scores the
+   five strategies from the analysis and the goal, recommends or accepts a mode,
+   identifies the likely components, estimates the blast radius, and asks a
+   clarifying question when the request is ambiguous. `plan_and_modify` then
+   runs the smallest strategy that fits through the existing executors.
+7. **Verify before delivery.** If a binary modification exists and no passing
    behavioral test is recorded for this turn, the delivery gate runs
    `verify_modification`. A failure can feed a bounded repair loop; a missing
-   expectation is a refusal, not a pass. A site bundle is delivered without a
+   expectation is a refusal, not a pass. A scoped change also runs regression
+   cases over the untouched behavior. A site bundle is delivered without a
    native execution test and marked unobtrusively as such.
-7. **Stream + persist.** Every event is appended to
+8. **Stream + persist.** Every event is appended to
    `<store>/events/<job>.jsonl`; the SSE endpoint replays from `?after=N` and
    then tails the log. Conversation state is saved to
    `<store>/conversations/<cid>.json` after each turn.
-8. **Conclude.** The final answer, evidence summary, sources, usage, and
-   artifact meta are streamed and saved as a `Job`. Unverified artifacts are
-   withheld. `GET /jobs/<id>/report(.html)` builds a signed report on demand
-   from the saved record.
+9. **Conclude.** The final answer, evidence summary, sources, usage, mode,
+   strategy, plan, and artifact meta are streamed and saved as a `Job`.
+   Unverified artifacts are withheld. `GET /jobs/<id>/report(.html)` builds a
+   signed report on demand from the saved record, including the sandbox
+   environment fingerprint.
 
 ## Key contracts
 

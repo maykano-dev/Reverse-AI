@@ -119,6 +119,7 @@ class RunSnapshot:
     stdout: str
     stderr: str
     output_files: dict[str, dict[str, Any]] = field(default_factory=dict)
+    isolation: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
 
     @classmethod
@@ -164,6 +165,7 @@ class RunSnapshot:
             stdout=r.stdout_text()[:MAX_CAPTURE],
             stderr=r.stderr_text()[:MAX_CAPTURE],
             output_files=files,
+            isolation=(r.isolation.to_dict() if r.isolation else {}),
             error=r.error,
         )
 

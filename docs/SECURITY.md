@@ -107,6 +107,26 @@ actually enforced.
 - The browser never receives a provider key. `/config` reports readiness, not
   the model or key.
 
+## High-risk capabilities are denied by default
+
+Remote control, credential vaults, payments, live desktop workstations,
+persistent squads, MCP servers, and hooks are **not implemented** in this
+release. The `reverseai.security.capabilities` policy exists so a future
+implementation cannot be switched on by accident:
+
+- Every capability is denied by default.
+- Enabling one requires both `REVERSEAI_ENABLE_DANGEROUS_CAPABILITIES=1` and its
+  own `REVERSEAI_ENABLE_*` variable.
+- A vault or payment capability additionally requires `REVERSEAI_VAULT_KEY`.
+- Any future feature must call `CapabilityPolicy.require()` before touching the
+  host, the network, or stored credentials.
+- `/config` reports only which high-risk capabilities are enabled, never the
+  secrets.
+
+A payments vault and a remote desktop are not "features to add quickly." They
+need a separate threat model, human approval for irreversible actions, and an
+audited encryption boundary. Until then, refusal is the correct behavior.
+
 ## Verified delivery and reports
 
 - A modified binary is delivered only when `verify_modification` records a
@@ -124,6 +144,12 @@ actually enforced.
   it. Use a key when the report leaves your machine.
 - A signature proves the report was not altered after signing. It does not make
   a weak test strong; read the declared inputs and expectations.
+- Reports record the sandbox environment fingerprint (backend, isolation level,
+  network/filesystem controls, capability dropping, resource limits, seccomp)
+  from the actual test run. Do not present a report as proof of containment if
+  the fingerprint says the backend was not isolating.
+- The strategy selector is advisory. A plausible rationale is not evidence; the
+  delivery gate still requires a passing test.
 
 ## Known limitations (honest)
 

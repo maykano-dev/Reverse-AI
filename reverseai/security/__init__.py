@@ -1,5 +1,6 @@
-"""Security primitives: input validation and process resource limits."""
+"""Security primitives: input validation, process limits, and capability policy."""
 
+from .capabilities import CapabilityDenied, CapabilityPolicy
 from .limits import ResourceLimits
 from .validate import (
     MAX_FILE_BYTES,
@@ -11,6 +12,8 @@ from .validate import (
 )
 
 __all__ = [
+    "CapabilityDenied",
+    "CapabilityPolicy",
     "ResourceLimits",
     "MAX_FILE_BYTES",
     "ValidationError",
