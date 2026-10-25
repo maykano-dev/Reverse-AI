@@ -59,7 +59,7 @@ Most "AI + reverse engineering" demos stop at describing a binary. ReverseAI clo
 | **Better artifacts** | Descriptive, unique names like `app-patched-remove-license-check-8f3a1c.exe`, with size and SHA-256 in the delivery card. |
 | **Unlimited-OCR** | Optional adapter for Baidu's Unlimited-OCR behind vLLM/SGLang, with Tesseract as the zero-setup fallback. |
 | **Security** | Optional bearer auth, path allowlists for public deployments, operator-controlled network egress, redirect-validated SSRF, and a browser-render gate. |
-| **Packaging** | The UI, vendor scripts, and Ghidra script are now included in the wheel; CI builds and verifies the package. |
+| **Packaging** | The UI, vendor scripts, and Ghidra script are included in the wheel. The CI/Pages workflows are staged in `docs/github-workflows/` until a token with the `workflow` scope can push them. |
 
 <p align="center">
   <img src="docs/assets/thinking.png" alt="Natural reasoning timeline with tool cards and evidence" width="880">

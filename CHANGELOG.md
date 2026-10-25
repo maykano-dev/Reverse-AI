@@ -23,7 +23,9 @@
 - Markdown skill playbooks under `REVERSEAI_SKILLS`.
 - Optional bearer auth, path allowlists, operator-controlled coding network, and
   a browser-render gate.
-- `.dockerignore`, unprivileged container runtime, and CI packaging checks.
+- `.dockerignore`, unprivileged container runtime, and packaging checks. The CI
+  and Pages workflows are staged in `docs/github-workflows/` because the push
+  token lacks the GitHub `workflow` scope.
 - 25+ new tests covering features, HTTP endpoints, auth, durability, and OCR.
 
 ### Changed
