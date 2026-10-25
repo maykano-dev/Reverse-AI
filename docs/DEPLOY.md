@@ -9,8 +9,14 @@ build step for the frontend and no database to provision.
 2. Set these secrets in the dashboard:
    - `DEEPSEEK_API_KEY`
    - `REVERSEAI_AUTH_TOKEN` (choose a long random value)
-3. Optionally set `REVERSEAI_OCR_URL`, `REVERSEAI_SEARCH_URL`, or a budget.
+3. Optionally set `REVERSEAI_OCR_URL`, `REVERSEAI_SEARCH_URL`, a budget, or
+   `REVERSEAI_REPORT_KEY` (HMAC for verification reports).
 4. Open the service URL. The UI asks for the access token on first load.
+
+A modification is delivered only after a behavioral test passes in the sandbox.
+On hosts without user namespaces, verification cannot run, so modified binaries
+are withheld. Analysis, chat, research, decompilation, and static cloning still
+work.
 
 The blueprint creates a 1 GB disk at `/data` and sets
 `REVERSEAI_ALLOWED_ROOTS=/data`. Uploads and artifacts live there.
@@ -64,6 +70,10 @@ the proxy forward to it. If you expose it directly, keep the token on.
 | SearXNG | `REVERSEAI_SEARCH_URL` | Better research than DuckDuckGo HTML |
 | Ghidra | `REVERSEAI_GHIDRA`, `REVERSEAI_JDK` | Decompilation |
 | Qiling | `REVERSEAI_QILING_ROOTFS` | Foreign-platform emulation |
+| Report signing | `REVERSEAI_REPORT_KEY` | HMAC-SHA256 verification reports |
+
+Verification bounds: `REVERSEAI_MAX_REPAIR_ATTEMPTS` (default 3, max 10).
+Reports are served at `/jobs/<id>/report` and `/jobs/<id>/report.html`.
 
 ## Troubleshooting
 

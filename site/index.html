@@ -136,10 +136,20 @@
     <div class="card"><div class="ico">04</div><h3>Remember and research</h3><p>Durable notes, web research with citations, and sources attached to the answer.</p></div>
     <div class="card"><div class="ico">05</div><h3>Works while you sleep</h3><p>Routines run on a schedule. Durable turns survive a reload or a restart. Reattach to the live stream.</p></div>
     <div class="card"><div class="ico">06</div><h3>Mobile first</h3><p>Installable PWA, drawer navigation, safe areas, touch-sized controls, and a composer that behaves on a phone.</p></div>
-    <div class="card"><div class="ico">07</div><h3>Real artifacts</h3><p>Descriptive, unique filenames, with size and SHA-256 in the delivery card. The original is never touched.</p></div>
+    <div class="card"><div class="ico">07</div><h3>Verified delivery</h3><p>A modified binary is withheld unless a declared behavioral test passes in the sandbox. Failures can trigger a bounded repair attempt.</p></div>
     <div class="card"><div class="ico">08</div><h3>Specialists on call</h3><p>Reverse engineer, engineer, researcher, security, mobile, writer, data, and a delegate tool for squads.</p></div>
-    <div class="card"><div class="ico">09</div><h3>Bring your own model</h3><p>DeepSeek, OpenAI-compatible, Anthropic, Ollama, or a local endpoint. The provider is one seam.</p></div>
+    <div class="card"><div class="ico">09</div><h3>Signed reports</h3><p>Every result has a JSON and self-contained HTML report with the artifact SHA-256, tests, evidence tiers, and a deterministic signature.</p></div>
   </div>
+</section>
+
+<section class="wrap">
+  <div class="kicker">Verified delivery</div>
+  <h2>It will not hand you an unverified file.</h2>
+  <p class="sub">The agent declares a behavioral expectation, runs the original and changed artifacts in the sandbox, and compares real outputs. If the test fails, the file stays in the workspace, the delivery is blocked, and you get the reason. A bounded repair loop can ask for another candidate. The signed report proves exactly what was tested.</p>
+  <div class="shot" style="margin-top:18px"><img src="assets/verification.png" alt="A verified artifact and signed report link"></div>
+  <pre><code>verify_modification  -> exit, stdout, stderr, output files
+differential_test    -> corpus: matches, deltas, regressions
+GET /jobs/&lt;id&gt;/report(.html) -> signed JSON / self-contained HTML</code></pre>
 </section>
 
 <section id="how" class="wrap">

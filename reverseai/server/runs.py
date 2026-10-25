@@ -120,15 +120,13 @@ class RunManager:
                 job = conv.run_turn(goal, on_event=on_event, stop_event=run.cancel)
                 job.id = stream_id  # align stored id with the streamed one
                 job.conversation_id = cid
-                # Persist any delivered artifact durably, keyed by job id.
-                mp = conv.ctx.extra.get("modified_path")
-                if mp:
-                    saved = self.store.save_artifact(job.id, mp)
-                    if saved:
-                        from pathlib import Path as _P
-                        from ..naming import safe_download_name
-
-                        job.artifact = safe_download_name(_P(mp).name)
+                # Persist a delivered artifact only when the delivery gate
+                # allowed it. A blocked candidate stays in the workspace, but is
+                # not exposed as a delivered file.
+                if job.delivery.get("allowed") and job.artifact:
+                    mp = job.artifact_meta.get("path")
+                    if mp:
+                        self.store.save_artifact(job.id, mp)
                 self.store.save(job)
                 self._save_conversation(cid, conv, body)
                 run.record = job.to_dict()
@@ -241,6 +239,9 @@ class RunManager:
         """Path of the final modified file a conversation produced, if any."""
         conv = self.conversation(cid)
         if conv is None:
+            return None
+        delivery = conv.ctx.extra.get("delivery") or {}
+        if not delivery.get("allowed"):
             return None
         path = conv.ctx.extra.get("modified_path")
         # Only serve a file that lives inside this conversation's workspace.

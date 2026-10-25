@@ -26,6 +26,8 @@ _TOOL_ICON = {
     "record_finding": "check",
     "apply_byte_patch": "code",
     "verify_against_original": "check",
+    "verify_modification": "check",
+    "differential_test": "bars",
     "diff_modified": "bars",
     "extract_archive": "archive",
     "clone_website": "globe",
@@ -110,6 +112,12 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "verify_against_original":
         title = "Comparing both versions"
         detail = "Same inputs, same sandbox, then compare the behavior."
+    elif name == "verify_modification":
+        title = "Proving the change in the sandbox"
+        detail = "Running the declared behavioral test before delivery."
+    elif name == "differential_test":
+        title = "Testing across a set of inputs"
+        detail = "Comparing the original and the change for unexpected regressions."
     elif name == "diff_modified":
         title = "Checking what changed"
         detail = "Sections, imports, exports, size, and entropy."

@@ -812,6 +812,43 @@ function addSource(ui, ev) {
   if (ui.sources.some((s) => s.url === ev.url)) return;
   ui.sources.push(ev);
 }
+function addVerification(ui, ev) {
+  if (!ui) return;
+  if (!ui.current) addReason(ui, { title: "Proving the change", detail: "" });
+  let card = ui.current.querySelector(".verify-card");
+  if (!card) {
+    card = el("div", "verify-card");
+    card.innerHTML = `<div class="vh"><span>${ic("check", 13)}</span><span class="vt">Verification</span><span class="vbadge">running</span></div><div class="vbody"></div>`;
+    ui.current.querySelector(".cot-content").appendChild(card);
+  }
+  const body = card.querySelector(".vbody");
+  const badge = card.querySelector(".vbadge");
+  if (ev.type === "verification_plan") {
+    card.querySelector(".vt").textContent = ev.title || "Verification";
+    const note = el("div", "verify-note", ev.detail || "");
+    body.appendChild(note);
+    return;
+  }
+  if (ev.type === "verification_attempt") {
+    const row = el("div", "verify-attempt " + (ev.passed ? "pass" : "fail"));
+    row.innerHTML = `<span class="vd"></span><span><b>Attempt ${ev.attempt || "?"} of ${ev.max_attempts || "?"}: ${ev.passed ? "passed" : "failed"}</b><br>${esc(ev.reason || ev.summary || "")}</span>`;
+    body.appendChild(row);
+    badge.textContent = ev.passed ? "passed" : "retrying";
+    badge.className = "vbadge " + (ev.passed ? "pass" : "fail");
+    return;
+  }
+  if (ev.type === "verification_repair") {
+    body.appendChild(el("div", "verify-note", ev.detail || "Trying another candidate."));
+    return;
+  }
+  if (ev.type === "verification" || ev.type === "delivery_blocked") {
+    const ok = ev.type === "verification" && ev.verified;
+    badge.textContent = ok ? "verified" : "not verified";
+    badge.className = "vbadge " + (ok ? "pass" : "fail");
+    const note = el("div", "verify-note", ev.reason || "");
+    body.appendChild(note);
+  }
+}
 function finishFinal(ui, ev, jobId) {
   if (!ui || ui.finished) return;
   ui.finished = true;
@@ -862,7 +899,12 @@ function finishFinal(ui, ev, jobId) {
   }
 
   renderSources(ui.body, ev.sources || ui.sources);
-  renderArtifact(ui.body, ev.artifact_meta, ev.artifact, jobId);
+  const delivery = ev.delivery || {};
+  if (delivery.allowed === false) {
+    renderDeliveryBlocked(ui.body, delivery.reason, jobId);
+  } else {
+    renderArtifact(ui.body, ev.artifact_meta, ev.artifact, jobId);
+  }
   renderFeedback(ui.body, jobId);
 
   const u = ev.usage || {};
@@ -1001,6 +1043,13 @@ function handleEvent(ui, ev, jobId) {
     case "finding":
       addFinding(ui, ev);
       break;
+    case "verification_plan":
+    case "verification_attempt":
+    case "verification_repair":
+    case "verification":
+    case "delivery_blocked":
+      addVerification(ui, ev);
+      break;
     case "final":
       srcClose();
       finishFinal(ui, ev, jobId);
@@ -1057,6 +1106,21 @@ function renderSources(container, sources) {
   wrap.appendChild(list);
   container.appendChild(wrap);
 }
+function renderDeliveryBlocked(container, reason, jobId) {
+  const card = el("div", "delivery-blocked");
+  card.innerHTML = `<b>File withheld: not verified</b>${esc(reason || "No behavioral test passed in the sandbox.")}`;
+  container.appendChild(card);
+  addReportLink(container, jobId);
+}
+function addReportLink(container, jobId) {
+  if (!jobId) return;
+  const a = el("a", "report-link");
+  a.href = withToken(`/jobs/${jobId}/report.html`);
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.innerHTML = `${ic("file", 13)} Verification report`;
+  container.appendChild(a);
+}
 function renderArtifact(container, meta, name, jobId) {
   const m = meta || {};
   if (!m.name && !name) return;
@@ -1070,6 +1134,7 @@ function renderArtifact(container, meta, name, jobId) {
     <span class="at"><b>${esc(fname)}</b><span>${[size, sha].filter(Boolean).join(" · ") || "Delivered file"}</span></span>
     <span class="ad">${ic("download", 17)}</span>`;
   container.appendChild(a);
+  addReportLink(container, jobId);
   if (!sessionArtifacts.some((x) => x.href === a.href)) {
     sessionArtifacts.unshift({ name: fname, href: a.href, goal: fname, size: m.size, sha: m.sha256 });
     updateArtCount();
@@ -1112,6 +1177,8 @@ const TOOL_LABELS = {
   record_finding: "Writing down a finding",
   apply_byte_patch: "Changing a copy of the file",
   verify_against_original: "Comparing both versions",
+  verify_modification: "Proving the change in the sandbox",
+  differential_test: "Testing across a set of inputs",
   diff_modified: "Checking what changed",
   extract_archive: "Unpacking the archive safely",
   clone_website: "Rebuilding the site",
@@ -1238,7 +1305,11 @@ async function openConversation(jobId) {
     renderMd(ans, answer || "_(no conclusion)_");
     archivedUI.body.appendChild(ans);
     renderSources(archivedUI.body, rec.sources || []);
-    renderArtifact(archivedUI.body, rec.artifact_meta, rec.artifact, jobId);
+    if (rec.delivery && rec.delivery.allowed === false) {
+      renderDeliveryBlocked(archivedUI.body, rec.delivery.reason, jobId);
+    } else {
+      renderArtifact(archivedUI.body, rec.artifact_meta, rec.artifact, jobId);
+    }
     renderFeedback(archivedUI.body, jobId);
     if (rec.usage && rec.usage.total_tokens) {
       const parts = [`${fmtTok(rec.usage.total_tokens)} tokens`];
@@ -1255,7 +1326,11 @@ async function openConversation(jobId) {
     renderMd(ans, answer || "_(no conclusion)_");
     body.appendChild(ans);
     renderSources(body, rec.sources || []);
-    renderArtifact(body, rec.artifact_meta, rec.artifact, jobId);
+    if (rec.delivery && rec.delivery.allowed === false) {
+      renderDeliveryBlocked(body, rec.delivery.reason, jobId);
+    } else {
+      renderArtifact(body, rec.artifact_meta, rec.artifact, jobId);
+    }
     renderFeedback(body, jobId);
     t.appendChild(body);
     inner.appendChild(t);
@@ -1308,6 +1383,19 @@ function buildReport(pane, rec) {
     d.innerHTML = `<span class="tier ${esc(f.confidence)}">${esc(f.confidence)}</span><span>${esc(f.claim)}</span>`;
     r.appendChild(d);
   });
+  if (rec.verification) {
+    r.appendChild(el("h3", null, "Verification"));
+    const v = rec.verification;
+    r.appendChild(el("div", "kv",
+      `${v.verified ? "verified" : "not verified"} · ` +
+      `${v.passed_tests || 0} passed test(s) · ` +
+      `${v.tests_run != null ? v.tests_run : (v.attempts || []).length} attempt(s)`));
+    if (v.reason) r.appendChild(el("div", "kv", v.reason));
+    if (rec.delivery) {
+      r.appendChild(el("div", "kv",
+        `delivery: ${rec.delivery.allowed ? "allowed" : "blocked"} · ${rec.delivery.reason || ""}`));
+    }
+  }
   r.appendChild(el("h3", null, "Conclusion"));
   const concl = el("div", "answer");
   renderMd(concl, rec.final_answer || "(none)");

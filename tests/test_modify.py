@@ -122,8 +122,10 @@ class FullPatchLoopTests(unittest.TestCase):
                 call("analyze_binary", {}),
                 call("apply_byte_patch",
                      {"patches": [{"offset": off, "hex": "4e4557", "expect_hex": "4f4c44"}]}),
-                call("verify_against_original", {"args": []}),
-                say("Verified: patched OLD->NEW; both exit 0, output changed as intended."),
+                call("verify_modification", {
+                    "expect_stdout": "NEW", "expect_diff": True,
+                    "max_attempts": 1, "repair": False}),
+                say("Verified: patched OLD->NEW; the behavioral test passed."),
             ]
             agent = Agent(MockProvider(script), max_permission=Permission.WRITE)
             job = agent.run("Change the printed message from OLD to NEW and prove it.",
@@ -132,11 +134,16 @@ class FullPatchLoopTests(unittest.TestCase):
             self.assertEqual(job.status, "completed")
             # modification tool must be registered only because ceiling is WRITE
             self.assertIn("apply_byte_patch", agent.registry.names())
-            # a verified regression finding exists
+            self.assertIn("verify_modification", agent.registry.names())
+            self.assertTrue(job.verification["verified"])
+            self.assertGreaterEqual(job.verification["passed_tests"], 1)
+            self.assertTrue(job.delivery["allowed"])
+            self.assertIsNotNone(job.artifact)
+            # a verified behavioral finding exists
             self.assertGreaterEqual(job.evidence.summary()["verified"], 1)
             tools_called = {e.tool for e in agent.mediator.audit if e.allowed and e.ok}
             self.assertIn("apply_byte_patch", tools_called)
-            self.assertIn("verify_against_original", tools_called)
+            self.assertIn("verify_modification", tools_called)
         finally:
             tmp.cleanup()
 

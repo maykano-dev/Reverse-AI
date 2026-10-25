@@ -49,7 +49,7 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | Agent orchestrator | **working** | `agent/` ReAct loop, conversation, mediator, evidence, job |
 | Provider layer | **working** | DeepSeek, OpenAI-compatible, Anthropic, Ollama, mock |
 | Sandbox/testing | **working** | bubblewrap, subprocess, experimental qiling, hard refusal |
-| Evidence/verify | **working** | believed/observed/verified + audit + behavioral regression |
+| Evidence/verify | **working** | tiers + audit + differential tests + repair loop + verified gate + signed reports |
 | Modification engine | **working** | byte patches, LIEF structural edits, on a copy |
 | Decompile | **working** | Ghidra headless + Java script for modern releases |
 | Clone | **working** | static fetch; opt-in headless render |
@@ -58,7 +58,7 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | API + UI | **working** | stdlib HTTP + SSE, mobile-first PWA |
 | Multi-tenant product layer | **planned** | accounts, quotas, object storage, worker queue |
 
-## Current capability (v0.2.0)
+## Current capability (v0.3.0)
 
 Zero third-party dependencies required (stdlib + binutils; optional libs enhance):
 
@@ -80,10 +80,26 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 - **Research:** SSRF-safe search and page reading with sources and citations.
 - **Skills:** markdown playbooks under `REVERSEAI_SKILLS` / `<store>/skills`,
   loaded on demand with `read_skill`.
-- **Tools:** analysis, execution, modification, coding, memory, research,
-  delegate, routines, archive extraction, website cloning, OCR.
+- **Tools:** analysis, execution, modification, verification, differential
+  testing, coding, memory, research, delegate, routines, archive extraction,
+  website cloning, OCR.
 - **Modify + verify:** byte patch on a copy + behavioral regression in the
   sandbox; LIEF structural edits when installed.
+- **Verified delivery gate:** `verify_modification` runs declared behavioral
+  tests in the sandbox. A modification is delivered only when a test passes;
+  otherwise the artifact is withheld with a plain-language reason. The gate runs
+  automatically before final delivery of any binary modification.
+- **Repair loop:** a failed test can be fed back to the model, which proposes a
+  new patch set; bounded to `REVERSEAI_MAX_REPAIR_ATTEMPTS` (default 3, max 10).
+  Each attempt is visible in the reasoning timeline.
+- **Differential testing:** `differential_test` runs original and modified
+  artifacts across an auto-generated or agent-supplied corpus, comparing exit
+  status, stdout, stderr, and declared output files; unexpected regressions are
+  flagged.
+- **Signed verification reports:** `GET /jobs/<id>/report` (JSON) and
+  `/report.html` (self-contained HTML), covering the goal, change, evidence
+  tiers, tests, differential summary, artifact SHA-256, and a deterministic
+  signature (HMAC-SHA256 when `REVERSEAI_REPORT_KEY` is set, else SHA-256).
 - **Decompile:** Ghidra headless with a Java GhidraScript for modern Ghidra and
   JDK-range detection. Optional.
 - **OCR:** Baidu Unlimited-OCR via an OpenAI-compatible vLLM/SGLang endpoint,
@@ -113,7 +129,9 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 | `reverseai/naming.py` | Descriptive artifact names |
 | `reverseai/server/runs.py` | Durable runs, reattach, restore |
 | `reverseai/server/app.py` | HTTP API, auth, path guard, static assets |
-| `reverseai/sandbox/` | Isolation backends + policy |
+| `reverseai/sandbox/` | Isolation backends + policy, including bounded stdin |
+| `reverseai/verify/` | Behavioral comparison, differential corpus, repair loop, signed report |
+| `reverseai/agent/verify_tools.py` | `verify_modification` and `differential_test` |
 | `reverseai/security/` | Validation, limits, archives, SSRF-safe fetch |
 | `reverseai/server/static/` | Mobile-first UI (no build step) |
 
@@ -132,7 +150,14 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 python3 -m reverseai analyze /path/to/binary
 python3 -m reverseai analyze /path/to/binary --json
 python3 -m reverseai serve
-python3 -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -v   # 230+ tests, no API key
+```
+
+Verification/report endpoints:
+
+```
+GET /jobs/<id>/report       signed JSON
+GET /jobs/<id>/report.html  self-contained HTML
 ```
 
 ## Working agreements for coding agents
@@ -145,6 +170,10 @@ python3 -m unittest discover -s tests -v
   cross-layer contracts.
 - Keep the UI honest: no raw tool names, no "investigating" boilerplate, no
   claims that a build equals a verified change.
+- Never deliver a modified binary without a passing behavioral test recorded by
+  `verify_modification`. If the sandbox cannot run, refuse and withhold the file.
+- Signed reports are integrity evidence, not proof of truth: they show what was
+  tested. Do not imply that a SHA-256/HMAC makes a weak test strong.
 - Do not add a vault, payments, or remote control without a separate threat
   model. Those are deliberately deferred.
 - Update `docs/UNIFIED_AGENT.md` when a capability moves from partial/deferred

@@ -21,6 +21,12 @@ def _require_target(ctx: ToolContext) -> str:
     return ctx.target_path
 
 
+def _invalidate_verification(ctx: ToolContext) -> None:
+    """A new candidate invalidates every prior test and delivery decision."""
+    for key in ("verification", "delivery", "differential"):
+        ctx.extra.pop(key, None)
+
+
 class ApplyBytePatchTool(Tool):
     name = "apply_byte_patch"
     description = (
@@ -81,9 +87,12 @@ class ApplyBytePatchTool(Tool):
         except PatchError as exc:
             return ToolResult.failure(str(exc))
 
+        _invalidate_verification(ctx)
         ctx.extra["modified_path"] = result.output_path
         ctx.extra["modified_operation"] = "patch"
         ctx.extra["modified_label"] = "Patched copy"
+        ctx.extra["modified_turn"] = ctx.job_id
+        ctx.extra["last_patches"] = result.details
         if ctx.evidence is not None:
             ctx.evidence.observed(
                 f"applied {result.patches_applied} patch(es), "
@@ -104,9 +113,9 @@ class VerifyAgainstOriginalTool(Tool):
     name = "verify_against_original"
     description = (
         "Run the original and the modified binary in the sandbox with the same "
-        "arguments and compare exit status and output. Use this to prove whether "
-        "a modification achieved the intended change without breaking existing "
-        "behavior. Requires a modified artifact from apply_byte_patch first."
+        "arguments and compare exit status and output. This is a comparison only: "
+        "it records an observation and does NOT authorize delivery. Use "
+        "verify_modification with a declared expectation to prove the change."
     )
     parameters = {
         "type": "object",
@@ -136,7 +145,10 @@ class VerifyAgainstOriginalTool(Tool):
             return ToolResult.failure(f"verification could not run: {report.error}")
 
         if ctx.evidence is not None:
-            ctx.evidence.verified(f"regression: {report.verdict}", source=self.name)
+            # This proves a comparison ran; it does not prove the intended
+            # change. Only verify_modification may add a verified claim.
+            ctx.evidence.observed(f"behavioral comparison: {report.verdict}",
+                                  source=self.name)
 
         o, m = report.original, report.modified
         summary = (
@@ -157,9 +169,9 @@ class StructuralDiffTool(Tool):
     name = "diff_modified"
     description = (
         "Structurally compare the original target with the modified artifact "
-        "(sections, imports, exports, size, entropy). Pairs with "
-        "verify_against_original: this shows WHAT changed statically, that shows "
-        "whether behavior changed. Requires a modified artifact first."
+        "(sections, imports, exports, size, entropy). It shows WHAT changed "
+        "statically; verify_modification proves whether the change works. "
+        "Requires a modified artifact first."
     )
     parameters = {"type": "object", "properties": {}}
     permission = Permission.READ
@@ -170,7 +182,7 @@ class StructuralDiffTool(Tool):
         target = _require_target(ctx)
         modified = ctx.extra.get("modified_path")
         if not modified:
-            return ToolResult.failure("no modified artifact yet — run apply_byte_patch first")
+            return ToolResult.failure("no modified artifact yet - apply a patch first")
         d = diff_files(target, modified)
         return ToolResult.success(f"diff: {d.summary}", **d.to_dict())
 
@@ -203,8 +215,10 @@ class AddImportTool(Tool):
                                        args.get("functions"), out_name=out_name)
         except (LiefUnavailable, LiefOpError) as exc:
             return ToolResult.failure(str(exc))
+        _invalidate_verification(ctx)
         ctx.extra["modified_path"] = out
         ctx.extra["modified_operation"] = "imports"
+        ctx.extra["modified_turn"] = ctx.job_id
         ctx.extra["modified_label"] = f"Added import {args['library']}"
         if ctx.evidence is not None:
             ctx.evidence.observed(f"added import {args['library']}", source=self.name)
@@ -243,8 +257,10 @@ class AddSectionTool(Tool):
                               out_name=out_name)
         except (LiefUnavailable, LiefOpError) as exc:
             return ToolResult.failure(str(exc))
+        _invalidate_verification(ctx)
         ctx.extra["modified_path"] = out
         ctx.extra["modified_operation"] = "section"
+        ctx.extra["modified_turn"] = ctx.job_id
         ctx.extra["modified_label"] = f"Added section {args['name']}"
         return ToolResult.success(f"wrote {out} with section {args['name']}",
                                   output_path=out)
@@ -341,8 +357,10 @@ class CloneWebsiteTool(Tool):
             name = name[:-4]
         base = Path(ctx.workspace) / name
         zip_path = shutil.make_archive(str(base), "zip", str(site_dir))
+        _invalidate_verification(ctx)
         ctx.extra["modified_path"] = zip_path
         ctx.extra["modified_operation"] = "site"
+        ctx.extra["modified_turn"] = ctx.job_id
         ctx.extra["modified_label"] = "Offline site bundle"
         if ctx.evidence is not None:
             ctx.evidence.verified(

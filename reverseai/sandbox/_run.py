@@ -24,13 +24,14 @@ def run_process(
     limits: ResourceLimits,
     max_output: int,
     isolation: Isolation,
+    stdin: bytes | None = None,
 ) -> ExecResult:
     preexec = limits.as_preexec()
     start = time.monotonic()
     try:
         proc = subprocess.Popen(
             argv,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
@@ -43,7 +44,7 @@ def run_process(
 
     timed_out = False
     try:
-        out, err = proc.communicate(timeout=timeout)
+        out, err = proc.communicate(input=stdin, timeout=timeout)
     except subprocess.TimeoutExpired:
         timed_out = True
         _kill_group(proc)

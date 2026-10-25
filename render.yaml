@@ -34,6 +34,14 @@ services:
       # A hard ceiling on paid-model spend. Raise or remove deliberately.
       - key: REVERSEAI_MONTHLY_BUDGET
         value: "10"
+      - key: REVERSEAI_MAX_REPAIR_ATTEMPTS
+        value: "3"
+      # Optional: HMAC key for signed verification reports. Set it here, not
+      # in the browser. Without it reports use a plain SHA-256 integrity hash.
+      - key: REVERSEAI_REPORT_KEY
+        sync: false
+      - key: REVERSEAI_UPLOAD_MAX_MB
+        value: "512"
       # Headless Chromium parsing an untrusted page is an attack surface on a
       # shared host; leave rendering off and use the static clone engine.
       - key: REVERSEAI_ALLOW_BROWSER_RENDER

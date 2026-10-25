@@ -27,7 +27,8 @@ class SubprocessSandbox(Sandbox):
     def isolation_level(cls) -> int:
         return 10
 
-    def run(self, argv, policy: SandboxPolicy, cwd: str | None = None) -> ExecResult:
+    def run(self, argv, policy: SandboxPolicy, cwd: str | None = None,
+            stdin: bytes | None = None) -> ExecResult:
         isolation = Isolation(
             backend=self.name,
             network_blocked=False,
@@ -46,4 +47,5 @@ class SubprocessSandbox(Sandbox):
             limits=policy.limits,
             max_output=policy.max_output_bytes,
             isolation=isolation,
+            stdin=stdin,
         )

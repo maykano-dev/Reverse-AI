@@ -68,6 +68,7 @@ def compare_execution(
     modified_path: str,
     args: list[str] | None = None,
     policy: SandboxPolicy | None = None,
+    stdin: bytes | None = None,
 ) -> VerificationReport:
     """Execute both binaries in the sandbox with the same args and diff behavior."""
     args = args or []
@@ -77,7 +78,7 @@ def compare_execution(
         p = replace(base, allow_untrusted_execution=True,
                     ro_binds=list(base.ro_binds) + [path])
         sb = create_sandbox(p)
-        return sb.run([path] + [str(a) for a in args], p)
+        return sb.run([path] + [str(a) for a in args], p, stdin=stdin)
 
     try:
         orig = _run(original_path)

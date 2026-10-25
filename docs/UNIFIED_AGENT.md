@@ -46,10 +46,14 @@ made the loop **visible**, **durable**, **personal**, and **mobile**.
 | Unlimited-OCR | Baidu | **Implemented (adapter)** | `ocr/engine.py`, `REVERSEAI_OCR_URL` |
 | Artifact naming | user request | **Implemented** | `naming.py`, artifact cards |
 | Real cancellation | Claude Code, Xiryn | **Implemented** | `/jobs/:id/cancel`, `stop_event` |
+| Verified delivery gate | project principle | **Implemented** | `verify_modification`, `agent/conversation.py` gate |
+| Bounded repair loop | Claude Code, Xiryn | **Implemented** | `verify/repair.py`, model repair callback |
+| Differential testing | new / testing practice | **Implemented** | `verify/difftest.py`, `differential_test` |
+| Signed verification report | new | **Implemented** | `verify/report.py`, `/jobs/:id/report(.html)` |
 | MCP servers | Claude Code, OpenCode | **Deferred** | needs a protocol client and permission model |
 | Hooks (pre/post tool) | Claude Code | **Deferred** | needs an operator policy and sandboxing |
 | Checkpoints / undo | Claude Code | **Deferred** | would build on conversation state |
-| Diff review UI | Claude Code | **Partial** | report shows structural diff, no inline review |
+| Diff review UI | Claude Code | **Partial** | signed report and structural diff, no inline hunk review |
 | Computer use / live desktop | Xiryn, OpenClaw | **Deferred** | needs Docker workstations, VNC, and a new threat model |
 | Take over / hand back | Xiryn | **Deferred** | depends on workstations |
 | Telegram remote control | Xiryn | **Deferred** | needs a bot bridge and pairing |

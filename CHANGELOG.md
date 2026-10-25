@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.3.0: verified delivery
+
+### Added
+
+- Bounded verify-and-repair loop (`REVERSEAI_MAX_REPAIR_ATTEMPTS`, default 3,
+  max 10). Failures are fed back to the model, which proposes a new candidate.
+- `verify_modification` (EXECUTE): declared behavioral tests in the sandbox,
+  attempt history, and the only path that may mark a modification verified.
+- Automatic delivery gate before final delivery of any binary modification.
+  Unverified artifacts are withheld with a plain-language reason.
+- `differential_test` (EXECUTE): auto-generated or targeted input corpus,
+  sandbox stdin, exit/stdout/stderr/output-file comparison, and unexpected
+  regression detection.
+- Sandbox stdin support for native backends; qiling refuses stdin honestly.
+- Signed verification reports: `GET /jobs/<id>/report` (JSON) and
+  `/report.html` (self-contained HTML), with HMAC-SHA256 when
+  `REVERSEAI_REPORT_KEY` is set, otherwise SHA-256.
+- Verification UI: attempt cards, blocked-delivery state, and a report link on
+  the artifact card.
+- Server-level test that blocked artifacts are neither persisted nor served.
+- New tests across differential testing, repair, the delivery gate, report
+  signing, the report routes, and sandbox stdin; total 230+.
+
+### Changed
+
+- `verify_against_original` is now explicitly a comparison-only tool; it records
+  an observation and never authorizes delivery.
+- A follow-up turn no longer re-delivers a previous turn's artifact.
+- Blocked turns replace the model's optimistic conclusion with the actual
+  verification reason.
+- Uploaded binaries keep an owner-execute bit so they can be verified inside the
+  sandbox (never run on the host).
+- Version bumped to 0.3.0.
+
 ## 0.2.0: the unified, visible agent
 
 ### Added

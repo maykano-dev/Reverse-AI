@@ -1,8 +1,23 @@
 # ReverseAI: Roadmap and Status
 
-A living map of what exists and what comes next. Updated with v0.2.0.
+A living map of what exists and what comes next. Updated with v0.3.0.
 
 ## Done
+
+### v0.3.0: verified delivery
+
+- **Verified delivery gate**: `verify_modification` is the only path that can
+  mark a modification verified. The orchestrator runs it before final delivery
+  of any binary modification and withholds unverified artifacts.
+- **Bounded repair loop**: failures are fed back to the model for a new
+  candidate; default 3 attempts, max 10.
+- **Differential testing**: original vs modified across an auto-generated or
+  targeted corpus; stdin, output files, and unexpected regressions.
+- **Signed reports**: JSON and self-contained HTML at `/jobs/<id>/report(.html)`;
+  HMAC-SHA256 when `REVERSEAI_REPORT_KEY` is set, SHA-256 otherwise.
+- **Verification UI**: attempt cards, blocked-delivery state, report link.
+- **Server delivery test**: blocked artifacts are not persisted or served.
+- **Tests**: 230+, including real sandbox verification and report tamper tests.
 
 ### v0.2.0: the unified, visible agent
 
@@ -45,12 +60,14 @@ A living map of what exists and what comes next. Updated with v0.2.0.
 ### M2: depth and safety
 - [ ] seccomp-bpf and landlock profile for the sandbox.
 - [ ] cgroup v2 limits for bubblewrap and subprocess.
+- [ ] mutation/fuzz testing and a curated per-target corpus.
+- [ ] automatic test generation from observed behavior (record -> replay).
+- [ ] structured failure diagnosis between repair attempts.
 - [ ] MCP client with mediator permissions.
 - [ ] pre/post tool hooks with an operator policy.
 - [ ] checkpoints and undo for conversations.
 - [ ] inline diff review and a patch approval surface.
 - [ ] more PE/Mach-O structure (resources, TLS, dyld export trie).
-- [ ] automatic test generation from observed behavior.
 
 ### M3: product surface
 - [ ] per-user accounts, quotas, and usage metering.
@@ -84,6 +101,9 @@ threat model and should not be rushed into an unaudited local app.
 - The CI/Pages workflows are staged in `docs/github-workflows/` until a token
   with the `workflow` scope can push them.
 - Cost estimates are approximate and must be overridden for exact pricing.
+- A passing verification proves only the declared inputs. Corpora are not
+  exhaustive, and a SHA-256 report is tamper-evident but not keyed unless
+  `REVERSEAI_REPORT_KEY` is set.
 
 ## How to continue
 

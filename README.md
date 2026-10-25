@@ -16,7 +16,7 @@
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
-  <img alt="tests" src="https://img.shields.io/badge/tests-200%2B%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-230%2B%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
   <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
@@ -37,11 +37,22 @@
 
 Most "AI + reverse engineering" demos stop at describing a binary. ReverseAI closes the loop: it reads the real bytes, reasons about them, **changes** them, and **proves the change works** in a sandbox before you ever see the result.
 
-- **Evidence over inference.** The analysis layer reports only what it parsed. Guesses are a separate, labeled layer. Findings are tiered **believed → observed → verified**.
+- **Evidence over inference.** The analysis layer reports only what it parsed. Guesses are a separate, labeled layer. Findings are tiered **believed → observed → verified**. A modified binary is **withheld** unless a declared behavioral test passes in the sandbox.
+- **A build is not a fix.** A patch that compiles, launches, or "looks right" is not delivered. Differential tests compare the original and the candidate across real inputs; unexpected regressions block delivery.
 - **A visible, natural thought process.** A plan, a short reasoning timeline, tool cards with real output, sources, and evidence. No raw tool names, no "investigating" boilerplate.
 - **Untrusted by default.** Analysis is pure. Execution happens only inside a hardened bubblewrap sandbox (no network, dropped capabilities, read-only system, tmpfs workdir) and is refused when nothing can contain it.
 - **A real working memory.** Durable notes, web research with citations, scheduled routines, specialist agents, and conversations that survive a reload or a server restart.
 - **Mobile first.** A PWA that works as a full chat app on a phone, with a drawer, safe areas, touch-sized controls, and an installable manifest.
+
+## What's new in 0.3
+
+| Area | What landed |
+|---|---|
+| **Verified delivery gate** | `verify_modification` runs a declared behavioral test in the sandbox. If it fails, the artifact is not delivered; there is no "trust me" path. The gate runs automatically before final delivery of any binary modification. |
+| **Repair loop** | A failed test is fed back to the model, which proposes a new patch set; bounded to 3 attempts by default (`REVERSEAI_MAX_REPAIR_ATTEMPTS`, max 10). Every attempt appears in the reasoning timeline. |
+| **Differential testing** | `differential_test` runs original and modified artifacts over an auto-generated or targeted input corpus, comparing exit code, stdout, stderr, and declared output files. Unexpected regressions are flagged. Sandbox stdin is supported. |
+| **Signed verification reports** | Every job exposes `GET /jobs/<id>/report` (JSON) and `/report.html` (self-contained HTML) with the goal, change, evidence tiers, tests, differential summary, artifact SHA-256, and a deterministic signature. HMAC-SHA256 when `REVERSEAI_REPORT_KEY` is set, SHA-256 otherwise. |
+| **Honest blocked state** | A blocked artifact is replaced by a plain-language reason in the chat and report. The model's optimistic draft is not allowed to stand as the conclusion. |
 
 ## What's new in 0.2
 
@@ -142,7 +153,7 @@ The included [`render.yaml`](render.yaml) creates a web service, a 1 GB data dis
 
 - **Analyze** PE / ELF / Mach-O (including fat/universal iOS), Android APK, and archives: headers, sections, entropy, imports/exports, DT_NEEDED, symbols, functions, strings, optional capstone disassembly, packer and malware indicators, and structural diff.
 - **Decompile** to readable C through Ghidra headless (optional), with a Java script for modern Ghidra releases.
-- **Modify + verify** byte patches and LIEF structural edits on a copy, then behavioral regression in the sandbox.
+- **Modify + verify** byte patches and LIEF structural edits on a copy, then a declared behavioral test plus a differential corpus in the sandbox. A failed test withholds the artifact and can trigger a bounded repair attempt.
 - **Clone + rebuild websites** with a static fetch engine and an opt-in headless render engine, packaged as a working offline bundle with a clean-room guardrail.
 - **Research** the web with sources, read primary pages, and keep citations attached to the answer.
 - **Remember** stable preferences and decisions across chats.
@@ -171,7 +182,8 @@ The interface is deliberately opinionated:
 - **Plan first**, then a compact reasoning timeline. Each step is collapsible and contains the tool output that justified it.
 - **Evidence chips** separate `verified`, `observed`, and `believed`, and the full report is one click away.
 - **Sources** are real cards with favicons, not a footer of naked URLs.
-- **Artifacts** show the filename, size, and SHA-256. The original file is never changed.
+- **Artifacts** show the filename, size, and SHA-256, plus a link to the signed verification report. The original file is never changed.
+- **Blocked deliveries** are explicit: the file is withheld, the reason is plain, and the report shows exactly what failed.
 - **No internal names leak** into the conversation. The agent speaks like a person.
 
 <p align="center">
@@ -216,6 +228,28 @@ Agent (agent/)  ── orchestrator · conversation · tool registry · mediator
 
 The full design is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The feature-by-feature map of what was unified from the agent products is in [`docs/UNIFIED_AGENT.md`](docs/UNIFIED_AGENT.md).
 
+### Verification and reports
+
+```
+verify_modification  -> behavioral test(s) in the sandbox, optional repair loop
+differential_test    -> corpus comparison, regression detection
+GET /jobs/<id>/report       -> signed JSON
+GET /jobs/<id>/report.html  -> self-contained HTML, no external calls
+```
+
+A modification is delivered only when `verify_modification` records at least one
+passing expectation. The report includes the artifact SHA-256 and every evidence
+tier. A failed repair attempt leaves the file in the workspace but does not mark
+it delivered or verified.
+
+<p align="center">
+  <img src="docs/assets/verification.png" alt="A verified artifact with a signed verification report" width="880">
+</p>
+
+<p align="center">
+  <img src="docs/assets/verification-blocked.png" alt="A blocked delivery with a plain-language reason" width="880">
+</p>
+
 ### How a turn works
 
 1. **Intake.** The target is validated (size caps, symlink refusal). A conversation gets a persistent workspace.
@@ -250,6 +284,9 @@ The full design is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The featur
 | `REVERSEAI_AUTH_TOKEN` | Require a bearer token on every API call |
 | `REVERSEAI_ALLOWED_ROOTS` | Colon-separated roots for file paths when auth is on (the store is always allowed) |
 | `REVERSEAI_MONTHLY_BUDGET` | Pause paid models after this many USD |
+| `REVERSEAI_MAX_REPAIR_ATTEMPTS` | Verification repair attempts (default 3, max 10) |
+| `REVERSEAI_REPORT_KEY` | HMAC key for signed verification reports (optional) |
+| `REVERSEAI_UPLOAD_MAX_MB` | Upload ceiling (default 512 MiB) |
 | `REVERSEAI_STORE` | Job/event/conversation/artifact storage |
 | `REVERSEAI_SEARCH_URL` | SearXNG-compatible research endpoint |
 | `REVERSEAI_OCR_URL`, `REVERSEAI_OCR_MODEL` | Unlimited-OCR endpoint |

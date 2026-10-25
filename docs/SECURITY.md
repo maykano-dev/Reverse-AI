@@ -107,6 +107,24 @@ actually enforced.
 - The browser never receives a provider key. `/config` reports readiness, not
   the model or key.
 
+## Verified delivery and reports
+
+- A modified binary is delivered only when `verify_modification` records a
+  passing behavioral expectation from a sandbox run. The delivery gate runs
+  before the final event; a missing test is a refusal, not an assumption.
+- A failed test can trigger a bounded repair loop. Candidates accumulate in the
+  workspace but are not exposed as delivered artifacts until they pass. The
+  default bound is 3 attempts (max 10), configurable with
+  `REVERSEAI_MAX_REPAIR_ATTEMPTS`.
+- `verify_against_original` is comparison-only. It records an observation and
+  cannot authorize delivery.
+- Reports are signed over a canonical JSON representation. Set
+  `REVERSEAI_REPORT_KEY` to use HMAC-SHA256; otherwise a plain SHA-256 digest is
+  used. A SHA-256 digest is tamper-evident but not keyed: anyone can recompute
+  it. Use a key when the report leaves your machine.
+- A signature proves the report was not altered after signing. It does not make
+  a weak test strong; read the declared inputs and expectations.
+
 ## Known limitations (honest)
 
 - **No seccomp or landlock filter yet.** Namespaces and capability dropping are
@@ -126,7 +144,11 @@ actually enforced.
 - **Single access token, no per-user accounts or quotas.** Multi-tenant
   isolation is an M3 feature.
 - **The sandbox may be unavailable on PaaS.** Then execution is refused, not
-  silently run on the host.
+  silently run on the host. In that case verification cannot pass and the
+  artifact is withheld.
+- **Verification is only as good as the declared inputs.** A passing test proves
+  the listed cases, not every possible input. The differential corpus helps, but
+  it is not exhaustive.
 
 ## Reporting
 

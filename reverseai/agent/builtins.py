@@ -750,6 +750,8 @@ class ScheduleRoutineTool(Tool):
 
 
 def default_tools() -> list[Tool]:
+    from .verify_tools import DifferentialTestTool, VerifyModificationTool
+
     tools = [
         HostCapabilitiesTool(),
         AnalyzeBinaryTool(),
@@ -770,6 +772,8 @@ def default_tools() -> list[Tool]:
         ReadSkillTool(),
         DelegateTool(),
         ScheduleRoutineTool(),
+        VerifyModificationTool(),
+        DifferentialTestTool(),
     ]
     # Real decompilation when Ghidra is installed — a big capability upgrade.
     try:

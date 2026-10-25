@@ -197,6 +197,9 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(body["path"].endswith(".bin"))
         self.assertEqual(body["filename"], "mal_ware_.bin")  # sanitized
         self.assertTrue(Path(body["path"]).exists())
+        import os
+        if os.name == "posix":
+            self.assertTrue(os.stat(body["path"]).st_mode & 0o100)
 
     def test_artifact_404_without_one(self):
         status, body = _get(f"{self.base}/conversations/conv_none/artifact")

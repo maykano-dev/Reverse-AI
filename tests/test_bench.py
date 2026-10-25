@@ -77,15 +77,17 @@ class BenchHarnessTests(unittest.TestCase):
             script = [
                 call("analyze_binary", {}),
                 dynamic_patch,
-                call("verify_against_original", {"args": []}),
-                say("Patched OLD->NEW and verified by running both."),
+                call("verify_modification", {
+                    "expect_stdout": "NEW", "expect_diff": True,
+                    "max_attempts": 1, "repair": False}),
+                say("Patched OLD->NEW and verified with a behavioral test."),
             ]
             return Agent(MockProvider(script), max_permission=perm)
 
         res = run_task(task, factory)
         self.assertTrue(res.passed, res.notes)
         self.assertIn("apply_byte_patch", res.tools_used)
-        self.assertIn("verify_against_original", res.tools_used)
+        self.assertIn("verify_modification", res.tools_used)
 
 
 def _old_to_new(messages):

@@ -53,8 +53,12 @@ class Sandbox(abc.ABC):
         argv: list[str],
         policy: SandboxPolicy,
         cwd: str | None = None,
+        stdin: bytes | None = None,
     ) -> ExecResult:
         """Execute ``argv`` under ``policy`` and return the result.
+
+        ``stdin`` is an optional bounded input buffer. Backends that cannot
+        provide stdin report an error rather than silently running without it.
 
         Must never raise on target misbehavior (crash, timeout, nonzero exit) —
         those are reported in the ExecResult. It may raise SandboxError for

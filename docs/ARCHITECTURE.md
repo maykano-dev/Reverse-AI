@@ -27,6 +27,7 @@ deliberately separated from the host.
 │ diff · models                 │                                      │
 ├───────────────────────────────┴──────────────────────────────────────┤
 │ Verification (verify/) · Modification (modify/) · Clone (clone/)      │
+│ behavioral tests · differential corpus · repair loop · signed report  │
 │ Decompile (decompile/) · Mobile (mobile/) · OCR (ocr/) · Bench        │
 ├──────────────────────────────────────────────────────────────────────┤
 │ Security: validation · limits · archive safety · SSRF-safe net        │
@@ -47,12 +48,19 @@ deliberately separated from the host.
    server emits a natural `reason` event before the result.
 5. **Observe.** Tools append `Finding`s at the right tier. Research appends
    sources. The conversation tracks sources and artifact metadata.
-6. **Stream + persist.** Every event is appended to
+6. **Verify before delivery.** If a binary modification exists and no passing
+   behavioral test is recorded for this turn, the delivery gate runs
+   `verify_modification`. A failure can feed a bounded repair loop; a missing
+   expectation is a refusal, not a pass. A site bundle is delivered without a
+   native execution test and marked unobtrusively as such.
+7. **Stream + persist.** Every event is appended to
    `<store>/events/<job>.jsonl`; the SSE endpoint replays from `?after=N` and
    then tails the log. Conversation state is saved to
    `<store>/conversations/<cid>.json` after each turn.
-7. **Conclude.** The final answer, evidence summary, sources, usage, and
-   artifact meta are streamed and saved as a `Job`.
+8. **Conclude.** The final answer, evidence summary, sources, usage, and
+   artifact meta are streamed and saved as a `Job`. Unverified artifacts are
+   withheld. `GET /jobs/<id>/report(.html)` builds a signed report on demand
+   from the saved record.
 
 ## Key contracts
 
@@ -65,7 +73,12 @@ deliberately separated from the host.
 - **`agent.memory.MemoryStore`** and **`routines.RoutineStore`**: small,
   human-editable JSON stores with atomic writes.
 - **Event stream**: `start`, `plan`, `step`, `reason`, `assistant`,
-  `tool_result`, `source`, `finding`, `final`, `error`.
+  `tool_result`, `source`, `finding`, `verification_plan`,
+  `verification_attempt`, `verification_repair`, `verification`,
+  `delivery_blocked`, `final`, `error`.
+- **Verification contracts**: `verify/difftest.InputCase` and `DiffReport`,
+  `verify/repair.RepairLoop` / `RepairResult`, and the signed report built from
+  a serialized `Job`.
 
 ## Durable state
 

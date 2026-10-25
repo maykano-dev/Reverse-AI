@@ -49,12 +49,21 @@ class QilingSandbox(Sandbox):
     def isolation_level(cls) -> int:
         return 60  # emulation: target code never runs on the host CPU/OS
 
-    def run(self, argv, policy: SandboxPolicy, cwd: str | None = None) -> ExecResult:
+    def run(self, argv, policy: SandboxPolicy, cwd: str | None = None,
+            stdin: bytes | None = None) -> ExecResult:
         rootfs = self.rootfs()
         if not self._qiling_present() or rootfs is None:
             raise SandboxUnavailable(
                 f"qiling backend needs the qiling package and {ROOTFS_ENV} set to "
                 "a rootfs directory")
+        if stdin is not None:
+            return ExecResult(
+                argv=list(argv),
+                error="qiling emulation does not support stdin yet",
+                isolation=Isolation(backend=self.name,
+                                    network_blocked=not policy.allow_network,
+                                    filesystem="emulated", level=self.isolation_level()),
+            )
 
         isolation = Isolation(
             backend=self.name,

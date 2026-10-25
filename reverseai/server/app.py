@@ -70,6 +70,8 @@ _PERM = {"read": Permission.READ, "execute": Permission.EXECUTE, "write": Permis
 _JOB_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)$")
 _EVENTS_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/events$")
 _JOB_ARTIFACT_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/artifact$")
+_JOB_REPORT_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/report$")
+_JOB_REPORT_HTML_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/report\.html$")
 _ARTIFACT_PATH = re.compile(r"^/conversations/(conv_[A-Za-z0-9]+)/artifact$")
 _FILES_PATH = re.compile(r"^/files/([a-f0-9]{12})/([A-Za-z0-9._-]+)$")
 _PREVIEW_PATH = re.compile(r"^/preview/(conv_[A-Za-z0-9]+)/(.*)$")
@@ -276,6 +278,12 @@ class _Handler(BaseHTTPRequestHandler):
         jam = _JOB_ARTIFACT_PATH.match(path)
         if jam:
             return self._download_job_artifact(jam.group(1))
+        jrm = _JOB_REPORT_PATH.match(path)
+        if jrm:
+            return self._job_report(jrm.group(1), html=False)
+        jrhm = _JOB_REPORT_HTML_PATH.match(path)
+        if jrhm:
+            return self._job_report(jrhm.group(1), html=True)
         fm = _FILES_PATH.match(path)
         if fm:
             return self._download_output(fm.group(1), fm.group(2))
@@ -431,6 +439,9 @@ class _Handler(BaseHTTPRequestHandler):
                 "usage": True,
                 "feedback": True,
                 "durable_runs": True,
+                "verification": True,
+                "differential_testing": True,
+                "signed_reports": True,
             },
             "ocr": {
                 "unlimited": unlimited_ocr_available(),
@@ -476,6 +487,13 @@ class _Handler(BaseHTTPRequestHandler):
         except OSError as exc:
             dest.unlink(missing_ok=True)
             return self._send(400, {"error": f"upload failed: {exc}"})
+        # Browsers do not preserve the execute bit. The uploaded file is never
+        # run on the host; it is only exposed read-only inside the sandbox. Give
+        # the owner execute permission so a native binary can be verified.
+        try:
+            os.chmod(dest, 0o700)
+        except OSError:
+            pass
         kind, arch, bits = "unknown", None, None
         try:
             from ..core.identify import detect_format
@@ -499,6 +517,39 @@ class _Handler(BaseHTTPRequestHandler):
     def _download_job_artifact(self, job_id: str) -> None:
         p = self.store.artifact_for(job_id)
         self._serve_file(str(p) if p else None, "no artifact for this job")
+
+    def _job_report(self, job_id: str, html: bool) -> None:
+        from ..verify import build_from_job, render_html, render_json
+
+        record = self.store.get(job_id)
+        if record is None:
+            return self._send(404, {"error": "job not found"})
+        report = build_from_job(record)
+        if html:
+            body = render_html(report).encode("utf-8")
+            self.send_response(200)
+            self._auth_headers()
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
+                "base-uri 'none'; form-action 'none'")
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+        body = render_json(report).encode("utf-8")
+        self.send_response(200)
+        self._auth_headers()
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
 
     def _serve_file(self, path, not_found_msg: str) -> None:
         if not path:

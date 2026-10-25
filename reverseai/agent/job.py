@@ -44,6 +44,9 @@ class Job:
     conversation_id: str | None = None  # the conversation this turn belongs to
     template: str = "general"
     sources: list[dict[str, Any]] = field(default_factory=list)
+    # Additive contract fields; older records simply omit them.
+    verification: dict[str, Any] = field(default_factory=dict)
+    delivery: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -63,6 +66,8 @@ class Job:
             "conversation_id": self.conversation_id,
             "template": self.template,
             "sources": self.sources,
+            "verification": self.verification,
+            "delivery": self.delivery,
             "evidence": self.evidence.to_list(),
             "evidence_summary": self.evidence.summary(),
             "audit": self.audit,
@@ -104,6 +109,15 @@ class Job:
                 lines.append(f"  path: {self.artifact_meta['path']}")
             if self.artifact_meta.get("sha256"):
                 lines.append(f"  sha256: {self.artifact_meta['sha256']}")
+        if self.verification:
+            lines += ["", "Verification:"]
+            lines.append(f"  verified: {bool(self.verification.get('verified'))}")
+            if self.verification.get("reason"):
+                lines.append(f"  reason: {self.verification['reason']}")
+            if self.verification.get("passed_tests") is not None:
+                lines.append(f"  passed tests: {self.verification.get('passed_tests')}")
+        if self.delivery and not self.delivery.get("allowed", True):
+            lines += ["", f"Delivery blocked: {self.delivery.get('reason', 'not verified')}"]
         if self.error:
             lines += ["", f"error: {self.error}"]
         lines += ["", "Conclusion:", self.final_answer or "(none)"]

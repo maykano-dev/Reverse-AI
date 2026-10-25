@@ -62,6 +62,11 @@ class SubprocessBackendTests(unittest.TestCase):
         res = self.sb.run(["/bin/cat", "/etc/hostname"], policy)
         self.assertLessEqual(len(res.stdout), 100)
 
+    def test_stdin_is_forwarded(self):
+        res = self.sb.run(["/bin/cat"], SandboxPolicy(), stdin=b"hello stdin\n")
+        self.assertEqual(res.exit_code, 0, res.to_dict())
+        self.assertEqual(res.stdout_text(), "hello stdin\n")
+
 
 @unittest.skipUnless(BubblewrapSandbox.is_available(), "bubblewrap/userns not available")
 class BubblewrapBackendTests(unittest.TestCase):

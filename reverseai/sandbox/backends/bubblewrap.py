@@ -47,7 +47,8 @@ class BubblewrapSandbox(Sandbox):
     def isolation_level(cls) -> int:
         return 40
 
-    def run(self, argv, policy: SandboxPolicy, cwd: str | None = None) -> ExecResult:
+    def run(self, argv, policy: SandboxPolicy, cwd: str | None = None,
+            stdin: bytes | None = None) -> ExecResult:
         bwrap = self._bwrap()
         if bwrap is None:
             raise SandboxUnavailable("bwrap not found")
@@ -76,6 +77,7 @@ class BubblewrapSandbox(Sandbox):
                 limits=policy.limits,
                 max_output=policy.max_output_bytes,
                 isolation=isolation,
+                stdin=stdin,
             )
             result.extra["workdir"] = workdir
             return result

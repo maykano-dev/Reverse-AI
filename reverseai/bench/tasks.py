@@ -100,9 +100,10 @@ def builtin_tasks() -> list[BenchTask]:
         ),
         BenchTask(
             id="patch_and_verify",
-            description="Patch a printed string and verify the change by running.",
+            description="Patch a printed string and prove the change with a passing behavioral test.",
             goal="This program prints OLD. Change it to print NEW instead, on a "
-                 "copy, then verify by running both and comparing output.",
+                 "copy, then call verify_modification with expect_stdout NEW and "
+                 "expect_diff true. A plain comparison is not proof.",
             setup=lambda w: _compile(w, "patcher", "OLD"),
             check=_check_verified,
             permission=Permission.WRITE,

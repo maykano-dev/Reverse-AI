@@ -51,7 +51,12 @@ def tool_perm(registry, name: str) -> str:
     return tool.permission.label if tool else "unknown"
 
 
-_SAFE_EXTRA = {"project_dir", "modified_path", "extracted_dir", "routine_id"}
+_SAFE_EXTRA = {
+    "project_dir", "modified_path", "modified_operation", "modified_label",
+    "modified_turn", "last_patches", "extracted_dir", "routine_id",
+    "verification", "delivery", "differential",
+}
+_GATED_OPERATIONS = {"patch", "imports", "section"}
 
 
 class Conversation:
@@ -176,22 +181,120 @@ class Conversation:
                 self.messages.append(Message(Role.USER, goal))
 
         job.status = "running"
+        self.ctx.extra["emit"] = emit
+        # Delivery is per-turn. A previous turn's artifact must not be silently
+        # re-delivered by a follow-up that changed nothing.
+        self.ctx.extra.pop("delivery", None)
         self._loop(job, emit, stop_event)
+        if job.status not in ("cancelled", "failed"):
+            self._enforce_delivery_gate(job, emit)
         job = self._finish(job)
 
         artifact = self.ctx.extra.get("modified_path")
+        delivery = self.ctx.extra.get("delivery") or {}
         meta = artifact_meta(artifact) if artifact else {}
-        if meta.get("name"):
+        # The ONLY delivery path. A gated binary modification is delivered only
+        # when a behavioral test actually passed; otherwise the file is withheld.
+        if meta.get("name") and delivery.get("allowed"):
             job.artifact = meta["name"]
             job.artifact_meta = meta
+        else:
+            job.artifact = None
+            job.artifact_meta = {}
+        verification = dict(self.ctx.extra.get("verification") or {})
+        if verification.get("turn") not in (None, job.id):
+            verification = {}
+        job.verification = verification
+        job.delivery = dict(delivery)
+        if job.delivery and not job.delivery.get("allowed", True):
+            reason = job.delivery.get("reason") or "the change was not verified"
+            # Do not let an optimistic, unverified model claim stand as the
+            # conclusion. The detailed attempts remain in the reasoning timeline
+            # and the signed report.
+            job.final_answer = (
+                "I did not deliver the file because the change could not be "
+                f"verified: {reason}. Expand the reasoning timeline for the test "
+                "details and the attempts.")
         job.sources = list(self.ctx.sources)
 
         emit({"type": "final", "status": job.status, "answer": job.final_answer,
               "evidence_summary": self.evidence.summary(), "steps": job.steps,
               "usage": job.usage, "artifact": job.artifact,
               "artifact_meta": job.artifact_meta, "sources": job.sources,
+              "verification": job.verification, "delivery": job.delivery,
               "template": self.template, "plan": plan})
         return job
+
+    def _enforce_delivery_gate(self, job: Job, emit) -> None:
+        """Run verification before delivery, and block unverified binaries.
+
+        This is a policy gate, not a suggestion. If a candidate binary exists
+        without a passing behavioral test, the gate runs verify_modification. If
+        no test was declared, the tool refuses, the artifact is withheld, and the
+        reason is shown to the user.
+        """
+        modified = self.ctx.extra.get("modified_path")
+        if not modified:
+            return
+        verification = self.ctx.extra.get("verification") or {}
+        modified_turn = self.ctx.extra.get("modified_turn")
+        verified_turn = verification.get("turn")
+        # Nothing new to deliver this turn. A follow-up that merely asks a
+        # question should not re-deliver an old file; a follow-up that runs a
+        # new verification may deliver it.
+        if modified_turn != job.id and verified_turn != job.id:
+            return
+        operation = self.ctx.extra.get("modified_operation") or "patch"
+        if operation == "site":
+            self.ctx.extra["verification"] = self.ctx.extra.get("verification") or {
+                "verified": False,
+                "kind": "site",
+                "reason": "site bundle delivery does not require binary execution",
+                "passed_tests": 0,
+                "attempts": [],
+            }
+            self.ctx.extra["delivery"] = {
+                "allowed": True,
+                "reason": "site bundle packaged",
+            }
+            return
+        if operation not in _GATED_OPERATIONS:
+            self.ctx.extra["delivery"] = {
+                "allowed": False,
+                "reason": f"unsupported modification kind: {operation}",
+            }
+            return
+
+        if not verification:
+            info = describe_tool("verify_modification", {})
+            emit({"type": "reason", "tool": "verify_modification",
+                  "title": "Checking the change before delivery",
+                  "detail": "No passing behavioral test is on record yet.",
+                  "icon": info["icon"]})
+            result = self.agent.mediator.dispatch(
+                "verify_modification", {}, self.ctx)
+            emit({"type": "tool_result", "name": "verify_modification",
+                  "ok": result.ok, "permission": "execute",
+                  "title": info["title"],
+                  "content": (result.content or "")[:4000]})
+            verification = self.ctx.extra.get("verification") or {}
+
+        verified = bool(verification.get("verified")) and int(
+            verification.get("passed_tests", 0) or 0) >= 1
+        if verified:
+            self.ctx.extra["delivery"] = {
+                "allowed": True,
+                "reason": "behavioral test passed in the sandbox",
+            }
+            return
+        reason = (verification.get("reason")
+                  or "no behavioral test passed in the sandbox")
+        self.ctx.extra["delivery"] = {"allowed": False, "reason": reason}
+        emit({"type": "delivery_blocked", "reason": reason,
+              "artifact_withheld": True})
+        if self.evidence is not None:
+            self.evidence.observed(
+                f"delivery blocked: {reason}", source="delivery_gate")
 
     def _loop(self, job: Job, emit, stop_event=None) -> None:
         agent = self.agent
@@ -291,7 +394,8 @@ class Conversation:
             "messages": [_message_state(m) for m in self.messages],
             "evidence": [f.to_dict() for f in self.evidence.all()],
             "sources": list(self.ctx.sources),
-            "extra": {k: v for k, v in self.ctx.extra.items() if k in _SAFE_EXTRA},
+            "extra": {k: v for k, v in self.ctx.extra.items()
+                      if k in _SAFE_EXTRA and k not in ("emit",)},
         }
 
     @classmethod
