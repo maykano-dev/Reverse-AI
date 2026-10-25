@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.7.0: audit remediation and evidence hardening
+
+### Fixed
+
+- `web_search` and `web_read` imported a non-existent `reverseai.research`
+  module; they now use `reverseai.agent.research`. The tool-contract suite
+  caught this before a model could reach it.
+- Partial tool calls no longer escape as `KeyError`/`ValidationError`; every tool
+  is contained at the interface and returns a failing `ToolResult`.
+- `record_finding`, `remember`, `forget`, `read_skill`, `restore_checkpoint`,
+  `plan_mission`, `forge_tool`, `trust_check`, and `compression_plan` now
+  validate missing arguments explicitly.
+
+### Added
+
+- Tool-contract suite for every registered tool (schema, permission, narration,
+  UI label, empty-argument behavior).
+- CLI contract suite for every command, plus corpus/verify/report/approvals and
+  mock-agent round trips.
+- HTTP auth/path-boundary suite, including `/world` and `/discover`.
+- Sandbox boundary suite: network, host filesystem, environment, timeout,
+  workspace isolation, symlink refusal.
+- Mutation testing (`verify/mutation.py`, `assess_test_strength`) with strong and
+  weak corpus tests.
+- Benchmark expansion: development and held-out tasks, verified/regression/
+  repair/false-verification/refusal/cost/time metrics, and `bench --list`.
+- `core/xrefs.py` and `find_xrefs` for direct call/jump cross-references;
+  `reverseai xrefs`.
+- Source-repository map (`repo.py`, `analyze_repository`, `reverseai repo`).
+- `reverseai audit` and `tests/test_audit.py` for repository invariants.
+- Job persistence for world-model summaries, opportunities, hypotheses, and test
+  strength; reports include them.
+- `docs/AUDIT_REMEDIATION.md`, `docs/TESTING.md`.
+- 69 new tests; total 454; 55 tools covered by contract tests.
+
 ## 0.6.0: engineering intelligence layer
 
 ### Added

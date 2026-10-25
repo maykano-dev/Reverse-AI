@@ -53,6 +53,7 @@ class ProofPackage:
     versions: dict[str, str] = field(default_factory=dict)
     tests: list[dict[str, Any]] = field(default_factory=list)
     measurements: dict[str, Any] = field(default_factory=dict)
+    test_strength: dict[str, Any] = field(default_factory=dict)
     limitations: list[str] = field(default_factory=list)
     reproduction: list[str] = field(default_factory=list)
     report: dict[str, Any] = field(default_factory=dict)
@@ -66,6 +67,7 @@ class ProofPackage:
             "change": self.change, "tools": self.tools,
             "versions": self.versions, "tests": self.tests,
             "measurements": self.measurements,
+            "test_strength": self.test_strength,
             "limitations": self.limitations,
             "reproduction": self.reproduction,
             "report": self.report, "created_at": self.created_at,
@@ -90,6 +92,14 @@ class ProofPackage:
         lines += [f"- {t.get('name')}: {t.get('result')}" for t in self.tests] or ["- none"]
         lines += ["", "## Measurements", ""]
         lines += [f"- {k}: {v}" for k, v in self.measurements.items()] or ["- none"]
+        lines += ["", "## Test strength", ""]
+        if self.test_strength:
+            lines += [f"- mutation score: {self.test_strength.get('mutation_score')}",
+                      f"- killed: {self.test_strength.get('killed')}",
+                      f"- survived: {self.test_strength.get('survived')}",
+                      f"- weak cases: {self.test_strength.get('weak_cases')}"]
+        else:
+            lines.append("- not measured")
         lines += ["", "## Limitations", ""]
         lines += [f"- {x}" for x in self.limitations] or ["- none recorded"]
         lines += ["", "## Reproduce", "", "```bash"]
@@ -106,6 +116,7 @@ def build_proof_package(goal: str, original: str, modified: str | None, *,
                         versions: dict[str, str] | None = None,
                         tests: list[dict[str, Any]] | None = None,
                         measurements: dict[str, Any] | None = None,
+                        test_strength: dict[str, Any] | None = None,
                         limitations: list[str] | None = None,
                         record: dict[str, Any] | None = None,
                         report: dict[str, Any] | None = None) -> ProofPackage:
@@ -122,7 +133,7 @@ def build_proof_package(goal: str, original: str, modified: str | None, *,
     return ProofPackage(
         f"proof_{uuid.uuid4().hex[:10]}", goal, orig, mod, change,
         list(tools or []), dict(versions or {}), list(tests or []),
-        dict(measurements or {}),
+        dict(measurements or {}), dict(test_strength or {}),
         list(limitations or []) + [
             "verification covers the declared cases, not every input",
             "a signature proves integrity, not truth",
@@ -142,6 +153,7 @@ class IndependentResult:
     prohibited: list[str] = field(default_factory=list)
     acceptance: list[dict[str, Any]] = field(default_factory=list)
     signature_valid: bool | None = None
+    mutation_score: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -168,7 +180,9 @@ class IndependentVerifier:
 
     def verify(self, original: str, modified: str, *,
                policy=None, acceptance: list[Callable[[dict[str, Any]], bool]] | None = None,
-               report: dict[str, Any] | None = None) -> IndependentResult:
+               report: dict[str, Any] | None = None,
+               mutation_score: float | None = None,
+               min_mutation_score: float = 0.0) -> IndependentResult:
         diff: DiffReport = run_differential(original, modified, self.cases,
                                             policy=policy)
         failure = self._prohibited(original, modified)
@@ -184,10 +198,12 @@ class IndependentVerifier:
                 continue
             accepts.append({"index": i, "ok": ok})
         expected = [c for c in diff.cases if c.expected_met is not None]
+        weak_tests = (mutation_score is not None
+                      and mutation_score < min_mutation_score)
         verified = bool(diff.ran and expected and
                         all(c.expected_met for c in expected) and
                         not diff.unexpected and not failure and
-                        all(a["ok"] for a in accepts))
+                        all(a["ok"] for a in accepts) and not weak_tests)
         reason = ("independent verification passed"
                   if verified else
                   "independent verification failed: " + "; ".join(
@@ -196,9 +212,13 @@ class IndependentVerifier:
                          if diff.failed_expectations else [])
                       + failure
                       + ([a.get("error", "acceptance check failed")
-                          for a in accepts if not a["ok"]]) or ["no evidence"]))
+                          for a in accepts if not a["ok"]])
+                      + ([f"mutation score {mutation_score:.2f} is below "
+                          f"the required {min_mutation_score:.2f}"]
+                         if weak_tests else []) or ["no evidence"]))
         return IndependentResult(verified, reason, diff.to_dict(), failure, accepts,
-                                 verify_signature(report) if report else None)
+                                 verify_signature(report) if report else None,
+                                 mutation_score)
 
 
 # ---------------------------------------------------------------------------

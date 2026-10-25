@@ -36,6 +36,8 @@ contained, verified, and undone.
 - [x] **Graph queries**: unverified requirements, weak-evidence components,
       orphaned decisions, stale claims, and next-best tests.
 - [x] **World-model tool**: `build_world_model`, `query_world_model`.
+- [x] **Direct cross-references**: `find_xrefs` / `reverseai xrefs`.
+- [x] **Repository map**: `analyze_repository` / `reverseai repo`.
 - [x] **Causal Reasoning Engine**: intervention and counterfactual queries over
       an explicit causal graph; baseline vs intervention; no correlation-only
       claim is labeled causal.
@@ -225,6 +227,6 @@ python3 -m unittest tests.test_intelligence_orchestration -v
 python3 -m unittest tests.test_intelligence_tools -v
 ```
 
-The full suite is 385 tests at the time of this ledger. Counts change; the
+The full suite is 454 tests at the time of this ledger. Counts change; the
 checklist is about coverage of the capability, not the number.
 

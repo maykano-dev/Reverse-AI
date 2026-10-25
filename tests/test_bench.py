@@ -88,6 +88,9 @@ class BenchHarnessTests(unittest.TestCase):
         self.assertTrue(res.passed, res.notes)
         self.assertIn("apply_byte_patch", res.tools_used)
         self.assertIn("verify_modification", res.tools_used)
+        self.assertTrue(res.verified)
+        self.assertEqual(res.split, "dev")
+        self.assertFalse(res.false_verification)
 
 
 def _old_to_new(messages):

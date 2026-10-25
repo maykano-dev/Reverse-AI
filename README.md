@@ -16,7 +16,7 @@
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
-  <img alt="tests" src="https://img.shields.io/badge/tests-370%2B%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-450%2B%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
   <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
@@ -28,6 +28,8 @@
   <a href="docs/UNIFIED_AGENT.md">Feature map</a> ·
   <a href="docs/POWER.md">Power map</a> ·
   <a href="docs/INTELLIGENCE_ROADMAP.md">Intelligence roadmap</a> ·
+  <a href="docs/TESTING.md">Testing and evaluation</a> ·
+  <a href="docs/AUDIT_REMEDIATION.md">Audit remediation</a> ·
   <a href="docs/VERIFYING.md">Reproducible verification</a> ·
   <a href="#deploy-it">Deploy</a> ·
   <a href="docs/SECURITY.md">Security</a> ·
@@ -46,6 +48,21 @@ Most "AI + reverse engineering" demos stop at describing a binary. ReverseAI clo
 - **Untrusted by default.** Analysis is pure. Execution happens only inside a hardened bubblewrap sandbox (no network, dropped capabilities, read-only system, tmpfs workdir) and is refused when nothing can contain it.
 - **A real working memory.** Durable notes, web research with citations, scheduled routines, specialist agents, and conversations that survive a reload or a server restart.
 - **Mobile first.** A PWA that works as a full chat app on a phone, with a drawer, safe areas, touch-sized controls, and an installable manifest.
+
+## What's new in 0.7
+
+| Area | What landed |
+|---|---|
+| **Audit remediation** | A tracked checklist (`docs/AUDIT_REMEDIATION.md`) turns the audit into code and tests. |
+| **Tool contracts** | Every one of the 50+ tools is called with empty arguments and must return a failing `ToolResult`, never a stack trace. The suite caught broken web-research imports and several partial-call crashes. |
+| **CLI contracts** | Every command parses, `--help` works, and corpus → verify → report, approvals, repository mapping, and a mock agent round trip are tested. |
+| **HTTP auth contracts** | Missing/wrong tokens return 401; `/world` and `/discover` enforce the same path allowlist as the rest of the API. |
+| **Sandbox boundaries** | Tests prove the target cannot reach the network, read host files, inherit host secrets, or outlive its timeout. |
+| **Mutation testing** | `assess_test_strength` mutates the candidate and reports whether the corpus detects breakage. Weak cases and surviving mutants are named. |
+| **Benchmark v2** | Development and held-out tasks; metrics for verified success, regressions, repair success, false verification, refusal, cost, and time. `bench --list` and `--split`. |
+| **Analysis depth** | Direct call/jump cross-references (`xrefs`, `find_xrefs`) and a repository-wide language/import/test/risk map (`repo`, `analyze_repository`). |
+| **Repository audit** | `reverseai audit` checks version consistency, zero required dependencies, required assets, tool narration/UI labels, doc links, secret hygiene, and test presence. |
+| **Persistent evidence** | Jobs and signed reports now carry the world-model summary, ranked opportunities, hypotheses, and mutation strength. |
 
 ## What's new in 0.6
 
@@ -154,6 +171,14 @@ python3 -m reverseai diff ./app ./app.patched
 # Build an evidence-backed world model and discover opportunities
 python3 -m reverseai world ./app --unresolved
 python3 -m reverseai discover ./app --limit 8
+
+# Cross-references and source-repository map
+python3 -m reverseai xrefs ./app --function main
+python3 -m reverseai repo ./project
+
+# Repository invariants and benchmark inventory
+python3 -m reverseai audit
+python3 -m reverseai bench --list
 
 # What can this host do (sandbox backends, emulators, optional libs)?
 python3 -m reverseai caps

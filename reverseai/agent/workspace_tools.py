@@ -126,8 +126,11 @@ class RestoreCheckpointTool(Tool):
     permission = Permission.WRITE
 
     def run(self, args, ctx) -> ToolResult:
+        checkpoint = str(args.get("checkpoint") or "").strip()
+        if not checkpoint:
+            return ToolResult.failure("missing 'checkpoint'")
         try:
-            result = _store(ctx).restore(str(args["checkpoint"]),
+            result = _store(ctx).restore(checkpoint,
                                          overwrite=bool(args.get("overwrite")))
         except CheckpointError as exc:
             return ToolResult.failure(str(exc))

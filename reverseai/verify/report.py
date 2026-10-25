@@ -176,6 +176,9 @@ def build_report(record: dict[str, Any]) -> dict[str, Any]:
         },
         "mode": record.get("mode", ""),
         "strategy": plan.get("strategy", ""),
+        "world_model": record.get("world_model") or {},
+        "opportunities": record.get("opportunities") or [],
+        "test_strength": record.get("test_strength") or {},
         "plan": {
             "steps": [
                 {"id": s.get("id"), "title": s.get("title"),
@@ -287,6 +290,8 @@ font-size:11px;border-top:1px solid var(--line);padding-top:12px}}
 <b>Delivery</b><span>{'allowed' if not blocked else 'blocked'}: {_e(delivery.get('reason'))}</span>
 <b>Mode</b><span>{_e(report.get('mode') or '(not set)')}</span>
 <b>Strategy</b><span>{_e(report.get('strategy') or '(not set)')}</span>
+<b>World model</b><span>{_e(report.get('world_model', {}).get('nodes', 'not recorded'))} nodes · {_e(report.get('world_model', {}).get('unresolved', 0))} unresolved</span>
+<b>Test strength</b><span>{_e((report.get('test_strength') or {}).get('mutation_score', 'not measured'))}{' mutation score' if (report.get('test_strength') or {}).get('mutation_score') is not None else ''}</span>
 </div></div>
 <h2>Environment</h2>
 <div class="card"><div class="kv">
@@ -294,6 +299,8 @@ font-size:11px;border-top:1px solid var(--line);padding-top:12px}}
 <b>Isolation</b><span>{_e(environment.get('level'))} · network blocked {_e(environment.get('network_blocked'))} · filesystem {_e(environment.get('filesystem'))}</span>
 <b>Capabilities dropped</b><span>{_e(environment.get('capabilities_dropped'))}</span>
 <b>seccomp</b><span>{_e(environment.get('seccomp'))}</span>
+<b>Landlock</b><span>{_e(environment.get('landlock', False))}</span>
+<b>cgroup v2</b><span>{_e(environment.get('cgroup', False))}</span>
 </div></div>
 <h2>Evidence</h2>
 <div class="card"><table><thead><tr><th>Tier</th><th>Claim</th><th>Source</th></tr></thead>

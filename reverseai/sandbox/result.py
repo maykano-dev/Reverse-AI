@@ -19,6 +19,8 @@ class Isolation:
     capabilities_dropped: bool = False
     resource_limited: bool = False
     seccomp: bool = False
+    landlock: bool = False
+    cgroup: bool = False
     level: int = 0  # 0 = none, higher = stronger (see backend.isolation_level)
 
     def to_dict(self) -> dict[str, Any]:

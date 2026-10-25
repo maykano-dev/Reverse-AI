@@ -227,6 +227,15 @@ class Conversation:
         job.delivery = dict(delivery)
         job.mode = str(self.ctx.extra.get("mode") or self.mode or "")
         job.modification_plan = dict(self.ctx.extra.get("modification_plan") or {})
+        world = self.ctx.extra.get("world_model")
+        if world is not None and hasattr(world, "summary"):
+            try:
+                job.world_model = world.summary()
+            except Exception:
+                job.world_model = {}
+        job.opportunities = list(self.ctx.extra.get("discovery") or [])
+        job.hypotheses = list(self.ctx.extra.get("hypotheses") or [])
+        job.test_strength = dict(self.ctx.extra.get("test_strength") or {})
         diff = dict(self.ctx.extra.get("differential") or {})
         if self.ctx.extra.get("differential_turn") not in (None, job.id):
             diff = {}
@@ -247,7 +256,9 @@ class Conversation:
               "usage": job.usage, "artifact": job.artifact,
               "artifact_meta": job.artifact_meta, "sources": job.sources,
               "verification": job.verification, "delivery": job.delivery,
-              "differential": job.differential,
+              "differential": job.differential, "world_model": job.world_model,
+              "opportunities": job.opportunities, "hypotheses": job.hypotheses,
+              "test_strength": job.test_strength,
               "template": self.template, "plan": plan})
         return job
 

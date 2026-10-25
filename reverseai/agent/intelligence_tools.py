@@ -333,6 +333,12 @@ class SearchArchitecturesTool(Tool):
     permission = Permission.READ
 
     def run(self, args, ctx) -> ToolResult:
+        raw_candidates = args.get("candidates")
+        raw_objectives = args.get("objectives")
+        if not isinstance(raw_candidates, list) or not raw_candidates:
+            return ToolResult.failure("missing non-empty 'candidates'")
+        if not isinstance(raw_objectives, list) or not raw_objectives:
+            return ToolResult.failure("missing non-empty 'objectives'")
         try:
             candidates = [Candidate(
                 str(c.get("id") or f"cand_{i}"), str(c.get("name") or f"Candidate {i}"),
@@ -340,12 +346,12 @@ class SearchArchitecturesTool(Tool):
                 {k: float(v) for k, v in (c.get("measurements") or {}).items()
                  if isinstance(v, (int, float))},
                 int(c.get("risk", 2)), int(c.get("complexity", 2)),
-                float(c.get("cost", 0) or 0)) for i, c in enumerate(args["candidates"])]
+                float(c.get("cost", 0) or 0)) for i, c in enumerate(raw_candidates)]
             objectives = [Objective(str(o.get("name")), float(o.get("weight", 1)),
                                     str(o.get("direction", "max")),
                                     str(o.get("unit") or ""))
-                          for o in args["objectives"]]
-        except (TypeError, ValueError, KeyError) as exc:
+                          for o in raw_objectives]
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:
             return ToolResult.failure(f"bad architecture input: {exc}")
         report = ArchitectureSearch().search(
             candidates, objectives, constraints=list(args.get("constraints") or []))
@@ -366,7 +372,10 @@ class PlanProductTool(Tool):
     permission = Permission.READ
 
     def run(self, args, ctx) -> ToolResult:
-        spec = parse_spec(str(args.get("goal") or ""), str(args.get("detail") or ""))
+        goal = str(args.get("goal") or "").strip()
+        if not goal:
+            return ToolResult.failure("missing 'goal'")
+        spec = parse_spec(goal, str(args.get("detail") or ""))
         plan = build_product_plan(spec)
         return ToolResult.success(json.dumps(plan, indent=2), plan=plan)
 
@@ -406,9 +415,12 @@ class SelectModelTool(Tool):
                 bool(p.get("available", True))))
         if not profiles:
             return ToolResult.failure("provide at least one model profile")
+        task = str(args.get("task") or "").strip()
+        if not task:
+            return ToolResult.failure("missing 'task'")
         router = ModelRouter(profiles)
         decision = router.select(
-            str(args["task"]), required=list(args.get("required") or []),
+            task, required=list(args.get("required") or []),
             max_cost=args.get("max_cost"),
             max_latency=args.get("max_latency_ms"),
             privacy=args.get("privacy"))
@@ -457,6 +469,7 @@ class BuildProofPackageTool(Tool):
             versions={"reverseai": "0.5.0"},
             tests=report.get("tests") or [],
             measurements=dict(args.get("measurements") or {}),
+            test_strength=dict(ctx.extra.get("test_strength") or {}),
             limitations=list(args.get("limitations") or []),
             report=report)
         out = pkg.save(str(args.get("directory") or Path(ctx.workspace) / "proof"))
@@ -482,8 +495,11 @@ class PlanMissionTool(Tool):
     permission = Permission.READ
 
     def run(self, args, ctx) -> ToolResult:
+        objective = str(args.get("objective") or "").strip()
+        if not objective:
+            return ToolResult.failure("missing 'objective'")
         mission = MissionPlanner().plan(
-            str(args["objective"]), acceptance=list(args.get("acceptance") or []),
+            objective, acceptance=list(args.get("acceptance") or []),
             constraints=list(args.get("constraints") or []),
             budget_usd=float(args.get("budget_usd", 0) or 0),
             deadline_s=float(args.get("deadline_s", 0) or 0))
@@ -552,10 +568,16 @@ class ForgeToolTool(Tool):
     permission = Permission.WRITE
 
     def run(self, args, ctx) -> ToolResult:
+        name = str(args.get("name") or "").strip()
+        code = str(args.get("code") or "")
+        if not name:
+            return ToolResult.failure("missing 'name'")
+        if not code:
+            return ToolResult.failure("missing 'code'")
         try:
             forge = ToolForge(ctx.workspace)
-            tool = forge.create(str(args["name"]), str(args.get("description") or ""),
-                                str(args["code"]), inputs=args.get("inputs"),
+            tool = forge.create(name, str(args.get("description") or ""),
+                                code, inputs=args.get("inputs"),
                                 outputs=args.get("outputs"))
             tool = forge.test(tool, list(args.get("cases") or []),
                               policy=ctx.sandbox_policy or
@@ -661,8 +683,11 @@ class CompressionPlanTool(Tool):
     permission = Permission.READ
 
     def run(self, args, ctx) -> ToolResult:
+        task = str(args.get("task") or "").strip()
+        if not task:
+            return ToolResult.failure("missing 'task'")
         plan = IntelligenceCompressor().plan(
-            str(args["task"]), ambiguity=str(args.get("ambiguity") or "low"),
+            task, ambiguity=str(args.get("ambiguity") or "low"),
             risk=str(args.get("risk") or "low"),
             needs_reasoning=bool(args.get("needs_reasoning")))
         return ToolResult.success(json.dumps(plan, indent=2), plan=plan)
@@ -730,8 +755,11 @@ class TrustCheckTool(Tool):
     permission = Permission.READ
 
     def run(self, args, ctx) -> ToolResult:
+        action = str(args.get("action") or "").strip()
+        if not action:
+            return ToolResult.failure("missing 'action'")
         decision = TrustEngine().classify(
-            str(args["action"]), reversible=bool(args.get("reversible", True)),
+            action, reversible=bool(args.get("reversible", True)),
             blast_radius=str(args.get("blast_radius") or "local"),
             external=bool(args.get("external")),
             sensitive_data=bool(args.get("sensitive_data")),

@@ -27,6 +27,9 @@ from ..verify import (
     generate_corpus,
     run_differential,
 )
+from ..verify.mutation import (
+    MutationError, assess_mutations, generate_string_mutations,
+)
 from ..verify.repair import default_max_attempts
 from .corpus_tools import corpus_cases_for
 from .tools import Permission, Tool, ToolContext, ToolResult
@@ -389,6 +392,94 @@ class VerifyModificationTool(Tool):
         )
         return ToolResult(ok=False, content=content, data=verification,
                           error=reason)
+
+
+class AssessTestStrengthTool(Tool):
+    name = "assess_test_strength"
+    description = (
+        "Mutate the modified artifact in small, deterministic ways and run the "
+        "same behavioral corpus against every mutant. A corpus that cannot "
+        "detect a broken mutant is weak. Returns a mutation score, the cases "
+        "that killed each mutation, and the weak cases. This measures test "
+        "strength; it does not authorize delivery."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "cases": {"type": "array", "items": {"type": "object"}},
+            "use_corpus": {"type": "boolean", "default": False},
+            "mutations": {"type": "array", "items": {"type": "object"},
+                          "description": "optional explicit offset/hex mutations"},
+            "max_mutations": {"type": "integer", "minimum": 1, "maximum": 12,
+                              "default": 6},
+            "timeout_seconds": {"type": "number", "minimum": 0.1, "default": 10},
+        },
+    }
+    permission = Permission.EXECUTE
+
+    def run(self, args, ctx) -> ToolResult:
+        if not ctx.target_path:
+            return ToolResult.failure("no target set for this job")
+        modified = ctx.extra.get("modified_path")
+        if not modified:
+            return ToolResult.failure(
+                "no modified artifact yet - apply a patch first")
+        try:
+            cases = build_cases(args) if args.get("cases") else []
+            cases += corpus_cases_for(ctx, args)
+        except DiffTestError as exc:
+            return ToolResult.failure(f"bad test corpus: {exc}")
+        if not cases:
+            return ToolResult.failure(
+                "provide at least one behavioral case or enable use_corpus")
+        mutations = []
+        for raw in args.get("mutations") or []:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                from ..verify.mutation import Mutation
+                mutations.append(Mutation(
+                    str(raw.get("name") or f"mutation-{len(mutations) + 1}"),
+                    int(raw["offset"]), str(raw["original"]),
+                    str(raw["replacement"]),
+                    str(raw.get("description") or "")))
+            except (KeyError, ValueError, TypeError) as exc:
+                return ToolResult.failure(f"bad mutation: {exc}")
+        if not mutations:
+            try:
+                from ..core import analyze_file
+                report = analyze_file(ctx.target_path)
+                mutations = generate_string_mutations(
+                    ctx.target_path, modified,
+                    list(report.strings_sample or []),
+                    max_mutations=int(args.get("max_mutations", 6)))
+            except Exception as exc:
+                return ToolResult.failure(
+                    f"could not generate mutations: {exc}")
+        if not mutations:
+            return ToolResult.failure(
+                "no safe mutations could be generated; provide explicit ones")
+        base = ctx.sandbox_policy or SandboxPolicy()
+        timeout = min(max(float(args.get("timeout_seconds", 10)), 0.1), 60.0)
+        try:
+            result = assess_mutations(
+                ctx.target_path, modified, cases, mutations, policy=base,
+                timeout_seconds=timeout)
+        except MutationError as exc:
+            return ToolResult.failure(str(exc))
+        data = result.to_dict()
+        ctx.extra["test_strength"] = data
+        if ctx.evidence is not None:
+            ctx.evidence.observed(
+                f"mutation score {result.mutation_score:.0%} "
+                f"({result.killed}/{result.total} detected)",
+                source=self.name, detail=result.note)
+        content = (
+            f"mutation score: {result.mutation_score:.0%} "
+            f"({result.killed}/{result.total})\n"
+            f"weak cases: {', '.join(result.weak_cases) or 'none'}\n"
+            f"{result.note}")
+        return ToolResult.success(content, **data)
 
 
 class DifferentialTestTool(Tool):

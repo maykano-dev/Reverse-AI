@@ -180,6 +180,17 @@ reverseai report verify report.json</code></pre>
   <p class="muted" style="font-size:12px;color:var(--dim);margin-top:11px">A digital twin predicts what it can model and names what must be tested live. A causal claim needs an explicit mechanism. An experiment error is not evidence.</p>
 </section>
 
+<section class="wrap">
+  <div class="kicker">Evidence hardening</div>
+  <h2>A passing test is not automatically a strong test.</h2>
+  <p class="sub">ReverseAI now mutates the candidate and checks whether the corpus can detect the breakage. It reports killed and surviving mutants, names weak cases, and keeps the delivery gate separate from the measurement. Every tool is called with empty arguments in the contract suite, every CLI command is parsed, every API route is checked for auth and path boundaries, and the sandbox is tested against network, host-file, environment, and timeout escapes.</p>
+  <pre><code>assess_test_strength -> killed / survived / weak cases
+bench --split dev|holdout -> verified, regression, repair,
+                             false-verification, refusal, cost, time
+reverseai audit -> version, deps, assets, tool metadata, secrets
+reverseai repo / xrefs -> repository map and direct call graph</code></pre>
+</section>
+
 <section id="how" class="wrap">
   <div class="kicker">The loop</div>
   <h2>Plan. Act. Observe. Prove.</h2>

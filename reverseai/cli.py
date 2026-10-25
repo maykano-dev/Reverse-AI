@@ -4,6 +4,10 @@ Commands:
   analyze <file>            static analysis report
   world <file>              build a world model for a target
   discover <file>           propose evidence-backed opportunities
+  cfg <file>                bounded control-flow graph
+  xrefs <file>              direct call/jump cross-references
+  repo <dir>                map a source repository
+  audit                     check repository invariants
   caps                      show host sandbox/analysis capabilities
   readiness <file>          can this target be executed and verified here?
   sandbox run -- <argv...>  run a command in the hardened sandbox
@@ -231,6 +235,17 @@ def _cmd_discover(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_audit(args: argparse.Namespace) -> int:
+    from .audit import run_audit
+
+    report = run_audit(args.root)
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2))
+    else:
+        print(report.render())
+    return 0 if report.ok else 1
+
+
 def _cmd_capabilities(args: argparse.Namespace) -> int:
     from .security.capabilities import CapabilityPolicy
 
@@ -241,6 +256,54 @@ def _cmd_capabilities(args: argparse.Namespace) -> int:
     for name, row in status.items():
         mark = "on " if row.get("allowed") else "off"
         print(f"  [{mark}] {name:<20} risk={row.get('risk')}  {row.get('reason')}")
+    return 0
+
+
+def _cmd_repo(args: argparse.Namespace) -> int:
+    from .repo import build_repo_model
+
+    try:
+        model = build_repo_model(args.path)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(model.to_dict(), indent=2))
+        return 0
+    s = model.summary()
+    print(f"Repository: {model.root}")
+    print(f"Files:      {s['files']}")
+    print(f"Languages:  " + ", ".join(f"{x['name']} ({x['files']})"
+                                    for x in model.languages))
+    print(f"Build:      {', '.join(model.build_systems) or 'not detected'}")
+    print(f"Tests:      {len(model.tests)}")
+    print(f"Entry:      {', '.join(model.entry_points) or 'not detected'}")
+    print(f"Risk marks: {len(model.risk_markers)}")
+    return 0
+
+
+def _cmd_xrefs(args: argparse.Namespace) -> int:
+    from .core.xrefs import find_xrefs
+
+    try:
+        report = find_xrefs(args.path)
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2))
+        return 0
+    print(f"{len(report.refs)} reference(s) across {len(report.functions)} functions")
+    if args.function:
+        print(f"callers of {args.function}:")
+        for row in report.callers_of(args.function)[:args.limit]:
+            print(f"  0x{row['from_address']:x} ({row['kind']})")
+        print(f"callees of {args.function}:")
+        for row in report.callees_of(args.function)[:args.limit]:
+            if row["to_address"] is not None:
+                print(f"  0x{row['to_address']:x}")
+    if report.warnings:
+        print("warnings: " + "; ".join(report.warnings))
     return 0
 
 
@@ -459,6 +522,13 @@ def _cmd_bench(args: argparse.Namespace) -> int:
     from .agent.providers.deepseek import ProviderError
     from .bench import builtin_tasks, run_suite
 
+    tasks = builtin_tasks()
+    if args.only:
+        tasks = [t for t in tasks if t.id in set(args.only)]
+    if getattr(args, "list", False):
+        for t in tasks:
+            print(f"{t.split:8} {t.category:15} {t.id:28} {t.description}")
+        return 0
     try:
         get_provider(args.provider)  # fail fast on missing config
     except (ProviderError, ValueError) as exc:
@@ -469,10 +539,7 @@ def _cmd_bench(args: argparse.Namespace) -> int:
         return Agent(get_provider(args.provider), max_permission=perm,
                      max_steps=args.max_steps)
 
-    tasks = builtin_tasks()
-    if args.only:
-        tasks = [t for t in tasks if t.id in set(args.only)]
-    report = run_suite(factory, tasks)
+    report = run_suite(factory, tasks, split=getattr(args, "split", None))
     if args.json:
         print(json.dumps(report.to_dict(), indent=2))
     else:
@@ -561,6 +628,11 @@ def build_parser() -> argparse.ArgumentParser:
     discover.add_argument("--limit", type=int, default=12)
     discover.set_defaults(func=_cmd_discover)
 
+    audit = sub.add_parser("audit", help="run repository invariants")
+    audit.add_argument("--root", default=".")
+    audit.add_argument("--json", action="store_true")
+    audit.set_defaults(func=_cmd_audit)
+
     capabilities = sub.add_parser("capabilities",
                                   help="show the high-risk capability policy")
     capabilities.add_argument("--json", action="store_true")
@@ -589,6 +661,18 @@ def build_parser() -> argparse.ArgumentParser:
     cfg.add_argument("--show-blocks", dest="show_blocks", type=int, default=12)
     cfg.add_argument("--json", action="store_true")
     cfg.set_defaults(func=_cmd_cfg)
+
+    repo = sub.add_parser("repo", help="map a source repository")
+    repo.add_argument("path")
+    repo.add_argument("--json", action="store_true")
+    repo.set_defaults(func=_cmd_repo)
+
+    xrefs = sub.add_parser("xrefs", help="direct call/jump cross-references")
+    xrefs.add_argument("path")
+    xrefs.add_argument("--function", default="")
+    xrefs.add_argument("--limit", type=int, default=12)
+    xrefs.add_argument("--json", action="store_true")
+    xrefs.set_defaults(func=_cmd_xrefs)
 
     readiness = sub.add_parser("readiness",
                                help="can this target be executed and verified here?")
@@ -661,6 +745,10 @@ def build_parser() -> argparse.ArgumentParser:
     bench = sub.add_parser("bench", help="run the capability benchmark")
     bench.add_argument("--provider", default="deepseek")
     bench.add_argument("--only", action="append", help="run only these task ids")
+    bench.add_argument("--split", choices=["dev", "holdout"],
+                       help="run only the development or held-out set")
+    bench.add_argument("--list", action="store_true",
+                       help="list tasks without running them")
     bench.add_argument("--max-steps", type=int, default=24, dest="max_steps")
     bench.add_argument("--json", action="store_true")
     bench.set_defaults(func=_cmd_bench)

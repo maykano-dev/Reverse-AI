@@ -53,8 +53,9 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | Modification engine | **working** | strategy selector, planner, scoped blast radius, byte patches, LIEF edits |
 | Autonomous modify | **working** | choose -> plan -> implement -> verify -> signed report; mode override |
 | Workspace safety | **working** | auto-checkpoints, reviewable diff, conservative restore |
-| Control-flow analysis | **working** | bounded basic blocks, branch edges, call graph (capstone) |
+| Control-flow analysis | **working** | bounded basic blocks, branch edges, call graph, direct xrefs (capstone) |
 | Engineering world model | **working** | components, dependencies, records, provenance, queries |
+| Audit/quality | **working** | tool contracts, CLI/server contracts, sandbox boundaries, mutation strength, repo audit |
 | Discovery engine | **working** | ranked opportunities, hypotheses, bounded missions |
 | Experiment/causal engine | **working** | predictions, controlled observations, interventions |
 | Architecture/algorithm search | **working** | weighted objectives, Pareto front, measured comparison |
@@ -68,7 +69,7 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | API + UI | **working** | stdlib HTTP + SSE, mobile-first PWA |
 | Multi-tenant product layer | **planned** | accounts, quotas, object storage, worker queue |
 
-## Current capability (v0.6.0)
+## Current capability (v0.7.0)
 
 Zero third-party dependencies required (stdlib + binutils; optional libs enhance):
 
@@ -190,8 +191,9 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 - **Service + UI:** stdlib HTTP API with SSE, optional bearer auth, path
   allowlists, mobile-first PWA with a thinking timeline, sources, artifacts,
   memory, routines, usage, feedback, notifications, and speech input.
-- **CLI:** `analyze`, `diff`, `cfg`, `caps`, `capabilities`, `readiness`, `sandbox run`,
-  `verify`, `corpus capture|list|show`, `report verify|render`, `approvals grant|list`,
+- **CLI:** `analyze`, `diff`, `cfg`, `xrefs`, `repo`, `caps`, `capabilities`,
+  `readiness`, `sandbox run`, `verify`, `corpus capture|list|show`,
+  `report verify|render`, `approvals grant|list`, `audit`,
   `agent run` (with `--mode ask|build|modify|optimize|autonomous`), `bench`, `serve`.
 
 ## Important modules
@@ -219,6 +221,10 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 | `reverseai/sandbox/seccomp.py` | x86_64 cBPF denylist for bubblewrap/child |
 | `reverseai/sandbox/readiness.py` | Native/emulated/analysis-only preflight |
 | `reverseai/core/cfg.py` | Basic-block and call graph |
+| `reverseai/core/xrefs.py` | Direct call/jump cross-references |
+| `reverseai/repo.py` | Source-repository map |
+| `reverseai/verify/mutation.py` | Mutation strength measurement |
+| `reverseai/audit.py` | Repository invariant audit |
 | `reverseai/security/approvals.py` | Signed, expiring, single-use approvals |
 | `reverseai/security/gate.py` | Capability + approval + audit gate |
 | `reverseai/security/vault.py` | Optional encrypted credential vault |
@@ -254,7 +260,7 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 python3 -m reverseai analyze /path/to/binary
 python3 -m reverseai analyze /path/to/binary --json
 python3 -m reverseai serve
-python3 -m unittest discover -s tests -v   # 370+ tests, no API key
+python3 -m unittest discover -s tests -v   # 450+ tests, no API key
 ```
 
 The intelligence build ledger is `docs/INTELLIGENCE_ROADMAP.md`. It separates

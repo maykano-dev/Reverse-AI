@@ -188,6 +188,22 @@ class ProofTests(unittest.TestCase):
             tmp.cleanup()
 
     @unittest.skipUnless(CC and SANDBOX, "cc or isolating sandbox unavailable")
+    def test_independent_verifier_can_require_test_strength(self):
+        tmp, a, b = compile_pair()
+        try:
+            cases = [InputCase("new", ["--new"],
+                               expect={"stdout": "NEW", "differs": True})]
+            weak = IndependentVerifier(cases).verify(
+                str(a), str(b), mutation_score=0.2, min_mutation_score=0.5)
+            self.assertFalse(weak.verified)
+            self.assertIn("mutation score", weak.reason)
+            strong = IndependentVerifier(cases).verify(
+                str(a), str(b), mutation_score=0.9, min_mutation_score=0.5)
+            self.assertTrue(strong.verified, strong.reason)
+        finally:
+            tmp.cleanup()
+
+    @unittest.skipUnless(CC and SANDBOX, "cc or isolating sandbox unavailable")
     def test_independent_verifier_catches_prohibited_change(self):
         tmp, a, b = compile_pair()
         try:

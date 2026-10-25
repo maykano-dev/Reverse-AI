@@ -21,6 +21,8 @@ _TOOL_ICON = {
     "disassemble": "code",
     "list_functions": "bars",
     "build_control_flow_graph": "chart",
+    "find_xrefs": "search",
+    "analyze_repository": "file",
     "analyze_apk": "box",
     "assess_heuristics": "alert",
     "run_in_sandbox": "terminal",
@@ -29,6 +31,7 @@ _TOOL_ICON = {
     "verify_against_original": "check",
     "verify_modification": "check",
     "differential_test": "bars",
+    "assess_test_strength": "alert",
     "capture_behavior_corpus": "memory",
     "choose_modification_strategy": "search",
     "plan_and_modify": "sparkle",
@@ -122,6 +125,15 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "build_control_flow_graph":
         title = "Mapping the control flow"
         detail = "Finding basic blocks, branches, and call targets."
+    elif name == "find_xrefs":
+        title = "Tracing who calls whom"
+        detail = "Finding direct call and jump references between functions."
+    elif name == "analyze_repository":
+        title = "Mapping the repository"
+        detail = "Languages, build systems, imports, entry points, tests, and risk markers."
+    elif name == "decompile":
+        title = "Decompiling the target"
+        detail = "Recovering a higher-level view of the selected function."
     elif name == "list_functions":
         title = "Mapping the functions"
         detail = "Finding named routines and where they live."
@@ -138,7 +150,8 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
         tier = str(a.get("confidence", "observed")).lower()
         article = "an" if tier[:1] in "aeiou" else "a"
         title = f"Noting {article} {tier} finding"
-        detail = _short(a.get("claim", ""), 120)
+        detail = _short(a.get("claim", ""), 120) or (
+            "Keeping a hypothesis separate from an observation and a verified result.")
     elif name in ("apply_byte_patch", "add_section", "add_imported_library"):
         title = "Changing a copy of the file"
         detail = "The original stays untouched."
@@ -151,12 +164,30 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "differential_test":
         title = "Testing across a set of inputs"
         detail = "Comparing the original and the change for unexpected regressions."
+    elif name == "assess_test_strength":
+        title = "Checking whether the tests can actually fail"
+        detail = "Mutating the candidate to see whether the corpus detects breakage."
     elif name == "capture_behavior_corpus":
         title = "Recording how the original behaves"
         detail = "Saving a reusable regression suite before changing anything."
     elif name == "check_execution_readiness":
         title = "Checking whether this target can actually be run"
         detail = "Separating what can be analyzed from what can be verified behaviorally."
+    elif name == "remember":
+        title = "Saving a durable note"
+        detail = "Keeping a decision or preference for a later conversation."
+    elif name == "forget":
+        title = "Removing a saved note"
+        detail = "Deleting a memory entry by id."
+    elif name in ("list_skills", "read_skill"):
+        title = "Looking at the available playbooks"
+        detail = "Loading a reusable procedure when it fits the task."
+    elif name == "delegate":
+        title = "Handing a focused task to a specialist"
+        detail = "Using a separate role for a self-contained piece of work."
+    elif name == "schedule_routine":
+        title = "Scheduling a recurring task"
+        detail = "Recording a goal and a schedule for later runs."
     elif name == "build_world_model":
         title = "Building a model of how this system fits together"
         detail = "Components, dependencies, relationships, and open questions."

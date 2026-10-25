@@ -66,6 +66,30 @@ class ToolResult:
 class Tool(abc.ABC):
     #: unique tool name exposed to the model (snake_case)
     name: str = ""
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Contain unexpected exceptions at the tool boundary.
+
+        The mediator also contains exceptions, but a tool is a public interface
+        and may be called directly by tests or internal code. A partial tool
+        call must become a failing ToolResult, not a stack trace or a crash.
+        """
+        super().__init_subclass__(**kwargs)
+        raw = cls.__dict__.get("run")
+        if raw is None or getattr(raw, "__tool_contained__", False):
+            return
+
+        def contained(self, args, ctx):
+            try:
+                return raw(self, args, ctx)
+            except Exception as exc:  # noqa: BLE001 - interface containment
+                return ToolResult.failure(
+                    f"{type(exc).__name__}: {exc}",
+                    content=f"error: {type(exc).__name__}: {exc}")
+
+        contained.__name__ = getattr(raw, "__name__", "run")
+        contained.__tool_contained__ = True  # type: ignore[attr-defined]
+        cls.run = contained  # type: ignore[method-assign]
     #: one-line description the model sees
     description: str = ""
     #: JSON Schema (object) describing parameters

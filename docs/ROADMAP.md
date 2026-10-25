@@ -1,8 +1,28 @@
 # ReverseAI: Roadmap and Status
 
-A living map of what exists and what comes next. Updated with v0.6.0.
+A living map of what exists and what comes next. Updated with v0.7.0.
 
 ## Done
+
+### v0.7.0: audit remediation and evidence hardening
+
+- **Tool contracts**: every tool is tested for schema, permission, narration, UI
+  label, and empty-argument behavior. Broken web-research imports and partial-call
+  crashes were fixed.
+- **CLI/server contracts**: all commands, corpus/report/approvals, mock agent,
+  auth, path boundaries, and world/discover routes.
+- **Sandbox boundaries**: network, host files, environment, timeout, workspace,
+  and symlink refusal.
+- **Mutation testing**: `assess_test_strength` reports killed/survived mutants and
+  weak cases.
+- **Benchmark v2**: development + held-out tasks; verified success, regression,
+  repair, false verification, refusal, cost, and time metrics.
+- **Analysis depth**: direct call/jump xrefs and a source-repository map.
+- **Repository audit**: `reverseai audit` checks version, dependencies, assets,
+  tool metadata, doc links, secret hygiene, and test presence.
+- **Persistent evidence**: world model, opportunities, hypotheses, and mutation
+  strength survive in the Job and signed report.
+- **Tests**: 454.
 
 ### v0.6.0: engineering intelligence layer
 

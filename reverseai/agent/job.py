@@ -50,6 +50,10 @@ class Job:
     differential: dict[str, Any] = field(default_factory=dict)
     mode: str = ""
     modification_plan: dict[str, Any] = field(default_factory=dict)
+    world_model: dict[str, Any] = field(default_factory=dict)
+    opportunities: list[dict[str, Any]] = field(default_factory=list)
+    hypotheses: list[dict[str, Any]] = field(default_factory=list)
+    test_strength: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -74,6 +78,10 @@ class Job:
             "differential": self.differential,
             "mode": self.mode,
             "modification_plan": self.modification_plan,
+            "world_model": self.world_model,
+            "opportunities": self.opportunities,
+            "hypotheses": self.hypotheses,
+            "test_strength": self.test_strength,
             "evidence": self.evidence.to_list(),
             "evidence_summary": self.evidence.summary(),
             "audit": self.audit,

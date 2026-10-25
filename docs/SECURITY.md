@@ -213,6 +213,13 @@ weaker boundary.
   the listed cases, not every possible input. Captured corpora help, but they are
   still a sample. A corpus is keyed by target SHA-256; if the original changes,
   capture it again.
+- **A passing corpus can still be weak.** `assess_test_strength` mutates the
+  candidate and reports whether the corpus detects breakage. A low mutation
+  score means the tests are weak, not that the change is wrong. Delivery remains
+  gated on the behavioral proof.
+- **Benchmark results are a sample, not a certificate.** The benchmark now has a
+  held-out split and false-verification/refusal metrics, but a high score does
+  not prove general engineering capability.
 - **Checkpoints are not a backup.** They live beside the workspace and are
   pruned by the operator, not by ReverseAI. Restore refuses unsafe archive
   members, but it is not a substitute for version control.

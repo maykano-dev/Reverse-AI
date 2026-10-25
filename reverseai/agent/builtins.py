@@ -246,6 +246,90 @@ class ControlFlowTool(Tool):
         return ToolResult.success("\n".join(lines), **flow.to_dict())
 
 
+class XRefTool(Tool):
+    name = "find_xrefs"
+    description = (
+        "Find bounded direct call/jump cross-references between recovered "
+        "functions. Indirect calls and data references are not resolved; this "
+        "is a lead map, not a complete call graph."
+    )
+    parameters = {"type": "object", "properties": {
+        "function": {"type": "string",
+                     "description": "optional function name to focus callers/callees"}}}
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        from ..core.xrefs import find_xrefs
+
+        target = _require_target(ctx)
+        report = analyze_file(target)
+        xrefs = find_xrefs(target, report)
+        name = str(args.get("function") or "")
+        lines = [f"{len(xrefs.refs)} reference(s) across {len(xrefs.functions)} functions"]
+        if name:
+            callers = xrefs.callers_of(name)
+            callees = xrefs.callees_of(name)
+            lines.append(f"callers of {name}: {len(callers)}")
+            lines += [f"  0x{r['from_address']:x} ({r['kind']})" for r in callers[:12]]
+            lines.append(f"callees of {name}: {len(callees)}")
+            lines += [f"  0x{r['to_address']:x}" for r in callees[:12] if r['to_address']]
+        if xrefs.warnings:
+            lines.append("warnings: " + "; ".join(xrefs.warnings[:5]))
+        return ToolResult.success("\n".join(lines), **xrefs.to_dict())
+
+
+class AnalyzeRepositoryTool(Tool):
+    name = "analyze_repository"
+    description = (
+        "Build a bounded structural map of a source repository: languages, "
+        "build systems, imports, entry points, tests, and risk markers. It reads "
+        "files only inside the job's project/workspace boundary."
+    )
+    parameters = {"type": "object", "properties": {
+        "path": {"type": "string",
+                 "description": "optional subdirectory inside the project"}}}
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        from pathlib import Path
+
+        from ..repo import build_repo_model
+
+        root = Path(ctx.extra.get("project_dir") or ctx.workspace).resolve()
+        candidate = Path(args.get("path") or root)
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        try:
+            candidate = candidate.resolve()
+        except OSError as exc:
+            return ToolResult.failure(f"invalid path: {exc}")
+        allowed = [root, Path(ctx.workspace).resolve()]
+        if not any(candidate == p or candidate.is_relative_to(p) for p in allowed):
+            return ToolResult.failure("repository path is outside the job workspace")
+        try:
+            model = build_repo_model(candidate)
+        except (OSError, ValueError) as exc:
+            return ToolResult.failure(f"repository scan failed: {exc}")
+        if ctx.evidence is not None:
+            s = model.summary()
+            ctx.evidence.observed(
+                f"repository: {s['files']} files, {len(s['languages'])} language(s), "
+                f"{s['tests']} test file(s), {s['risk_markers']} risk marker(s)",
+                source=self.name)
+        lines = [f"repository: {model.root}",
+                 f"files: {len(model.files)}  tests: {len(model.tests)}  "
+                 f"entry points: {', '.join(model.entry_points) or 'none'}",
+                 f"build: {', '.join(model.build_systems) or 'not detected'}"]
+        for lang in model.languages[:8]:
+            lines.append(f"  {lang['name']}: {lang['files']} file(s)")
+        if model.risk_markers:
+            lines.append("risk markers:")
+            lines += [f"  {r['marker']} {r['path']}:{r['line']}"
+                      for r in model.risk_markers[:10]]
+        return ToolResult.success("\n".join(lines), repository=model.to_dict(),
+                                  summary=model.summary())
+
+
 class RunInSandboxTool(Tool):
     name = "run_in_sandbox"
     description = (
@@ -514,13 +598,18 @@ class RecordFindingTool(Tool):
     def run(self, args, ctx) -> ToolResult:
         if ctx.evidence is None:
             return ToolResult.failure("no evidence log for this job")
+        claim = str(args.get("claim") or "").strip()
+        confidence = str(args.get("confidence") or "").lower()
+        if not claim:
+            return ToolResult.failure("missing 'claim'")
         tier = {"believed": Confidence.BELIEVED,
                 "observed": Confidence.OBSERVED,
-                "verified": Confidence.VERIFIED}.get(args["confidence"].lower())
+                "verified": Confidence.VERIFIED}.get(confidence)
         if tier is None:
             return ToolResult.failure("confidence must be believed|observed|verified")
-        ctx.evidence.add(args["claim"], tier, source="agent", detail=args.get("detail", ""))
-        return ToolResult.success(f"recorded [{tier.label}] {args['claim']}")
+        ctx.evidence.add(claim, tier, source="agent",
+                         detail=str(args.get("detail") or ""))
+        return ToolResult.success(f"recorded [{tier.label}] {claim}")
 
 
 class RememberTool(Tool):
@@ -543,8 +632,11 @@ class RememberTool(Tool):
     def run(self, args, ctx) -> ToolResult:
         if ctx.memory is None:
             return ToolResult.failure("long-term memory is not enabled for this job")
+        text = str(args.get("text") or "").strip()
+        if not text:
+            return ToolResult.failure("missing 'text'")
         try:
-            note = ctx.memory.add(args["text"], tags=args.get("tags"), source="agent")
+            note = ctx.memory.add(text, tags=args.get("tags"), source="agent")
         except ValueError as exc:
             return ToolResult.failure(str(exc))
         return ToolResult.success(f"remembered ({note['id']}): {note['text']}",
@@ -589,9 +681,12 @@ class ForgetTool(Tool):
     def run(self, args, ctx) -> ToolResult:
         if ctx.memory is None:
             return ToolResult.failure("long-term memory is not enabled for this job")
-        ok = ctx.memory.delete(args["id"])
-        return (ToolResult.success(f"forgot {args['id']}") if ok
-                else ToolResult.failure(f"no note with id {args['id']}"))
+        note_id = str(args.get("id") or "").strip()
+        if not note_id:
+            return ToolResult.failure("missing 'id'")
+        ok = ctx.memory.delete(note_id)
+        return (ToolResult.success(f"forgot {note_id}") if ok
+                else ToolResult.failure(f"no note with id {note_id}"))
 
 
 class WebSearchTool(Tool):
@@ -613,7 +708,7 @@ class WebSearchTool(Tool):
     permission = Permission.READ
 
     def run(self, args, ctx) -> ToolResult:
-        from ..research import ResearchError, search_web, source_card
+        from .research import ResearchError, search_web, source_card
 
         try:
             results = search_web(args["query"], int(args.get("max_results", 5)))
@@ -646,7 +741,7 @@ class WebReadTool(Tool):
     permission = Permission.READ
 
     def run(self, args, ctx) -> ToolResult:
-        from ..research import ResearchError, read_page, source_card
+        from .research import ResearchError, read_page, source_card
 
         try:
             page = read_page(args["url"], int(args.get("max_chars", 16000)))
@@ -685,9 +780,12 @@ class ReadSkillTool(Tool):
         from .skills import find_skill
 
         skills = ctx.extra.get("skills") or []
-        skill = find_skill(skills, args["name"])
+        name = str(args.get("name") or "").strip()
+        if not name:
+            return ToolResult.failure("missing 'name'")
+        skill = find_skill(skills, name)
         if skill is None:
-            return ToolResult.failure(f"no skill named {args['name']!r}")
+            return ToolResult.failure(f"no skill named {name!r}")
         return ToolResult.success(skill.body[:14000], skill=skill.to_dict())
 
 
@@ -799,7 +897,9 @@ def default_tools() -> list[Tool]:
     from .corpus_tools import CaptureBehaviorCorpusTool
     from .intelligence_tools import intelligence_tools
     from .modify_engine import ChooseModificationStrategyTool, PlanAndModifyTool
-    from .verify_tools import DifferentialTestTool, VerifyModificationTool
+    from .verify_tools import (
+        AssessTestStrengthTool, DifferentialTestTool, VerifyModificationTool,
+    )
     from .workspace_tools import (
         CheckExecutionReadinessTool,
         CreateCheckpointTool,
@@ -816,6 +916,8 @@ def default_tools() -> list[Tool]:
         DisassembleTool(),
         ListFunctionsTool(),
         ControlFlowTool(),
+        XRefTool(),
+        AnalyzeRepositoryTool(),
         AnalyzeApkTool(),
         AssessHeuristicsTool(),
         RunInSandboxTool(),
@@ -831,6 +933,7 @@ def default_tools() -> list[Tool]:
         ScheduleRoutineTool(),
         VerifyModificationTool(),
         DifferentialTestTool(),
+        AssessTestStrengthTool(),
         CaptureBehaviorCorpusTool(),
         ChooseModificationStrategyTool(),
         PlanAndModifyTool(),
