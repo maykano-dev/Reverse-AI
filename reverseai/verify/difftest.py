@@ -178,6 +178,7 @@ class CaseResult:
     name: str
     original: RunSnapshot
     modified: RunSnapshot
+    args: list[str] = field(default_factory=list)
     differences: list[str] = field(default_factory=list)
     matched: bool = False
     expected: dict[str, Any] = field(default_factory=dict)
@@ -188,6 +189,7 @@ class CaseResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
+            "args": list(self.args),
             "matched": self.matched,
             "differences": self.differences,
             "expected": self.expected,
@@ -385,8 +387,9 @@ def run_differential(
         matched = not diffs
         exp_met, notes = _check_expect(case, o, m, matched)
         result = CaseResult(
-            name=case.name, original=o, modified=m, differences=diffs,
-            matched=matched, expected=case.expect, expected_met=exp_met,
+            name=case.name, original=o, modified=m, args=list(case.args),
+            differences=diffs, matched=matched, expected=case.expect,
+            expected_met=exp_met,
             unexpected=_case_unexpected(case, matched), notes=notes,
         )
         results.append(result)

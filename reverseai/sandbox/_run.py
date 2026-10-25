@@ -25,6 +25,7 @@ def run_process(
     max_output: int,
     isolation: Isolation,
     stdin: bytes | None = None,
+    pass_fds: tuple[int, ...] = (),
 ) -> ExecResult:
     preexec = limits.as_preexec()
     start = time.monotonic()
@@ -38,6 +39,7 @@ def run_process(
             cwd=cwd,
             preexec_fn=preexec,  # sets rlimits + new session (own process group)
             close_fds=True,
+            pass_fds=tuple(pass_fds),
         )
     except (OSError, ValueError) as exc:
         return ExecResult(argv=argv, error=f"spawn failed: {exc}", isolation=isolation)

@@ -86,6 +86,7 @@ def _compact_attempts(verification: dict[str, Any]) -> list[dict[str, Any]]:
         for c in report.get("cases") or []:
             cases.append({
                 "name": c.get("name"),
+                "args": c.get("args") or [],
                 "matched": c.get("matched"),
                 "differences": c.get("differences") or [],
                 "expected_met": c.get("expected_met"),
@@ -119,6 +120,8 @@ def build_report(record: dict[str, Any]) -> dict[str, Any]:
         "sha256": artifact_meta.get("sha256", ""),
     }
     plan = record.get("modification_plan") or {}
+    from .replay import replay_recipe
+
     attempts = _compact_attempts(verification)
     diff_summary = (verification.get("test_summary")
                     or record.get("differential") or {})
@@ -182,6 +185,7 @@ def build_report(record: dict[str, Any]) -> dict[str, Any]:
             "blast_radius": plan.get("blast_radius") or {},
         },
         "environment": _environment(verification),
+        "replay": replay_recipe(record),
         "sources": record.get("sources") or [],
         "algorithm": algorithm(),
     }
@@ -308,6 +312,11 @@ unexpected: {_e(', '.join(diff.get('unexpected') or []) or 'none')}</p></div>
 <b>Size</b><span>{_e(artifact.get('size'))}</span>
 <b>SHA-256</b><span><code>{_e(artifact.get('sha256') or '(none)')}</code></span>
 </div></div>
+<h2>Replay</h2>
+<div class="card"><p>Re-run this verification without a model:</p>
+<pre>{_e((report.get('replay') or {}).get('command') or 'A replay command is not available for this report.')}</pre>
+<p class="muted">original sha256: <code>{_e((report.get('replay') or {}).get('original_sha256') or '(not recorded)')}</code><br>
+modified sha256: <code>{_e((report.get('replay') or {}).get('modified_sha256') or '(not recorded)')}</code></p></div>
 <h2>Signature</h2>
 <div class="card"><p class="muted">{_e(report.get('algorithm'))}</p>
 <pre>{_e(report.get('signature'))}</pre>

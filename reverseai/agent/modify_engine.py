@@ -32,8 +32,9 @@ from ..modify.planner import (
 from ..modify.strategy import STRATEGY_LABELS, choose_strategy
 from ..security.validate import ValidationError, read_target
 from ..verify import DiffTestError, InputCase
+from .corpus_tools import corpus_cases_for
 from .tools import Permission, Tool, ToolContext, ToolResult
-from .verify_tools import build_cases
+from .verify_tools import build_cases, has_case_input
 
 _MAX_PATCHES = 64
 
@@ -88,11 +89,14 @@ def _has_sources(project_dir: str | None) -> bool:
     return False
 
 
-def _cases_from_args(args: dict[str, Any]) -> list[InputCase]:
+def _cases_from_args(ctx: ToolContext, args: dict[str, Any]) -> tuple[list[InputCase], int, int]:
+    """Return (all cases, corpus controls, intended cases)."""
     raw: list[dict[str, Any]] = []
+    intended_count = 0
     for d in args.get("cases") or []:
         if isinstance(d, dict):
             raw.append(dict(d))
+            intended_count += 1
     for d in args.get("preserve_cases") or []:
         if isinstance(d, dict):
             d = dict(d)
@@ -101,14 +105,14 @@ def _cases_from_args(args: dict[str, Any]) -> list[InputCase]:
             d["expect"] = exp
             raw.append(d)
     if raw:
-        return [InputCase.from_dict(d).normalized() for d in raw]
-
-    keys = {"args", "stdin", "stdin_b64", "files", "expect_stdout",
-            "expect_stderr", "expect_exit", "expect_diff", "same_as_original",
-            "stdout_contains", "stderr_contains", "output_files"}
-    if any(k in args for k in keys):
-        return build_cases(args)
-    return []
+        intended = [InputCase.from_dict(d).normalized() for d in raw]
+    elif has_case_input(args):
+        intended = build_cases(args)
+        intended_count = len(intended)
+    else:
+        intended = []
+    corpus = corpus_cases_for(ctx, args)
+    return intended + corpus, len(corpus), intended_count
 
 
 def _encode_string(value: str) -> list[bytes]:
@@ -299,6 +303,10 @@ class PlanAndModifyTool(Tool):
                       "description": "intended-change cases with expectations"},
             "preserve_cases": {"type": "array", "items": {"type": "object"},
                                "description": "cases that must match the original"},
+            "use_corpus": {"type": "boolean", "default": False,
+                           "description": "include captured regression cases"},
+            "corpus_exclude": {"type": "array", "items": {"type": "string"},
+                               "description": "captured case names to omit"},
             "args": {"type": "array", "items": {"type": "string"}},
             "stdin": {"type": "string"},
             "expect_stdout": {"type": "string"},
@@ -344,11 +352,16 @@ class PlanAndModifyTool(Tool):
         ctx.extra["strategy"] = choice.strategy
 
         try:
-            cases = _cases_from_args(args)
+            cases, corpus_count, intended_count = _cases_from_args(ctx, args)
         except DiffTestError as exc:
             return ToolResult.failure(f"bad modification cases: {exc}")
-        has_preserve = bool(args.get("preserve_cases")) or any(
-            (c.expect or {}).get("same_as_original") is True for c in cases)
+        if args.get("use_corpus") and corpus_count == 0:
+            return clarify(
+                "No captured behavioral corpus exists for this target. Run "
+                "capture_behavior_corpus first, or provide explicit regression cases.")
+        has_preserve = (bool(args.get("preserve_cases")) or corpus_count > 0
+                        or any((c.expect or {}).get("same_as_original") is True
+                               for c in cases))
         plan = build_plan(
             report, goal, choice, has_sources=has_sources,
             has_cases=bool(cases), has_preserve_cases=has_preserve)
@@ -369,6 +382,10 @@ class PlanAndModifyTool(Tool):
             return clarify(
                 "What exact behavior should change? Give me at least one input and "
                 "the expected output, or a cases list with expectations.")
+        if intended_count == 0:
+            return clarify(
+                "I have regression controls but no intended-change case. What "
+                "should the new behavior be? Give me an input and expected output.")
         if plan.preserve_rest and not has_preserve:
             return clarify(
                 "This is a scoped change. Which inputs represent the behavior that "
@@ -462,6 +479,10 @@ class PlanAndModifyTool(Tool):
             "timeout_seconds": args.get("timeout_seconds", 10),
         })
         verification = ctx.extra.get("verification") or {}
+        if corpus_count:
+            # The nested tool sees them as ordinary cases; retain the provenance.
+            verification["corpus_controls"] = corpus_count
+            ctx.extra["verification"] = verification
         delivery = ctx.extra.get("delivery") or {}
         ok = bool(verification.get("verified")) and bool(delivery.get("allowed"))
         _step(ctx, plan, "verify", "done" if ok else "failed",
@@ -475,6 +496,7 @@ class PlanAndModifyTool(Tool):
             "verification": verification,
             "delivery": delivery,
             "artifact": ctx.extra.get("modified_path"),
+            "corpus_controls": corpus_count,
             "needs_clarification": False,
         }
         if ok:

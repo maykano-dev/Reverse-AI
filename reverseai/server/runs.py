@@ -25,6 +25,8 @@ from typing import Any
 from ..agent import Agent, Permission, get_provider
 from ..agent.conversation import Conversation
 from ..agent.store import JobStore
+from ..checkpoints import CheckpointStore
+from ..verify.corpus import CorpusStore
 
 _PERM = {"read": Permission.READ, "execute": Permission.EXECUTE, "write": Permission.WRITE}
 _TERMINAL = {"final", "error"}
@@ -51,6 +53,7 @@ class RunManager:
         self.memory = memory
         self.skills = skills or []
         self.routines = routines
+        self.corpus = CorpusStore(Path(store.dir) / "corpora")
         self._runs: dict[str, Run] = {}
         self._convos: dict[str, Any] = {}  # conversation_id -> Conversation
         self._lock = threading.Lock()
@@ -163,6 +166,10 @@ class RunManager:
                           project_dir=body.get("project_dir"),
                           workspace=workspace)
         conv.ctx.extra["routine_store"] = self.routines
+        conv.ctx.extra["corpus_store"] = self.corpus
+        conv.ctx.extra["checkpoint_store"] = CheckpointStore(
+            Path(conv.workspace).parent / "checkpoints" / Path(conv.workspace).name,
+            workspace=conv.workspace)
         conv._permission = perm_name
         conv._provider_name = provider.name
         with self._lock:
@@ -190,6 +197,10 @@ class RunManager:
                       mode=state.get("mode") or body.get("mode"))
         conv = Conversation.from_state(agent, state)
         conv.ctx.extra["routine_store"] = self.routines
+        conv.ctx.extra["corpus_store"] = self.corpus
+        conv.ctx.extra["checkpoint_store"] = CheckpointStore(
+            Path(conv.workspace).parent / "checkpoints" / Path(conv.workspace).name,
+            workspace=conv.workspace)
         conv._permission = perm_name
         conv._provider_name = provider.name
         with self._lock:

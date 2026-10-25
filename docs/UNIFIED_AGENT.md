@@ -55,14 +55,21 @@ made the loop **visible**, **durable**, **personal**, and **mobile**.
 | Three product modes | product spec | **Implemented** | Direct / Reconstruction / Modernisation |
 | Blast-radius scoping | new | **Implemented** | planner components + regression cases |
 | High-risk capability gate | new | **Implemented** | `security/capabilities.py`, deny by default |
+| Behavioral corpora | new | **Implemented** | `verify/corpus.py`, `capture_behavior_corpus`, `use_corpus` |
+| Model-free replay | new | **Implemented** | `verify/replay.py`, `reverseai verify`, replay recipe |
+| Checkpoints / undo | Claude Code | **Implemented (workspace)** | `checkpoints.py`, `create/restore_workspace_checkpoint` |
+| Diff review | Claude Code | **Implemented (workspace + structural)** | `review_workspace_changes`, `diff_modified` |
+| Control-flow graph | new | **Implemented (bounded)** | `core/cfg.py`, `build_control_flow_graph` |
+| Execution readiness | new | **Implemented** | `sandbox/readiness.py`, `readiness` |
+| seccomp host hardening | new | **Implemented (x86_64 denylist)** | `sandbox/seccomp.py`, bubblewrap `--seccomp` |
+| Approvals + action gate | new | **Implemented** | `security/approvals.py`, `security/gate.py` |
+| Encrypted vault | Xiryn | **Implemented (optional primitive)** | `security/vault.py`; no payment execution |
 | MCP servers | Claude Code, OpenCode | **Deferred** | needs a protocol client and permission model |
 | Hooks (pre/post tool) | Claude Code | **Deferred** | needs an operator policy and sandboxing |
-| Checkpoints / undo | Claude Code | **Deferred** | would build on conversation state |
-| Diff review UI | Claude Code | **Partial** | signed report and structural diff, no inline hunk review |
 | Computer use / live desktop | Xiryn, OpenClaw | **Deferred** | denied by capability policy; needs Docker workstations, VNC, and a new threat model |
 | Take over / hand back | Xiryn | **Deferred** | depends on workstations |
 | Telegram remote control | Xiryn | **Deferred** | denied by capability policy; needs a bot bridge and pairing |
-| Encrypted vault / payments | Xiryn | **Deferred (deliberately)** | denied by capability policy; needs an audited encryption boundary |
+| Payment execution | Xiryn | **Deferred (deliberately)** | approval primitive exists; the processor and ledger do not |
 | Persistent multi-agent squads | Xiryn | **Partial** | delegation works; persistent authority is denied by capability policy |
 | MCP / hooks | Claude Code, OpenCode | **Deferred** | denied by capability policy; need a protocol/permission design |
 | Hosted multi-tenant accounts | product layer | **Deferred** | single token now; auth/quotas later |
@@ -75,7 +82,10 @@ made the loop **visible**, **durable**, **personal**, and **mobile**.
 - **MCP and hooks** need a protocol implementation and a permission design that
   survives prompt injection. Shipping them half-done would weaken the mediator.
 - **A vault and payment flows** should not be added to an unaudited local app.
-  The current README is explicit about that.
+  The vault primitive and approval gate are in place; the payment processor is
+  not, and the README is explicit about that.
+- **MCP and hooks** remain denied until they have a permission model that treats
+  every server and hook as hostile code, not as configuration.
 - **Multi-tenant accounts** are an M3 concern: token auth and path allowlists are
   in place, but quotas, object storage, and per-tenant isolation are not.
 

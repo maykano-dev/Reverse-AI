@@ -6,6 +6,7 @@ hard refusal to run *untrusted* code unless a backend can actually isolate it.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 from ..security.limits import ResourceLimits
@@ -18,6 +19,12 @@ class SandboxPolicy:
     read_only_system: bool = True
     drop_capabilities: bool = True
     new_session: bool = True
+    # Apply the x86_64 seccomp denylist where the backend supports it. The
+    # filter blocks namespace/kernel escape syscalls and never sandboxes the
+    # host process, only the sandboxed child. Set REVERSEAI_SECCOMP=0 only when
+    # a target needs a denied syscall and you accept the reduced boundary.
+    seccomp: bool = field(
+        default_factory=lambda: os.environ.get("REVERSEAI_SECCOMP", "1") != "0")
 
     # --- trust gate ---
     # Running an unknown/untrusted binary requires this to be explicitly True.

@@ -132,7 +132,7 @@
   <div class="grid g3">
     <div class="card"><div class="ico">01</div><h3>Evidence, not vibes</h3><p>Findings are tiered believed, observed, or verified. A build is never mistaken for a working change.</p></div>
     <div class="card"><div class="ico">02</div><h3>A visible mind</h3><p>A plan, a natural reasoning timeline, real tool cards, and the output behind each step. No raw tool names.</p></div>
-    <div class="card"><div class="ico">03</div><h3>Hardened by default</h3><p>Untrusted code runs in bubblewrap with no network and a read-only system. If nothing can contain it, it refuses.</p></div>
+    <div class="card"><div class="ico">03</div><h3>Hardened by default</h3><p>Untrusted code runs in bubblewrap with no network, a read-only system, dropped capabilities, and a seccomp denylist. If nothing can contain it, it refuses.</p></div>
     <div class="card"><div class="ico">04</div><h3>Remember and research</h3><p>Durable notes, web research with citations, and sources attached to the answer.</p></div>
     <div class="card"><div class="ico">05</div><h3>Works while you sleep</h3><p>Routines run on a schedule. Durable turns survive a reload or a restart. Reattach to the live stream.</p></div>
     <div class="card"><div class="ico">06</div><h3>Mobile first</h3><p>Installable PWA, drawer navigation, safe areas, touch-sized controls, and a composer that behaves on a phone.</p></div>
@@ -158,6 +158,17 @@
   <pre><code>verify_modification  -> exit, stdout, stderr, output files
 differential_test    -> corpus: matches, deltas, regressions
 GET /jobs/&lt;id&gt;/report(.html) -> signed JSON / self-contained HTML</code></pre>
+</section>
+
+<section class="wrap">
+  <div class="kicker">Durable proof</div>
+  <h2>The test outlives the chat.</h2>
+  <p class="sub">Capture how the original behaves once, then every later change has to keep that behavior. The signed report includes a replay recipe, so a teammate can reproduce the exact verification without a model or an API key. If a case regresses, delivery is blocked.</p>
+  <pre><code>capture_behavior_corpus -> corpora/&lt;sha256&gt;.json
+plan_and_modify use_corpus -> differential regression
+reverseai verify --original ... --modified ... --cases ... --report ...
+reverseai report verify report.json</code></pre>
+  <p class="muted" style="font-size:12px;color:var(--dim);margin-top:11px">Workspace checkpoints make every write reversible. A bounded diff shows what changed before you restore. Path traversal, symlinks, and device nodes are refused.</p>
 </section>
 
 <section id="how" class="wrap">
@@ -188,7 +199,7 @@ GET /jobs/&lt;id&gt;/report(.html) -> signed JSON / self-contained HTML</code></
   <div class="kicker">Unified, not cloned</div>
   <h2>One engine, many ideas.</h2>
   <p class="sub">The planning and tool discipline of coding agents, the memory, research, routines, and durable turns of personal agents, the long-document OCR of Unlimited-OCR, and the interaction language of prompt-kit. Mapped honestly, with deferred features named.</p>
-  <p><a href="https://github.com/maykano-dev/Reverse-AI/blob/main/docs/UNIFIED_AGENT.md">Read the feature map</a></p>
+  <p><a href="https://github.com/maykano-dev/Reverse-AI/blob/main/docs/UNIFIED_AGENT.md">Read the feature map</a> · <a href="https://github.com/maykano-dev/Reverse-AI/blob/main/docs/POWER.md">Read the power map</a></p>
 </section>
 
 <section id="deploy" class="wrap">

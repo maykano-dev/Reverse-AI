@@ -20,6 +20,7 @@ import os
 import shutil
 import tempfile
 
+from .. import seccomp
 from .._run import run_process
 from ..base import Sandbox, SandboxUnavailable
 from ..policy import SandboxPolicy
@@ -54,8 +55,12 @@ class BubblewrapSandbox(Sandbox):
             raise SandboxUnavailable("bwrap not found")
 
         workdir = tempfile.mkdtemp(prefix="reverseai-sbx-")
+        bpf_path: str | None = None
+        bpf_fd: int | None = None
         try:
-            bw_args = self._build_args(bwrap, policy, workdir)
+            if policy.seccomp and seccomp.available():
+                bpf_path, bpf_fd = seccomp.write_bpf()
+            bw_args = self._build_args(bwrap, policy, workdir, bpf_fd)
             full = bw_args + ["--"] + list(argv)
             isolation = Isolation(
                 backend=self.name,
@@ -64,7 +69,7 @@ class BubblewrapSandbox(Sandbox):
                 pid_namespace=True,
                 capabilities_dropped=policy.drop_capabilities,
                 resource_limited=True,
-                seccomp=False,
+                seccomp=bpf_fd is not None,
                 level=self.isolation_level(),
             )
             result = run_process(
@@ -78,13 +83,25 @@ class BubblewrapSandbox(Sandbox):
                 max_output=policy.max_output_bytes,
                 isolation=isolation,
                 stdin=stdin,
+                pass_fds=(bpf_fd,) if bpf_fd is not None else (),
             )
             result.extra["workdir"] = workdir
             return result
         finally:
+            if bpf_fd is not None:
+                try:
+                    os.close(bpf_fd)
+                except OSError:
+                    pass
+            if bpf_path:
+                try:
+                    os.unlink(bpf_path)
+                except OSError:
+                    pass
             shutil.rmtree(workdir, ignore_errors=True)
 
-    def _build_args(self, bwrap: str, policy: SandboxPolicy, workdir: str) -> list[str]:
+    def _build_args(self, bwrap: str, policy: SandboxPolicy, workdir: str,
+                    seccomp_fd: int | None = None) -> list[str]:
         args = [
             bwrap,
             "--die-with-parent",
@@ -106,6 +123,8 @@ class BubblewrapSandbox(Sandbox):
             args.append("--unshare-net")
         if policy.drop_capabilities:
             args += ["--cap-drop", "ALL"]
+        if seccomp_fd is not None:
+            args += ["--seccomp", str(seccomp_fd)]
 
         if policy.read_only_system:
             for path in _SYSTEM_ROBINDS:

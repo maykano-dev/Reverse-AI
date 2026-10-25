@@ -48,10 +48,12 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | Analysis engine | **working** | `core/` PE/ELF/Mach-O/APK, strings, disasm, heuristics, diff |
 | Agent orchestrator | **working** | `agent/` ReAct loop, conversation, mediator, evidence, job |
 | Provider layer | **working** | DeepSeek, OpenAI-compatible, Anthropic, Ollama, mock |
-| Sandbox/testing | **working** | bubblewrap, subprocess, experimental qiling, hard refusal |
-| Evidence/verify | **working** | tiers + audit + differential tests + repair loop + verified gate + signed reports |
+| Sandbox/testing | **working** | bubblewrap + seccomp, subprocess, experimental qiling, readiness preflight, hard refusal |
+| Evidence/verify | **working** | tiers + audit + differential tests + corpora + replay + repair loop + verified gate + signed reports |
 | Modification engine | **working** | strategy selector, planner, scoped blast radius, byte patches, LIEF edits |
 | Autonomous modify | **working** | choose -> plan -> implement -> verify -> signed report; mode override |
+| Workspace safety | **working** | auto-checkpoints, reviewable diff, conservative restore |
+| Control-flow analysis | **working** | bounded basic blocks, branch edges, call graph (capstone) |
 | Decompile | **working** | Ghidra headless + Java script for modern releases |
 | Clone | **working** | static fetch; opt-in headless render |
 | Memory/research/routines | **working** | durable notes, web sources, schedules |
@@ -59,7 +61,7 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | API + UI | **working** | stdlib HTTP + SSE, mobile-first PWA |
 | Multi-tenant product layer | **planned** | accounts, quotas, object storage, worker queue |
 
-## Current capability (v0.4.0)
+## Current capability (v0.5.0)
 
 Zero third-party dependencies required (stdlib + binutils; optional libs enhance):
 
@@ -68,9 +70,15 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   recovery, packer heuristics, string extraction, optional capstone
   disassembly, structural binary diff, APK structure + native ELF analysis.
 - **Sandbox lab:** hardened bubblewrap (namespaces, no network, caps dropped,
-  read-only system, tmpfs workdir), resource-limited subprocess, experimental
-  qiling; auto-selects the strongest backend and refuses untrusted execution
-  when none can contain it. Optional rootfs for qiling.
+  read-only system, tmpfs workdir, x86_64 seccomp denylist), resource-limited
+  subprocess, experimental qiling; auto-selects the strongest backend and
+  refuses untrusted execution when none can contain it. Optional rootfs for
+  qiling. The seccomp filter blocks ptrace, namespace/mount escape, module
+  loading, keyring, bpf, perf, io_uring, and similar attack-surface syscalls.
+- **Execution readiness:** `check_execution_readiness` and `reverseai readiness`
+  say up front whether a target is executable here, emulated with a configured
+  rootfs, or analysis-only. The agent must not promise a verified change it
+  cannot execute.
 - **Agent:** ReAct loop with policy-mediated tools (permission tiers, audit log,
   exception containment), evidence tiers, durable Job records + store, natural
   narration, plan/step events, cancellation, context compaction.
@@ -97,6 +105,19 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   artifacts across an auto-generated or agent-supplied corpus, comparing exit
   status, stdout, stderr, and declared output files; unexpected regressions are
   flagged.
+- **Behavioral corpora:** `capture_behavior_corpus` runs the original in the
+  sandbox, records exit/stdout/stderr/output-file behavior by target SHA-256, and
+  stores it. `verify_modification` and `plan_and_modify` can load it with
+  `use_corpus`, so a later change must keep the captured behavior. Missing
+  corpora are an honest failure, not a silent pass.
+- **Reproducible verification:** `reverseai verify --original ... --modified ...
+  --cases ... --report ...` runs the same differential proof without a model or
+  API key. `reverseai report verify` checks a signed report; every report now
+  includes a replay recipe, target/artifact hashes, and case names.
+- **Workspace checkpoints:** every modification auto-snapshots the workspace.
+  `review_workspace_changes` shows a bounded unified diff; `restore_workspace_checkpoint`
+  restores files and refuses overwrite unless explicitly allowed. Path traversal,
+  symlinks, and device nodes are refused.
 - **Signed verification reports:** `GET /jobs/<id>/report` (JSON) and
   `/report.html` (self-contained HTML), covering the goal, change, evidence
   tiers, tests, differential summary, artifact SHA-256, mode/strategy/plan,
@@ -114,6 +135,17 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   workstation, persistent squads, MCP, and hooks are denied by default. A future
   implementation must pass `security/capabilities.py` (master opt-in + specific
   opt-in + vault key) before it can touch the host, network, or secrets.
+- **Approval gate:** `security/approvals.py` issues short-lived, HMAC-signed,
+  single-use approvals scoped to one action and one target. `security/gate.py`
+  requires both the capability opt-in and a live approval for any irreversible
+  action, and writes an audit row. There is no ambient authority.
+- **Encrypted vault (optional):** `security/vault.py` is deny-by-default, needs
+  the `cryptography` package, derives a key with PBKDF2-HMAC-SHA256, and stores
+  Fernet ciphertext mode 0600. It refuses rather than falling back to a homemade
+  cipher or plaintext.
+- **Control-flow analysis:** `core/cfg.py` builds bounded basic blocks, branch
+  edges, call targets, and a rough cyclomatic complexity from capstone. It is an
+  observed map, not a decompiler or reachability proof.
 - **Decompile:** Ghidra headless with a Java GhidraScript for modern Ghidra and
   JDK-range detection. Optional.
 - **OCR:** Baidu Unlimited-OCR via an OpenAI-compatible vLLM/SGLang endpoint,
@@ -125,8 +157,9 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 - **Service + UI:** stdlib HTTP API with SSE, optional bearer auth, path
   allowlists, mobile-first PWA with a thinking timeline, sources, artifacts,
   memory, routines, usage, feedback, notifications, and speech input.
-- **CLI:** `analyze`, `diff`, `caps`, `sandbox run`, `agent run`, `bench run`,
-  `serve`.
+- **CLI:** `analyze`, `diff`, `cfg`, `caps`, `capabilities`, `readiness`, `sandbox run`,
+  `verify`, `corpus capture|list|show`, `report verify|render`, `agent run`,
+  `bench`, `serve`.
 
 ## Important modules
 
@@ -144,8 +177,18 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 | `reverseai/server/runs.py` | Durable runs, reattach, restore |
 | `reverseai/server/app.py` | HTTP API, auth, path guard, static assets |
 | `reverseai/sandbox/` | Isolation backends + policy, including bounded stdin |
-| `reverseai/verify/` | Behavioral comparison, differential corpus, repair loop, signed report |
+| `reverseai/verify/` | Behavioral comparison, corpora, replay, repair loop, signed report |
+| `reverseai/verify/corpus.py` | Durable original-behavior corpus by target SHA-256 |
+| `reverseai/verify/replay.py` | Model-free verification and replay recipes |
 | `reverseai/agent/verify_tools.py` | `verify_modification` and `differential_test` |
+| `reverseai/agent/corpus_tools.py` | `capture_behavior_corpus` |
+| `reverseai/checkpoints.py` | Workspace snapshots, diff review, safe restore |
+| `reverseai/sandbox/seccomp.py` | x86_64 cBPF denylist for bubblewrap/child |
+| `reverseai/sandbox/readiness.py` | Native/emulated/analysis-only preflight |
+| `reverseai/core/cfg.py` | Basic-block and call graph |
+| `reverseai/security/approvals.py` | Signed, expiring, single-use approvals |
+| `reverseai/security/gate.py` | Capability + approval + audit gate |
+| `reverseai/security/vault.py` | Optional encrypted credential vault |
 | `reverseai/modify/strategy.py` | Strategy scoring, mode mapping, confidence, clarification |
 | `reverseai/modify/planner.py` | Ordered plan, components, blast radius, scoped requests |
 | `reverseai/agent/modify_engine.py` | `choose_modification_strategy` and `plan_and_modify` |
@@ -167,7 +210,18 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 python3 -m reverseai analyze /path/to/binary
 python3 -m reverseai analyze /path/to/binary --json
 python3 -m reverseai serve
-python3 -m unittest discover -s tests -v   # 240+ tests, no API key
+python3 -m unittest discover -s tests -v   # 290+ tests, no API key
+```
+
+Model-free verification and replay:
+
+```bash
+python3 -m reverseai verify --original ./app --modified ./app.patched \
+  --cases cases.json --report report.html
+python3 -m reverseai corpus capture --target ./app --cases smoke.json
+python3 -m reverseai report verify report.json
+python3 -m reverseai readiness ./app
+python3 -m reverseai cfg ./app --functions 8
 ```
 
 Verification/report endpoints:
@@ -196,8 +250,14 @@ GET /jobs/<id>/report.html  self-contained HTML
   verified if only the intended input was tested.
 - Signed reports are integrity evidence, not proof of truth: they show what was
   tested. Do not imply that a SHA-256/HMAC makes a weak test strong.
+- Snapshot before writing. A modification should be reversible, and a restore
+  must never extract a symlink, device node, absolute path, or `..`.
+- Keep the seccomp denylist additive and conservative. If a syscall is needed by
+  ordinary programs, do not add it just because it sounds dangerous. Report
+  `seccomp=False` when the filter was not actually applied.
 - Do not add a vault, payments, remote control, live workstation, or persistent
   squads without a separate threat model. They are denied by
-  `security/capabilities.py`; keep that default.
+  `security/capabilities.py`; keep that default. Any future irreversible action
+  must also pass `security/gate.py` with a live, scoped approval.
 - Update `docs/UNIFIED_AGENT.md` when a capability moves from partial/deferred
   to implemented.

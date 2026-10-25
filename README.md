@@ -16,7 +16,7 @@
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
-  <img alt="tests" src="https://img.shields.io/badge/tests-240%2B%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-290%2B%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
   <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
@@ -26,6 +26,8 @@
   <a href="#quick-start">Quick start</a> ·
   <a href="#whats-new-in-02">What's new</a> ·
   <a href="docs/UNIFIED_AGENT.md">Feature map</a> ·
+  <a href="docs/POWER.md">Power map</a> ·
+  <a href="docs/VERIFYING.md">Reproducible verification</a> ·
   <a href="#deploy-it">Deploy</a> ·
   <a href="docs/SECURITY.md">Security</a> ·
   <a href="CHANGELOG.md">Changelog</a>
@@ -43,6 +45,20 @@ Most "AI + reverse engineering" demos stop at describing a binary. ReverseAI clo
 - **Untrusted by default.** Analysis is pure. Execution happens only inside a hardened bubblewrap sandbox (no network, dropped capabilities, read-only system, tmpfs workdir) and is refused when nothing can contain it.
 - **A real working memory.** Durable notes, web research with citations, scheduled routines, specialist agents, and conversations that survive a reload or a server restart.
 - **Mobile first.** A PWA that works as a full chat app on a phone, with a drawer, safe areas, touch-sized controls, and an installable manifest.
+
+## What's new in 0.5
+
+| Area | What landed |
+|---|---|
+| **Behavioral corpora** | `capture_behavior_corpus` records the original program's exit/stdout/stderr/output-file behavior by target SHA-256. Later changes can load it with `use_corpus`, so a regression on a previously observed input blocks delivery. |
+| **Model-free verification** | `reverseai verify --original ... --modified ... --cases ... --report ...` runs the same proof without a model or API key. `reverseai report verify` checks the signature. |
+| **Replay recipes** | Every signed report now includes the original and modified hashes, case names, and a copy-paste command to reproduce the verification. |
+| **Workspace checkpoints** | Every modification snapshots the workspace first. Review a bounded diff, then restore. Symlinks, device nodes, absolute paths, and `..` are refused. |
+| **Execution readiness** | `readiness` and `check_execution_readiness` say whether a target is executable here, emulated with a configured rootfs, or analysis-only. A PE/Mach-O on Linux is not promised as behaviorally verified. |
+| **seccomp denylist** | bubblewrap now installs an x86_64 cBPF filter that blocks ptrace, namespace/mount escape, module loading, keyring, bpf, perf, io_uring, and similar attack-surface syscalls. The report records whether it was actually applied. |
+| **Control-flow maps** | `cfg` and `build_control_flow_graph` produce bounded basic blocks, branch edges, call targets, and rough cyclomatic complexity. |
+| **Approvals + gate** | Irreversible actions need a capability opt-in *and* a live, scoped, single-use HMAC approval. Every decision is audited. There is no ambient authority. |
+| **Encrypted vault** | Optional Fernet vault with PBKDF2-HMAC-SHA256, mode 0600, deny-by-default capability, and no plaintext fallback. |
 
 ## What's new in 0.4
 
@@ -107,6 +123,7 @@ No third-party packages are needed for the core. Python 3.11+ and standard binut
 ```bash
 pip install -e ".[enhanced]"       # lief, capstone, pyelftools
 pip install -e ".[ocr]"            # pytesseract, pillow, pymupdf
+pip install -e ".[vault]"          # cryptography for the optional encrypted vault
 ```
 
 ### CLI
@@ -120,6 +137,25 @@ python3 -m reverseai diff ./app ./app.patched
 
 # What can this host do (sandbox backends, emulators, optional libs)?
 python3 -m reverseai caps
+
+# Which high-risk capabilities are enabled? (all denied by default)
+python3 -m reverseai capabilities
+
+# Can this target be executed and verified here, or only analyzed?
+python3 -m reverseai readiness ./sample
+
+# Basic-block and call graph
+python3 -m reverseai cfg ./sample --functions 8
+
+# Verify a modification without a model, and sign the result
+python3 -m reverseai verify --original ./sample --modified ./sample.patched \
+  --cases cases.json --report report.html
+
+# Capture a durable regression corpus from the original
+python3 -m reverseai corpus capture --target ./sample --cases smoke.json
+
+# Check a signed report
+python3 -m reverseai report verify report.json
 
 # Run a command in the hardened sandbox
 python3 -m reverseai sandbox run --untrusted -- /bin/echo "hello from the lab"
@@ -312,7 +348,11 @@ has no regression inputs.
 | `REVERSEAI_MONTHLY_BUDGET` | Pause paid models after this many USD |
 | `REVERSEAI_MAX_REPAIR_ATTEMPTS` | Verification repair attempts (default 3, max 10) |
 | `REVERSEAI_ENABLE_DANGEROUS_CAPABILITIES` | Master opt-in for deferred high-risk capabilities (default off) |
+| `REVERSEAI_APPROVAL_KEY` | HMAC key for short-lived action approvals (optional) |
+| `REVERSEAI_VAULT_KEY` | Key material for the optional encrypted vault (optional) |
 | `REVERSEAI_REPORT_KEY` | HMAC key for signed verification reports (optional) |
+| `REVERSEAI_QILING_ROOTFS` | Rootfs for emulated foreign-platform execution (optional) |
+| `REVERSEAI_SECCOMP` | Set `0` to disable the seccomp denylist (default on) |
 | `REVERSEAI_UPLOAD_MAX_MB` | Upload ceiling (default 512 MiB) |
 | `REVERSEAI_STORE` | Job/event/conversation/artifact storage |
 | `REVERSEAI_SEARCH_URL` | SearXNG-compatible research endpoint |
@@ -336,7 +376,7 @@ Copy [`.env.example`](.env.example) to `.env` for a local setup. Never commit it
 - Previewed and cloned sites run in an opaque-origin iframe with no access to the app.
 - Secrets are redacted from logs; the model key never reaches the browser.
 
-Known gaps are listed honestly in [`docs/SECURITY.md`](docs/SECURITY.md): no seccomp filter, shared-kernel namespace sandbox, Ghidra runs on the host, and no multi-tenant isolation yet. High-risk capabilities (remote control, vault, payments, live workstation, squads, MCP, hooks) are not implemented and are denied by default in `security/capabilities.py`.
+Known gaps are listed honestly in [`docs/SECURITY.md`](docs/SECURITY.md): the sandbox still shares the host kernel, Ghidra runs on the host, Landlock/cgroup enforcement is detected but not yet applied, and multi-tenant isolation is not built. High-risk capabilities (remote control, payments, live workstation, squads, MCP, hooks) are not implemented and are denied by default in `security/capabilities.py`; a future implementation must also pass the approval and audit gate in `security/gate.py`.
 
 Use ReverseAI for interoperability, security research, debugging, recovering your own work, and authorized testing. Analyze and modify only software and sites you own or are authorized to work on.
 

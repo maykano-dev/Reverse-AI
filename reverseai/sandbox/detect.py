@@ -28,6 +28,9 @@ class Capabilities:
     capstone: bool = False
     lief: bool = False
     angr: bool = False
+    seccomp: bool = False
+    landlock: bool = False
+    cgroup_v2: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -57,7 +60,36 @@ def _lib(name: str) -> bool:
         return False
 
 
+def _cgroup_v2() -> bool:
+    import os
+
+    try:
+        with open("/proc/self/cgroup", "r", encoding="utf-8") as fh:
+            return "0::" in fh.read()
+    except OSError:
+        return False
+
+
+def _landlock() -> bool:
+    """Best-effort: Landlock ABI is exposed by the kernel as a syscall."""
+    import os
+    import platform
+
+    if platform.system().lower() != "linux" or os.name != "posix":
+        return False
+    try:
+        # landlock_create_ruleset(NULL, 0, LANDLOCK_CREATE_RULESET_VERSION=1)
+        import ctypes
+
+        libc = ctypes.CDLL(None, use_errno=True)
+        result = libc.syscall(444, None, 0, 1)
+        return result > 0
+    except Exception:
+        return False
+
+
 def detect_capabilities() -> Capabilities:
+    from . import seccomp
     from .backends.bubblewrap import _userns_available
 
     return Capabilities(
@@ -73,4 +105,7 @@ def detect_capabilities() -> Capabilities:
         capstone=_lib("capstone"),
         lief=_lib("lief"),
         angr=_lib("angr"),
+        seccomp=seccomp.available() and (shutil.which("bwrap") is not None),
+        landlock=_landlock(),
+        cgroup_v2=_cgroup_v2(),
     )

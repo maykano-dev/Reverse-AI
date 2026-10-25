@@ -71,6 +71,12 @@ the proxy forward to it. If you expose it directly, keep the token on.
 | Ghidra | `REVERSEAI_GHIDRA`, `REVERSEAI_JDK` | Decompilation |
 | Qiling | `REVERSEAI_QILING_ROOTFS` | Foreign-platform emulation |
 | Report signing | `REVERSEAI_REPORT_KEY` | HMAC-SHA256 verification reports |
+| Action approvals | `REVERSEAI_APPROVAL_KEY` | Short-lived, scoped approvals for future irreversible actions |
+| Encrypted vault | `REVERSEAI_VAULT_KEY` | Optional vault key; keep high-risk capabilities off |
+
+Never enable `REVERSEAI_ENABLE_DANGEROUS_CAPABILITIES` on a shared public
+instance just to "try" a feature. Read `docs/SECURITY.md` first; the master
+switch alone is not enough, and a live approval is also required.
 
 Verification bounds: `REVERSEAI_MAX_REPAIR_ATTEMPTS` (default 3, max 10).
 Reports are served at `/jobs/<id>/report` and `/jobs/<id>/report.html`.

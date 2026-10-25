@@ -87,6 +87,8 @@ const P = {
   book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
   play: '<polygon points="6 3 20 12 6 21 6 3"/>',
   refresh: '<path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/>',
+  bookmark: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+  undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
 };
 function ic(name, size) {
   const s = size || 18;
@@ -1198,6 +1200,7 @@ const TOOL_LABELS = {
   list_strings: "Reading text in the file",
   disassemble: "Reading the machine code",
   list_functions: "Mapping functions",
+  build_control_flow_graph: "Mapping control flow",
   analyze_apk: "Opening the app package",
   assess_heuristics: "Checking for risk signals",
   run_in_sandbox: "Running it in the sandbox",
@@ -1206,8 +1209,14 @@ const TOOL_LABELS = {
   verify_against_original: "Comparing both versions",
   verify_modification: "Proving the change in the sandbox",
   differential_test: "Testing across a set of inputs",
+  capture_behavior_corpus: "Recording the original behavior",
   choose_modification_strategy: "Choosing the safest way to change it",
   plan_and_modify: "Planning and making the change",
+  check_execution_readiness: "Checking whether it can be run",
+  create_workspace_checkpoint: "Taking a checkpoint",
+  list_workspace_checkpoints: "Listing checkpoints",
+  review_workspace_changes: "Reviewing the diff",
+  restore_workspace_checkpoint: "Restoring a checkpoint",
   diff_modified: "Checking what changed",
   extract_archive: "Unpacking the archive safely",
   clone_website: "Rebuilding the site",

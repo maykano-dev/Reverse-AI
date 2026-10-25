@@ -40,6 +40,13 @@ services:
       # in the browser. Without it reports use a plain SHA-256 integrity hash.
       - key: REVERSEAI_REPORT_KEY
         sync: false
+      # Optional: short-lived HMAC approvals for future irreversible actions.
+      - key: REVERSEAI_APPROVAL_KEY
+        sync: false
+      # High-risk capabilities remain off. Do not flip the master switch on a
+      # shared instance without reading docs/SECURITY.md.
+      - key: REVERSEAI_ENABLE_DANGEROUS_CAPABILITIES
+        value: "0"
       - key: REVERSEAI_UPLOAD_MAX_MB
         value: "512"
       # Headless Chromium parsing an untrusted page is an attack surface on a

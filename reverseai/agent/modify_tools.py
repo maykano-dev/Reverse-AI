@@ -27,6 +27,20 @@ def _invalidate_verification(ctx: ToolContext) -> None:
         ctx.extra.pop(key, None)
 
 
+def _auto_checkpoint(ctx: ToolContext, label: str) -> str | None:
+    """Snapshot the workspace before a write, so the change is reversible."""
+    store = ctx.extra.get("checkpoint_store")
+    if store is None:
+        return None
+    try:
+        cp = store.create(label=label, note="automatic pre-modification snapshot")
+        ctx.extra["last_checkpoint"] = cp.id
+        return cp.id
+    except Exception:
+        # A failed snapshot must not block the operation, but it is recorded.
+        return None
+
+
 class ApplyBytePatchTool(Tool):
     name = "apply_byte_patch"
     description = (
@@ -80,6 +94,7 @@ class ApplyBytePatchTool(Tool):
 
         # Descriptive, unique output name: "<stem>-patched-<intent>-<token>".
         tp = Path(target)
+        _auto_checkpoint(ctx, f"before patch: {Path(target).name}")
         out_name = args.get("output_name") or artifact_name(
             target, ctx.goal, "patch", suffix=tp.suffix)
         try:
@@ -208,6 +223,7 @@ class AddImportTool(Tool):
         from ..modify.lief_ops import LiefOpError, LiefUnavailable, add_imported_library
 
         target = _require_target(ctx)
+        _auto_checkpoint(ctx, f"before import: {args['library']}")
         out_name = artifact_name(target, ctx.goal, "imports",
                                  suffix=Path(target).suffix)
         try:
@@ -246,6 +262,7 @@ class AddSectionTool(Tool):
         from ..modify.lief_ops import LiefOpError, LiefUnavailable, add_section
 
         target = _require_target(ctx)
+        _auto_checkpoint(ctx, f"before section: {args.get('name', 'section')}")
         try:
             content = bytes.fromhex(args["content_hex"])
         except ValueError as exc:

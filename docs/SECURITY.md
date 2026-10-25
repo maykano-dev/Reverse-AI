@@ -80,6 +80,7 @@ backend the host offers. On a typical Linux host that is **bubblewrap**:
 | No host env / secrets | `--clearenv`, explicit minimal env | tested |
 | Privilege reduction | `--unshare-user`, `--cap-drop ALL` | enforced |
 | Input injection | `--new-session` (blocks TIOCSTI) | enforced |
+| Dangerous syscalls | x86_64 cBPF denylist via `--seccomp FD` (ptrace, mount/namespace escape, modules, keyring, bpf, perf, io_uring, …) | enforced when supported + tested |
 | Resource exhaustion | RLIMIT cpu/mem/fsize/nofile + wall-clock timeout + process-group kill | tested |
 | Lifetime | `--die-with-parent`; ephemeral workdir removed | enforced |
 
@@ -122,10 +123,21 @@ implementation cannot be switched on by accident:
   host, the network, or stored credentials.
 - `/config` reports only which high-risk capabilities are enabled, never the
   secrets.
+- **A second gate covers irreversibility.** `security/gate.py` requires a live,
+  scoped, single-use approval issued by `security/approvals.py` (HMAC-SHA256,
+  short TTL, action and scope bound) and writes an append-only audit row. A
+  capability switch alone is not permission to charge a card, take over a
+  desktop, or run a remote command.
+- **The vault is optional and refuses to weaken.** `security/vault.py` requires
+  the `cryptography` package, derives a key with PBKDF2-HMAC-SHA256, stores
+  Fernet ciphertext at mode 0600, and raises rather than falling back to a
+  homemade cipher or plaintext.
 
 A payments vault and a remote desktop are not "features to add quickly." They
 need a separate threat model, human approval for irreversible actions, and an
-audited encryption boundary. Until then, refusal is the correct behavior.
+audited encryption boundary. Until then, refusal is the correct behavior. The
+approval and vault primitives exist so a future implementation cannot invent a
+weaker boundary.
 
 ## Verified delivery and reports
 
@@ -153,12 +165,17 @@ audited encryption boundary. Until then, refusal is the correct behavior.
 
 ## Known limitations (honest)
 
-- **No seccomp or landlock filter yet.** Namespaces and capability dropping are
-  strong, but a per-task syscall allowlist is not implemented.
+- **seccomp is a denylist, only on x86_64 Linux.** It blocks a curated set of
+  escape and attack-surface syscalls, not every unused syscall. An allowlist is
+  stronger but breaks more ordinary programs; it is a future VM/container
+  profile. On other architectures the report says `seccomp=False`.
+- **No Landlock enforcement yet.** Landlock ABI detection is reported, but a
+  per-task filesystem policy is not applied. bubblewrap's mount namespace is the
+  current filesystem boundary.
 - **Shared kernel.** A kernel exploit could escape a namespace sandbox. Use a VM
   backend for highly suspicious samples.
-- **No cgroup v2 limits.** Process count and memory rely on RLIMIT and PID
-  namespaces.
+- **No cgroup v2 enforcement.** cgroup v2 detection is reported, but process
+  count and memory rely on RLIMIT and PID namespaces.
 - **Static parsers run in-process.** The pure-Python parsers are bounded and
   exception-safe, but they share the host interpreter. Ghidra and optional
   heavy parsers also run on the host.
@@ -173,8 +190,14 @@ audited encryption boundary. Until then, refusal is the correct behavior.
   silently run on the host. In that case verification cannot pass and the
   artifact is withheld.
 - **Verification is only as good as the declared inputs.** A passing test proves
-  the listed cases, not every possible input. The differential corpus helps, but
-  it is not exhaustive.
+  the listed cases, not every possible input. Captured corpora help, but they are
+  still a sample. A corpus is keyed by target SHA-256; if the original changes,
+  capture it again.
+- **Checkpoints are not a backup.** They live beside the workspace and are
+  pruned by the operator, not by ReverseAI. Restore refuses unsafe archive
+  members, but it is not a substitute for version control.
+- **The replay recipe is not a proof by itself.** It reproduces the declared
+  cases. Read the report first, then run it.
 
 ## Reporting
 

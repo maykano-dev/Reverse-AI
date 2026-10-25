@@ -20,6 +20,7 @@ _TOOL_ICON = {
     "list_strings": "file",
     "disassemble": "code",
     "list_functions": "bars",
+    "build_control_flow_graph": "chart",
     "analyze_apk": "box",
     "assess_heuristics": "alert",
     "run_in_sandbox": "terminal",
@@ -28,8 +29,14 @@ _TOOL_ICON = {
     "verify_against_original": "check",
     "verify_modification": "check",
     "differential_test": "bars",
+    "capture_behavior_corpus": "memory",
     "choose_modification_strategy": "search",
     "plan_and_modify": "sparkle",
+    "check_execution_readiness": "check",
+    "create_workspace_checkpoint": "bookmark",
+    "list_workspace_checkpoints": "bookmark",
+    "review_workspace_changes": "bars",
+    "restore_workspace_checkpoint": "undo",
     "diff_modified": "bars",
     "extract_archive": "archive",
     "clone_website": "globe",
@@ -91,6 +98,9 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "disassemble":
         title = "Reading the machine code"
         detail = "Turning bytes back into instructions."
+    elif name == "build_control_flow_graph":
+        title = "Mapping the control flow"
+        detail = "Finding basic blocks, branches, and call targets."
     elif name == "list_functions":
         title = "Mapping the functions"
         detail = "Finding named routines and where they live."
@@ -120,6 +130,21 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "differential_test":
         title = "Testing across a set of inputs"
         detail = "Comparing the original and the change for unexpected regressions."
+    elif name == "capture_behavior_corpus":
+        title = "Recording how the original behaves"
+        detail = "Saving a reusable regression suite before changing anything."
+    elif name == "check_execution_readiness":
+        title = "Checking whether this target can actually be run"
+        detail = "Separating what can be analyzed from what can be verified behaviorally."
+    elif name in ("create_workspace_checkpoint", "list_workspace_checkpoints"):
+        title = "Taking a checkpoint"
+        detail = "Making the current workspace reversible before a change."
+    elif name == "review_workspace_changes":
+        title = "Reviewing what changed"
+        detail = "Showing the diff against the last checkpoint."
+    elif name == "restore_workspace_checkpoint":
+        title = "Restoring a checkpoint"
+        detail = "Putting the workspace back to a known state."
     elif name == "choose_modification_strategy":
         title = "Choosing the safest way to make the change"
         detail = "Comparing a resource edit, a byte patch, a component swap, a rebuild, and a reimplementation."

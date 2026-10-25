@@ -78,6 +78,13 @@ class ServerTests(unittest.TestCase):
         self.assertIn("ready", body)
         self.assertIsInstance(body["ready"], bool)
 
+    def test_capabilities_are_denied_by_default(self):
+        status, body = _get(f"{self.base}/capabilities")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["default"], "deny")
+        self.assertFalse(body["capabilities"]["remote_control"]["allowed"])
+        self.assertFalse(body["capabilities"]["payments"]["allowed"])
+
     def test_api_modify_and_download(self):
         with tempfile.TemporaryDirectory() as d:
             src = Path(d) / "data.bin"

@@ -1,8 +1,22 @@
 # ReverseAI: Roadmap and Status
 
-A living map of what exists and what comes next. Updated with v0.4.0.
+A living map of what exists and what comes next. Updated with v0.5.0.
 
 ## Done
+
+### v0.5.0: durable proof, replay, and a harder sandbox
+
+- **Behavioral corpora**: capture the original's behavior by target hash and
+  replay it as regression controls. Missing corpora fail honestly.
+- **Model-free verification**: `reverseai verify` and signed replay recipes.
+- **Checkpoints and undo**: automatic snapshots, diff review, safe restore.
+- **Execution readiness**: native vs emulated vs analysis-only before a change.
+- **seccomp**: x86_64 denylist through bubblewrap, recorded in the report.
+- **Control-flow graphs**: basic blocks, edges, call targets, complexity.
+- **Approvals and action gate**: capability + live scoped approval + audit.
+- **Optional encrypted vault**: PBKDF2 + Fernet, deny-by-default.
+- **Tests**: 292, including corpus replay, CLI verification, checkpoint attacks,
+  readiness, seccomp, CFG, approvals, gate, and vault.
 
 ### v0.4.0: autonomous modification engine
 
@@ -78,23 +92,29 @@ A living map of what exists and what comes next. Updated with v0.4.0.
 ## Next (priority order)
 
 ### M2: depth and safety
-- [ ] seccomp-bpf and landlock profile for the sandbox.
-- [ ] cgroup v2 limits for bubblewrap and subprocess.
+- [x] seccomp-bpf denylist for the sandbox (x86_64 bubblewrap).
+- [x] automatic test generation from observed behavior (record -> replay).
+- [x] checkpoints and undo for the workspace.
+- [x] inline diff review and a restore surface.
+- [x] bounded control-flow and call graphs.
+- [x] action approvals and an audit gate.
+- [ ] landlock profile and cgroup v2 enforcement.
 - [ ] mutation/fuzz testing and a curated per-target corpus.
-- [ ] automatic test generation from observed behavior (record -> replay).
 - [ ] structured failure diagnosis between repair attempts.
 - [ ] MCP client with mediator permissions.
 - [ ] pre/post tool hooks with an operator policy.
-- [ ] checkpoints and undo for conversations.
-- [ ] inline diff review and a patch approval surface.
 - [ ] more PE/Mach-O structure (resources, TLS, dyld export trie).
+- [ ] foreign-platform execution via Qiling rootfs or a QEMU VM, end to end.
+- [ ] a GitHub Action that runs `reverseai verify` on a pull request.
 
 ### M3: product surface
 - [ ] per-user accounts, quotas, and usage metering.
 - [ ] upload-based multi-tenant API and object storage for artifacts.
 - [ ] Redis/worker queue + Postgres job store; resume/cancel across workers.
+- [x] shareable reports with a replay recipe and signature check.
 - [ ] shareable conversations and artifact links.
-- [ ] a public landing page (GitHub Pages) and a hosted demo.
+- [x] a public landing page (GitHub Pages).
+- [ ] a hosted demo of the Python app (Render blueprint is ready).
 
 ### M4: the model
 - [ ] harvest verified job traces into a dataset, respecting licensing.
@@ -105,14 +125,18 @@ A living map of what exists and what comes next. Updated with v0.4.0.
 ### The personal-agent layer (deferred, deliberately)
 - [ ] Docker workstation per agent with a live desktop and take-over.
 - [ ] Telegram remote control and pairing.
-- [ ] encrypted vault for credentials and payment approval.
+- [x] encrypted vault primitive for credentials (optional; no payment execution).
+- [ ] payment execution with human approval and a real ledger.
 - [ ] persistent multi-agent squads with shared artifacts.
 
 These are real product surfaces, not one-line features. They need a separate
 threat model and should not be rushed into an unaudited local app. A deny-by-
 default capability policy (`security/capabilities.py`) now makes accidental
 enablement impossible: a master switch, a per-capability switch, and an
-encryption key are required before any future implementation can start.
+encryption key are required before any future implementation can start. The
+approval ledger (`security/approvals.py`) and action gate (`security/gate.py`)
+provide the human-in-the-loop boundary those features must use. The listener,
+pairing flow, desktop backend, and payment processor are still absent on purpose.
 
 ## Known gaps and debts
 
@@ -120,7 +144,11 @@ encryption key are required before any future implementation can start.
 - No multi-tenant isolation yet.
 - A single access token, no per-user accounts.
 - `read_target` refuses symlinked agent targets (conservative default).
-- Workstation, Telegram, vault, MCP, and hooks are not implemented.
+- Workstation, Telegram, payments, MCP, and hooks are not implemented. The vault
+  and approval primitives exist; the dangerous surfaces do not.
+- seccomp is a denylist on x86_64 only; landlock and cgroup enforcement are not
+  applied yet.
+- Foreign-platform execution needs a configured Qiling rootfs or a QEMU VM.
 - The CI/Pages workflows are staged in `docs/github-workflows/` until a token
   with the `workflow` scope can push them.
 - Cost estimates are approximate and must be overridden for exact pricing.

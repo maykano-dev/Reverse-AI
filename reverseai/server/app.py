@@ -4,6 +4,7 @@ Endpoints (JSON in / JSON out):
   GET  /health            -> {status, version}
   GET  /config            -> readiness + feature flags (never the model)
   GET  /caps              -> host capabilities
+  GET  /capabilities      -> high-risk capability policy (deny by default)
   GET  /templates         -> agent roles / squads
   GET  /skills            -> installed playbooks
   GET  /memory            -> long-term notes
@@ -254,6 +255,13 @@ class _Handler(BaseHTTPRequestHandler):
             payload["can_run_untrusted"] = caps.can_run_untrusted()
             payload["best_isolation"] = caps.best_isolation()
             return self._send(200, payload)
+        if path == "/capabilities":
+            from ..security.capabilities import CapabilityPolicy
+
+            return self._send(200, {
+                "default": "deny",
+                "capabilities": CapabilityPolicy().status(),
+            })
         if path == "/templates":
             return self._send(200, {"templates": [t.to_dict() for t in all_templates()]})
         if path == "/skills":
@@ -450,6 +458,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "verification": True,
                 "differential_testing": True,
                 "signed_reports": True,
+                "behavioral_corpora": True,
             },
             "ocr": {
                 "unlimited": unlimited_ocr_available(),

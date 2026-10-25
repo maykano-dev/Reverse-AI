@@ -17,6 +17,8 @@ from .difftest import (
 )
 from .regression import VerificationReport, compare_execution
 from .repair import Attempt, RepairLoop, RepairResult, verification_passes
+from .corpus import CorpusError, CorpusStore, capture_corpus, target_sha256
+from .replay import load_cases, replay_record, write_reports
 from .report import (
     ReportError,
     build_from_job,
@@ -48,4 +50,11 @@ __all__ = [
     "render_html",
     "sign_report",
     "verify_signature",
+    "CorpusStore",
+    "CorpusError",
+    "capture_corpus",
+    "target_sha256",
+    "load_cases",
+    "replay_record",
+    "write_reports",
 ]

@@ -3,7 +3,11 @@
 Commands:
   analyze <file>            static analysis report
   caps                      show host sandbox/analysis capabilities
+  readiness <file>          can this target be executed and verified here?
   sandbox run -- <argv...>  run a command in the hardened sandbox
+  verify                    signed behavioral verification without a model
+  corpus                    capture/list/replay durable behavioral corpora
+  report                    verify or render a signed report
   agent run --goal ...      run an autonomous investigation
 """
 
@@ -12,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from .core import analyze_file
 
@@ -107,6 +112,239 @@ def _cmd_diff(args: argparse.Namespace) -> int:
         print(f"  section changed: {ch['name']} raw_size {ch['raw_size']} "
               f"entropy {ch['entropy']} flags {ch['flags']}")
     return 0
+
+
+def _cmd_cfg(args: argparse.Namespace) -> int:
+    from .core.cfg import analyze_control_flow
+
+    try:
+        flow = analyze_control_flow(args.path, max_functions=args.functions)
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(flow.to_dict(), indent=2))
+        return 0
+    print(f"functions: {len(flow.functions)}  blocks: "
+          f"{sum(len(f.blocks) for f in flow.functions)}  calls: "
+          f"{sum(len(f.calls) for f in flow.functions)}")
+    for f in flow.functions:
+        print(f"  {f.name} @ 0x{f.address:x}: {len(f.blocks)} blocks, "
+              f"{f.edges} edges, complexity {f.cyclomatic_complexity}")
+        for b in f.blocks[:args.show_blocks]:
+            succ = ", ".join(f"0x{s:x}" for s in b.successors) or "none"
+            print(f"    0x{b.address:x} .. 0x{b.end:x}  {b.terminator}  -> {succ}")
+    if flow.warnings:
+        print("warnings: " + "; ".join(flow.warnings))
+    return 0
+
+
+def _cmd_approvals(args: argparse.Namespace) -> int:
+    import os
+    from .security.approvals import ApprovalError, ApprovalLedger
+
+    base = os.environ.get("REVERSEAI_STORE", "").strip()
+    directory = args.dir or (str(Path(base) / "approvals") if base else None)
+    ledger = ApprovalLedger(directory)
+    if args.approvals_cmd == "list":
+        rows = ledger.pending()
+        if args.json:
+            print(json.dumps(rows, indent=2))
+        elif not rows:
+            print("No live approvals.")
+        else:
+            for row in rows:
+                print(f"{row['id']}  {row['action']}  scope={row['scope']!r}  "
+                      f"uses={row.get('uses', 0)}/{row.get('max_uses', 1)}  "
+                      f"expires={row.get('expires_at')}")
+        return 0
+    if args.approvals_cmd == "grant":
+        try:
+            grant = ledger.grant(args.action, args.scope, args.reason,
+                                 ttl_seconds=args.ttl,
+                                 max_uses=args.max_uses)
+        except ApprovalError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if args.json:
+            print(json.dumps(grant.to_dict(), indent=2))
+        else:
+            print(grant.token)
+            print(f"action={grant.approval.action} scope={grant.approval.scope!r} "
+                  f"expires_in={int(args.ttl)}s uses={grant.approval.max_uses}",
+                  file=sys.stderr)
+        return 0
+    return 2
+
+
+def _cmd_capabilities(args: argparse.Namespace) -> int:
+    from .security.capabilities import CapabilityPolicy
+
+    status = CapabilityPolicy().status()
+    if args.json:
+        print(json.dumps(status, indent=2))
+        return 0
+    for name, row in status.items():
+        mark = "on " if row.get("allowed") else "off"
+        print(f"  [{mark}] {name:<20} risk={row.get('risk')}  {row.get('reason')}")
+    return 0
+
+
+def _cmd_readiness(args: argparse.Namespace) -> int:
+    from .sandbox.readiness import assess_execution
+    from .sandbox import SandboxPolicy
+
+    policy = SandboxPolicy(allow_untrusted_execution=True,
+                           timeout_seconds=args.timeout)
+    result = assess_execution(args.path, policy)
+    if args.json:
+        print(json.dumps(result.to_dict(), indent=2))
+        return 0 if result.verdict in ("executable", "emulated") else 1
+    print(f"Target:     {result.target}")
+    print(f"Format:     {result.format}")
+    print(f"Arch:       {result.arch}")
+    print(f"Host:       {result.host_os}/{result.host_arch}")
+    print(f"Backend:    {result.backend} (level {result.level})")
+    print(f"Verdict:    {result.verdict}")
+    print(f"Reason:     {result.reason}")
+    if result.suggestions:
+        print("Next:")
+        for s in result.suggestions:
+            print(f"  - {s}")
+    return 0 if result.verdict in ("executable", "emulated") else 1
+
+
+def _cmd_verify(args: argparse.Namespace) -> int:
+    from .sandbox import SandboxPolicy
+    from .verify.replay import (
+        ReplayError, load_cases, replay_record, write_reports,
+    )
+
+    try:
+        cases = load_cases(args.cases)
+    except ReplayError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    policy = SandboxPolicy(allow_untrusted_execution=True,
+                           timeout_seconds=args.timeout)
+    record = replay_record(
+        args.original, args.modified, cases,
+        goal=args.goal or "",
+        policy=policy,
+        output_files=args.output_file or [],
+        timeout_seconds=args.timeout,
+    )
+    verification = record["verification"]
+    if args.report:
+        try:
+            write_reports(record, args.report)
+        except OSError as exc:
+            print(f"error: could not write report: {exc}", file=sys.stderr)
+            return 2
+    if args.json:
+        print(json.dumps(record, indent=2))
+    else:
+        print(f"verified: {verification['verified']}")
+        print(f"reason:   {verification['reason']}")
+        print(f"tests:    {verification['passed_tests']} passed / "
+              f"{verification['tests_run']} run")
+        if verification.get("test_summary", {}).get("unexpected"):
+            print("unexpected: "
+                  + ", ".join(verification["test_summary"]["unexpected"]))
+        if args.report:
+            print(f"report:   {args.report}")
+    return 0 if verification["verified"] else 1
+
+
+def _cmd_corpus(args: argparse.Namespace) -> int:
+    from .verify.corpus import (
+        CorpusError, CorpusStore, capture_corpus, default_corpus_dir,
+        target_sha256,
+    )
+    from .verify.difftest import generate_corpus
+    from .verify.replay import load_cases
+
+    directory = args.dir or str(default_corpus_dir())
+    store = CorpusStore(directory)
+    if args.corpus_cmd == "list":
+        rows = store.list()
+        if args.json:
+            print(json.dumps(rows, indent=2))
+        elif not rows:
+            print("No corpora yet.")
+        else:
+            for r in rows:
+                print(f"{r['target_sha256'][:12]}  {r['cases']:>3} cases  "
+                      f"{r.get('goal', '')[:60]}")
+        return 0
+    if args.corpus_cmd == "show":
+        try:
+            cases = store.load(args.sha)
+        except CorpusError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if args.json:
+            print(json.dumps([c.to_dict() for c in cases], indent=2))
+        else:
+            for c in cases:
+                print(f"{c.name}: args={c.args} expect={c.expect}")
+        return 0 if cases else 1
+    if args.corpus_cmd == "capture":
+        try:
+            cases = load_cases(args.cases) if args.cases else generate_corpus()
+            captured, summary = capture_corpus(
+                args.target, cases,
+                output_files=args.output_file or [],
+                timeout_seconds=args.timeout,
+            )
+            sha = target_sha256(args.target)
+            path = store.save(sha, captured, goal=args.goal or "capture")
+        except (CorpusError, OSError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if args.json:
+            print(json.dumps({
+                "target_sha256": sha, "cases": len(captured),
+                "path": str(path), "summary": summary,
+            }, indent=2))
+        else:
+            print(f"captured {len(captured)} case(s) for {sha[:12]}")
+            print(f"stored: {path}")
+            print(summary.get("summary", ""))
+        return 0
+    return 2
+
+
+def _cmd_report(args: argparse.Namespace) -> int:
+    from .verify.report import render_html, render_json, verify_signature
+
+    try:
+        with open(args.path, "r", encoding="utf-8") as fh:
+            report = json.loads(fh.read())
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if not isinstance(report, dict):
+        print("error: report must be a JSON object", file=sys.stderr)
+        return 2
+    if args.report_cmd == "verify":
+        ok = verify_signature(report)
+        if args.json:
+            print(json.dumps({"valid": ok, "algorithm": report.get("algorithm"),
+                              "tier": report.get("evidence_tier")}, indent=2))
+        else:
+            print(f"signature: {'valid' if ok else 'INVALID'} "
+                  f"({report.get('algorithm')})")
+            print(f"tier:      {report.get('evidence_tier')}")
+            print(f"delivery:  {report.get('delivery', {}).get('allowed')}")
+        return 0 if ok else 1
+    if args.report_cmd == "render":
+        if args.html:
+            print(render_html(report))
+        else:
+            print(render_json(report))
+        return 0
+    return 2
 
 
 def _cmd_caps(args: argparse.Namespace) -> int:
@@ -247,6 +485,89 @@ def build_parser() -> argparse.ArgumentParser:
     diff.add_argument("b")
     diff.add_argument("--json", action="store_true")
     diff.set_defaults(func=_cmd_diff)
+
+    capabilities = sub.add_parser("capabilities",
+                                  help="show the high-risk capability policy")
+    capabilities.add_argument("--json", action="store_true")
+    capabilities.set_defaults(func=_cmd_capabilities)
+
+    approvals = sub.add_parser("approvals",
+                               help="issue or list short-lived action approvals")
+    approvals_sub = approvals.add_subparsers(dest="approvals_cmd", required=True)
+    appr_grant = approvals_sub.add_parser("grant", help="issue a scoped approval")
+    appr_grant.add_argument("--action", required=True)
+    appr_grant.add_argument("--scope", default="")
+    appr_grant.add_argument("--reason", default="")
+    appr_grant.add_argument("--ttl", type=float, default=300.0)
+    appr_grant.add_argument("--max-uses", dest="max_uses", type=int, default=1)
+    appr_grant.add_argument("--dir")
+    appr_grant.add_argument("--json", action="store_true")
+    appr_grant.set_defaults(func=_cmd_approvals)
+    appr_list = approvals_sub.add_parser("list", help="list live approvals")
+    appr_list.add_argument("--dir")
+    appr_list.add_argument("--json", action="store_true")
+    appr_list.set_defaults(func=_cmd_approvals)
+
+    cfg = sub.add_parser("cfg", help="bounded control-flow and call graph")
+    cfg.add_argument("path")
+    cfg.add_argument("--functions", type=int, default=12)
+    cfg.add_argument("--show-blocks", dest="show_blocks", type=int, default=12)
+    cfg.add_argument("--json", action="store_true")
+    cfg.set_defaults(func=_cmd_cfg)
+
+    readiness = sub.add_parser("readiness",
+                               help="can this target be executed and verified here?")
+    readiness.add_argument("path")
+    readiness.add_argument("--timeout", type=float, default=10.0)
+    readiness.add_argument("--json", action="store_true")
+    readiness.set_defaults(func=_cmd_readiness)
+
+    verify = sub.add_parser("verify",
+                            help="signed behavioral verification without a model")
+    verify.add_argument("--original", required=True)
+    verify.add_argument("--modified", required=True)
+    verify.add_argument("--cases", required=True,
+                        help="JSON case file: a list or {cases: [...]}")
+    verify.add_argument("--output-file", action="append", dest="output_file",
+                        help="declared output file to compare (repeatable)")
+    verify.add_argument("--timeout", type=float, default=10.0)
+    verify.add_argument("--goal", default="")
+    verify.add_argument("--report", help="write a signed .json or .html report")
+    verify.add_argument("--json", action="store_true")
+    verify.set_defaults(func=_cmd_verify)
+
+    corpus = sub.add_parser("corpus", help="durable behavioral corpora")
+    corpus_sub = corpus.add_subparsers(dest="corpus_cmd", required=True)
+    corpus_cap = corpus_sub.add_parser("capture",
+                                       help="record original behavior as regression cases")
+    corpus_cap.add_argument("--target", required=True)
+    corpus_cap.add_argument("--cases", help="JSON case file; generated when omitted")
+    corpus_cap.add_argument("--output-file", action="append", dest="output_file")
+    corpus_cap.add_argument("--timeout", type=float, default=10.0)
+    corpus_cap.add_argument("--goal", default="")
+    corpus_cap.add_argument("--dir", help="corpus directory")
+    corpus_cap.add_argument("--json", action="store_true")
+    corpus_cap.set_defaults(func=_cmd_corpus)
+    corpus_list = corpus_sub.add_parser("list", help="list stored corpora")
+    corpus_list.add_argument("--dir")
+    corpus_list.add_argument("--json", action="store_true")
+    corpus_list.set_defaults(func=_cmd_corpus)
+    corpus_show = corpus_sub.add_parser("show", help="show one corpus by target hash")
+    corpus_show.add_argument("sha")
+    corpus_show.add_argument("--dir")
+    corpus_show.add_argument("--json", action="store_true")
+    corpus_show.set_defaults(func=_cmd_corpus)
+
+    report = sub.add_parser("report", help="verify or render a signed report")
+    report_sub = report.add_subparsers(dest="report_cmd", required=True)
+    report_verify = report_sub.add_parser("verify", help="check a report signature")
+    report_verify.add_argument("path")
+    report_verify.add_argument("--json", action="store_true")
+    report_verify.set_defaults(func=_cmd_report)
+    report_render = report_sub.add_parser("render", help="render a report")
+    report_render.add_argument("path")
+    report_render.add_argument("--html", action="store_true")
+    report_render.set_defaults(func=_cmd_report)
 
     sbx = sub.add_parser("sandbox", help="sandbox operations")
     sbx_sub = sbx.add_subparsers(dest="sandbox_cmd", required=True)

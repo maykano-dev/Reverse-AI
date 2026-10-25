@@ -28,6 +28,7 @@ from ..verify import (
     run_differential,
 )
 from ..verify.repair import default_max_attempts
+from .corpus_tools import corpus_cases_for
 from .tools import Permission, Tool, ToolContext, ToolResult
 
 
@@ -111,6 +112,17 @@ def build_cases(args: dict[str, Any]) -> list[InputCase]:
         expect=_expectation(args, {}),
     )
     return [case.normalized()]
+
+
+_CASE_KEYS = {
+    "args", "stdin", "stdin_b64", "files", "expect_stdout", "expect_stderr",
+    "expect_exit", "expect_diff", "same_as_original", "stdout_contains",
+    "stderr_contains", "output_files",
+}
+
+
+def has_case_input(args: dict[str, Any]) -> bool:
+    return bool(args.get("cases")) or any(k in args for k in _CASE_KEYS)
 
 
 def _has_expectation(cases: list[InputCase]) -> bool:
@@ -249,6 +261,10 @@ class VerifyModificationTool(Tool):
                              "description": "declared output name -> expected text"},
             "cases": {"type": "array", "items": {"type": "object"},
                       "description": "targeted cases: name, args, stdin, files, expect"},
+            "use_corpus": {"type": "boolean", "default": False,
+                           "description": "include captured regression cases for this target"},
+            "corpus_exclude": {"type": "array", "items": {"type": "string"},
+                               "description": "captured case names to leave out"},
             "max_attempts": {"type": "integer", "minimum": 1, "maximum": 10},
             "timeout_seconds": {"type": "number", "minimum": 0.1, "default": 10},
             "repair": {"type": "boolean", "default": True,
@@ -268,9 +284,21 @@ class VerifyModificationTool(Tool):
             return ToolResult.failure(f"modified artifact is missing: {modified}")
 
         try:
-            cases = build_cases(args)
+            cases = build_cases(args) if has_case_input(args) else []
+            corpus = corpus_cases_for(ctx, args)
         except DiffTestError as exc:
             return ToolResult.failure(f"bad verification case: {exc}")
+        if args.get("use_corpus") and not corpus:
+            reason = ("No captured behavioral corpus exists for this target. "
+                      "Capture one first with capture_behavior_corpus.")
+            ctx.extra["verification"] = {
+                "verified": False, "passed_tests": 0, "attempts": [],
+                "reason": reason, "tests_run": 0, "test_summary": {},
+                "artifact_path": str(modified), "turn": ctx.job_id,
+            }
+            ctx.extra["delivery"] = {"allowed": False, "reason": reason}
+            return ToolResult.failure(reason)
+        cases += corpus
 
         if not _has_expectation(cases):
             reason = (
@@ -328,6 +356,7 @@ class VerifyModificationTool(Tool):
             "tests_run": len(result.attempts),
             "modified_sha256": _sha256(result.final_path),
             "differential": (result.test_summary or {}).get("summary", ""),
+            "corpus_controls": len(corpus),
         })
         ctx.extra["verification"] = verification
         if result.verified:

@@ -22,6 +22,8 @@ from pathlib import Path
 from ..naming import artifact_meta
 from ..security.validate import ValidationError, read_target
 from ..util.text import strip_dashes
+from ..checkpoints import CheckpointStore
+from ..verify.corpus import CorpusStore, default_corpus_dir
 from .context import compact_messages
 from .evidence import Confidence, EvidenceLog, Finding
 from .job import Job
@@ -55,7 +57,7 @@ _SAFE_EXTRA = {
     "project_dir", "modified_path", "modified_operation", "modified_label",
     "modified_turn", "last_patches", "extracted_dir", "routine_id",
     "verification", "delivery", "differential", "differential_turn",
-    "mode", "strategy", "modification_plan",
+    "mode", "strategy", "modification_plan", "last_checkpoint",
 }
 _GATED_OPERATIONS = {"patch", "imports", "section", "rebuild", "reimplement"}
 
@@ -93,6 +95,11 @@ class Conversation:
                 "delegate_depth": getattr(agent, "delegate_depth", 0),
                 "skills": getattr(agent, "skills", []),
                 "mediator": getattr(agent, "mediator", None),
+                "corpus_store": CorpusStore(default_corpus_dir()),
+                "checkpoint_store": CheckpointStore(
+                    str(Path(self.workspace).parent / "checkpoints"
+                        / Path(self.workspace).name),
+                    workspace=self.workspace),
                 "mode": self.mode,
             },
         )
@@ -422,6 +429,11 @@ class Conversation:
         conv.mode = state.get("mode") or getattr(agent, "mode", "") or ""
         conv.ctx.extra["mode"] = conv.mode
         conv.ctx.extra["mediator"] = getattr(agent, "mediator", None)
+        conv.ctx.extra["corpus_store"] = CorpusStore(default_corpus_dir())
+        conv.ctx.extra["checkpoint_store"] = CheckpointStore(
+            str(Path(conv.workspace).parent / "checkpoints"
+                / Path(conv.workspace).name),
+            workspace=conv.workspace)
         conv.turns = int(state.get("turns") or 0)
         conv.created_at = float(state.get("created_at") or time.time())
         conv.refused = state.get("refused")

@@ -200,6 +200,52 @@ class DisassembleTool(Tool):
                                   isolation=res.isolation.to_dict() if res.isolation else None)
 
 
+class ControlFlowTool(Tool):
+    name = "build_control_flow_graph"
+    description = (
+        "Build a bounded basic-block and call graph for up to 32 functions. "
+        "Shows block leaders, branch successors, call targets, and a rough "
+        "cyclomatic complexity. Static only; a linear sweep can mix code and "
+        "data, so treat it as an observed map, not proof of reachability."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "functions": {"type": "integer", "minimum": 1, "maximum": 32,
+                          "default": 12},
+        },
+    }
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        from ..core.cfg import analyze_control_flow
+
+        target = _require_target(ctx)
+        try:
+            flow = analyze_control_flow(
+                target, analyze_file(target),
+                max_functions=min(int(args.get("functions", 12)), 32))
+        except Exception as exc:
+            return ToolResult.failure(f"control-flow analysis failed: {exc}")
+        lines = [
+            f"functions: {len(flow.functions)}  blocks: "
+            f"{sum(len(f.blocks) for f in flow.functions)}  calls: "
+            f"{sum(len(f.calls) for f in flow.functions)}"
+        ]
+        for f in flow.functions[:16]:
+            lines.append(
+                f"  {f.name} @ 0x{f.address:x}: {len(f.blocks)} blocks, "
+                f"{f.edges} edges, complexity {f.cyclomatic_complexity}")
+        if flow.warnings:
+            lines.append("warnings: " + "; ".join(flow.warnings[:6]))
+        if ctx.evidence is not None:
+            ctx.evidence.observed(
+                f"control-flow graph: {len(flow.functions)} functions, "
+                f"{sum(len(f.blocks) for f in flow.functions)} blocks",
+                source=self.name)
+        return ToolResult.success("\n".join(lines), **flow.to_dict())
+
+
 class RunInSandboxTool(Tool):
     name = "run_in_sandbox"
     description = (
@@ -750,8 +796,16 @@ class ScheduleRoutineTool(Tool):
 
 
 def default_tools() -> list[Tool]:
+    from .corpus_tools import CaptureBehaviorCorpusTool
     from .modify_engine import ChooseModificationStrategyTool, PlanAndModifyTool
     from .verify_tools import DifferentialTestTool, VerifyModificationTool
+    from .workspace_tools import (
+        CheckExecutionReadinessTool,
+        CreateCheckpointTool,
+        ListCheckpointsTool,
+        RestoreCheckpointTool,
+        ReviewWorkspaceChangesTool,
+    )
 
     tools = [
         HostCapabilitiesTool(),
@@ -760,6 +814,7 @@ def default_tools() -> list[Tool]:
         ListStringsTool(),
         DisassembleTool(),
         ListFunctionsTool(),
+        ControlFlowTool(),
         AnalyzeApkTool(),
         AssessHeuristicsTool(),
         RunInSandboxTool(),
@@ -775,8 +830,14 @@ def default_tools() -> list[Tool]:
         ScheduleRoutineTool(),
         VerifyModificationTool(),
         DifferentialTestTool(),
+        CaptureBehaviorCorpusTool(),
         ChooseModificationStrategyTool(),
         PlanAndModifyTool(),
+        CheckExecutionReadinessTool(),
+        CreateCheckpointTool(),
+        ListCheckpointsTool(),
+        ReviewWorkspaceChangesTool(),
+        RestoreCheckpointTool(),
     ]
     # Real decompilation when Ghidra is installed — a big capability upgrade.
     try:

@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.5.0: durable proof, replay, and hardened host
+
+### Added
+
+- Durable behavioral corpora (`verify/corpus.py`, `agent/corpus_tools.py`):
+  capture original exit/stdout/stderr/output-file behavior by target SHA-256 and
+  replay it as regression controls with `use_corpus`.
+- Model-free verification (`verify/replay.py`): `reverseai verify` produces the
+  same signed record and report without a model or API key.
+- Replay recipes in every signed report: target and artifact hashes, case names,
+  and a copy-paste verification command.
+- `reverseai corpus capture|list|show` and `reverseai report verify|render`.
+- Workspace checkpoints (`checkpoints.py`, `agent/workspace_tools.py`): automatic
+  pre-modification snapshots, bounded diff review, and conservative restore that
+  refuses symlinks, device nodes, absolute paths, and `..`.
+- Execution readiness (`sandbox/readiness.py`): native, emulated, or
+  analysis-only verdict before a change is promised; `reverseai readiness`.
+- x86_64 seccomp denylist (`sandbox/seccomp.py`) applied through bubblewrap's
+  `--seccomp FD`. Blocks ptrace, mount/namespace escape, module loading,
+  keyring, bpf, perf, io_uring, and similar attack-surface syscalls. The report
+  records whether it was actually applied.
+- Bounded control-flow and call graphs (`core/cfg.py`): basic blocks, branch
+  edges, call targets, cyclomatic complexity; `reverseai cfg` and
+  `build_control_flow_graph`.
+- Approval ledger (`security/approvals.py`) and action gate (`security/gate.py`):
+  short-lived, scoped, single-use HMAC approvals plus an append-only audit row
+  for any future irreversible action.
+- Optional encrypted vault (`security/vault.py`): PBKDF2-HMAC-SHA256 + Fernet,
+  mode 0600, deny-by-default capability, no plaintext fallback.
+- 43 new tests; total 292.
+
+### Changed
+
+- `Job` reports and signed reports include replay data.
+- Differential case results include the arguments used, for replay.
+- `SandboxPolicy` gains `seccomp` (default on where supported).
+- Host capability detection reports seccomp, Landlock ABI, and cgroup v2.
+- Version bumped to 0.5.0.
+
 ## 0.4.0: autonomous modification engine
 
 ### Added
