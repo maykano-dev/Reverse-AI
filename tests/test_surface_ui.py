@@ -43,6 +43,12 @@ class SurfaceUIContractTests(unittest.TestCase):
         self.assertIn("groups.get(key)", js)
         self.assertIn("g.jobs.map((x) => x.id)", js)
 
+    def test_service_worker_updates_do_not_leave_a_stale_shell(self):
+        js = APP.read_text(encoding="utf-8")
+        sw = (ROOT / "reverseai/server/static/sw.js").read_text(encoding="utf-8")
+        self.assertIn("controllerchange", js)
+        self.assertIn("rvai-v10", sw)
+
     def test_custom_view_is_sandboxed(self):
         js = APP.read_text(encoding="utf-8")
         self.assertIn('iframe.setAttribute("sandbox", "allow-scripts")', js)

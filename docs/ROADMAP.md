@@ -13,7 +13,7 @@ A living map of what exists and what comes next. Updated with v0.9.0.
   with a structured response.
 - **UI redesign**: warm palette, serif welcome, context header, suggestion cards,
   calmer composer, surface cards, smooth transitions, mobile behavior.
-- **Tests**: 539; 57 tools contract-tested.
+- **Tests**: 540; 57 tools contract-tested.
 
 ### v0.8.0: gated dangerous surfaces and open-item closure
 

@@ -2286,6 +2286,13 @@ document.addEventListener("keydown", (e) => {
 function registerSW() {
   if (!("serviceWorker" in navigator)) return;
   if (location.protocol !== "https:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") return;
+  let hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    // Refresh once when a new shell takes over. Do not loop if registration
+    // itself is what first installed the worker.
+    if (!hadController) { hadController = true; return; }
+    location.reload();
+  });
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 

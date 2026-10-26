@@ -16,7 +16,7 @@
   header, suggestion cards, calmer composer, surface cards, mobile adjustments.
 - The system prompt now tells the agent to use surfaces for decisions, forms,
   comparisons, graphs, diffs, approvals, and other task-native interactions.
-- 20 new tests; total 539; 57 tools covered by contract tests.
+- 21 new tests; total 540; 57 tools covered by contract tests.
 - A larger default output budget and chunked `write_file` appends fix truncated
   large-file writes. Invalid/truncated tool arguments now return a clear,
   actionable message instead of retrying blindly.
