@@ -897,6 +897,7 @@ def default_tools() -> list[Tool]:
     from .corpus_tools import CaptureBehaviorCorpusTool
     from .intelligence_tools import intelligence_tools
     from .modify_engine import ChooseModificationStrategyTool, PlanAndModifyTool
+    from .surface_tools import surface_tools
     from .verify_tools import (
         AssessTestStrengthTool, DifferentialFuzzTool, DifferentialTestTool,
         VerifyModificationTool,
@@ -946,6 +947,7 @@ def default_tools() -> list[Tool]:
         RestoreCheckpointTool(),
     ]
     tools.extend(intelligence_tools())
+    tools.extend(surface_tools())
     # Real decompilation when Ghidra is installed — a big capability upgrade.
     try:
         from ..decompile import ghidra_available

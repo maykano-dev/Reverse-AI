@@ -45,7 +45,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self.timeout = timeout
         self.max_retries = max_retries
 
-    def chat(self, messages, tools=None, temperature=0.0, max_tokens=4096) -> LLMResponse:
+    def chat(self, messages, tools=None, temperature=0.0, max_tokens=8192) -> LLMResponse:
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": [m.to_openai() for m in messages],

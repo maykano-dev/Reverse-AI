@@ -23,7 +23,7 @@ class MockProvider(LLMProvider):
         self._i = 0
         self.calls: list[list[Message]] = []
 
-    def chat(self, messages, tools=None, temperature=0.0, max_tokens=4096) -> LLMResponse:
+    def chat(self, messages, tools=None, temperature=0.0, max_tokens=8192) -> LLMResponse:
         self.calls.append(list(messages))
         if self._i >= len(self._script):
             return LLMResponse(content="(mock script exhausted)", finish_reason="stop")

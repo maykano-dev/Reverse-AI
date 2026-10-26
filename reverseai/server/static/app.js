@@ -414,8 +414,13 @@ function renderSuggestions() {
 function setSidebar(open) {
   $("#app").classList.toggle("side-open", !!open);
 }
+function setTopTitle(text) {
+  const t = $("#topTitle");
+  if (t) t.textContent = text || "New chat";
+}
 function newChat() {
   if (busy) stopRun();
+  setTopTitle("New chat");
   conversationId = null;
   pendingTarget = null;
   currentJobId = null;
@@ -725,6 +730,7 @@ function aiTurn(jobId) {
     turn: t, body, think, bar, label, elapsed, plan, cot,
     steps: 0, current: null, sources: [], seq: 0,
     start: Date.now(), timer: null, jobId: jobId || null, finished: false,
+    surfaces: [], surfaceIds: new Set(),
   };
   ui.timer = setInterval(() => {
     if (!ui.finished) ui.elapsed.textContent = fmtElapsed(Date.now() - ui.start);
@@ -867,6 +873,402 @@ function addVerification(ui, ev) {
     body.appendChild(note);
   }
 }
+// ---------------------------------------------------------------------------
+// answer actions
+// ---------------------------------------------------------------------------
+function renderAnswerActions(container, text, jobId) {
+  if (!container || !text) return;
+  const row = el("div", "answer-actions");
+  const copy = el("button", "answer-action");
+  copy.type = "button";
+  copy.innerHTML = `${ic("copy", 13)} Copy`;
+  copy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      copy.innerHTML = `${ic("check", 13)} Copied`;
+      setTimeout(() => { copy.innerHTML = `${ic("copy", 13)} Copy`; }, 1600);
+    } catch (_) {
+      copy.textContent = "Copy failed";
+    }
+  });
+  const rep = el("button", "answer-action");
+  rep.type = "button";
+  rep.innerHTML = `${ic("file", 13)} Report`;
+  rep.addEventListener("click", () => showReport(jobId));
+  row.appendChild(copy);
+  row.appendChild(rep);
+  container.appendChild(row);
+}
+
+// ---------------------------------------------------------------------------
+// interactive surfaces
+// ---------------------------------------------------------------------------
+function surfaceError(card, message) {
+  let e = card.querySelector(".surface-error");
+  if (!e) { e = el("div", "surface-error"); card.appendChild(e); }
+  e.textContent = message || "Could not send that answer.";
+}
+function surfaceBlock(container, block) {
+  const kind = block.kind;
+  const wrap = el("div", "surface-block");
+  if (kind === "text" || kind === "markdown") {
+    const d = el("div", kind === "markdown" ? "md" : null);
+    if (kind === "markdown") renderMd(d, block.text || "");
+    else d.textContent = block.text || "";
+    wrap.appendChild(d);
+  } else if (kind === "choice") {
+    wrap.dataset.blockKind = "choice";
+    wrap.dataset.blockId = block.id || "choice";
+    wrap.dataset.multiple = block.multiple ? "1" : "0";
+    if (block.label) wrap.appendChild(el("div", "sb-label", block.label));
+    const opts = el("div", "surface-options");
+    const name = "sf_" + Math.random().toString(36).slice(2);
+    (block.options || []).forEach((o) => {
+      const lab = el("label", "surface-option");
+      if (o.risk === "high" || o.risk === "critical") lab.classList.add("risk-high");
+      lab.dataset.value = o.value;
+      const input = document.createElement("input");
+      input.type = block.multiple ? "checkbox" : "radio";
+      input.name = name; input.value = o.value;
+      const main = el("span", "so-main");
+      const l = el("span", "so-label");
+      l.innerHTML = esc(o.label || o.value) + (o.recommended ? '<span class="so-rec">recommended</span>' : "");
+      main.appendChild(l);
+      if (o.description) main.appendChild(el("span", "so-desc", o.description));
+      lab.appendChild(input); lab.appendChild(main);
+      input.addEventListener("change", () => {
+        if (!block.multiple) $$(".surface-option", opts).forEach((x) => x.classList.remove("selected"));
+        lab.classList.toggle("selected", input.checked);
+        const other = wrap.querySelector(".surface-other");
+        if (other) {
+          other.classList.remove("show");
+          const otherInput = other.querySelector("[data-surface-other]");
+          if (otherInput) otherInput.value = "";
+        }
+        input.closest(".surface-card").dataset.dirty = "1";
+      });
+      opts.appendChild(lab);
+    });
+    wrap.appendChild(opts);
+    if (block.allow_other) {
+      const other = el("div", "surface-other");
+      const input = document.createElement("input");
+      input.type = "text";
+      input.placeholder = block.other_label || "Other — type your own";
+      input.dataset.surfaceOther = "1";
+      input.addEventListener("focus", () => {
+        $$(".surface-option", opts).forEach((x) => x.classList.remove("selected"));
+        $$("input[type=radio], input[type=checkbox]", opts).forEach((x) => { x.checked = false; });
+        other.classList.add("show");
+      });
+      input.addEventListener("input", () => {
+        if (input.value.trim()) other.classList.add("show");
+      });
+      other.appendChild(input);
+      wrap.appendChild(other);
+    }
+  } else if (kind === "form") {
+    if (block.label) wrap.appendChild(el("div", "sb-label", block.label));
+    const fields = el("div", "surface-fields");
+    (block.fields || []).forEach((f) => {
+      const row = el("div", "surface-field");
+      const lab = el("label", "sf-label", f.label || f.name);
+      row.appendChild(lab);
+      let inp;
+      if (f.type === "textarea") {
+        inp = document.createElement("textarea");
+      } else if (f.type === "select") {
+        inp = document.createElement("select");
+        (f.options || []).forEach((o) => {
+          const opt = document.createElement("option");
+          opt.value = o; opt.textContent = o; inp.appendChild(opt);
+        });
+      } else {
+        inp = document.createElement("input");
+        inp.type = f.type === "number" ? "number" : f.type === "checkbox" ? "checkbox" : "text";
+      }
+      inp.name = f.name;
+      inp.dataset.surfaceField = f.name;
+      inp.required = !!f.required;
+      if (f.placeholder) inp.placeholder = f.placeholder;
+      row.appendChild(inp);
+      fields.appendChild(row);
+    });
+    wrap.appendChild(fields);
+  } else if (kind === "table") {
+    if (block.caption) wrap.appendChild(el("div", "sb-label", block.caption));
+    const box = el("div", "surface-table-wrap");
+    const table = document.createElement("table");
+    table.className = "surface-table";
+    const thead = document.createElement("thead");
+    const tr = document.createElement("tr");
+    (block.columns || []).forEach((c) => { const th = document.createElement("th"); th.textContent = c; tr.appendChild(th); });
+    thead.appendChild(tr); table.appendChild(thead);
+    const tb = document.createElement("tbody");
+    (block.rows || []).forEach((row) => {
+      const r = document.createElement("tr");
+      row.forEach((v) => { const td = document.createElement("td"); td.textContent = v; r.appendChild(td); });
+      tb.appendChild(r);
+    });
+    table.appendChild(tb); box.appendChild(table); wrap.appendChild(box);
+  } else if (kind === "chart") {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "surface-chart");
+    svg.setAttribute("viewBox", "0 0 600 200");
+    svg.setAttribute("preserveAspectRatio", "none");
+    const labels = block.labels || [];
+    const series = block.series || [];
+    const values = series.flatMap((s) => s.values || []);
+    const max = Math.max(1, ...values);
+    const w = 600 / Math.max(1, labels.length);
+    if (block.chart_type === "pie") {
+      const total = values.reduce((a, b) => a + b, 0) || 1;
+      let angle = -Math.PI / 2;
+      values.forEach((v, i) => {
+        const a = (v / total) * Math.PI * 2;
+        const x1 = 300 + 70 * Math.cos(angle), y1 = 100 + 70 * Math.sin(angle);
+        angle += a;
+        const x2 = 300 + 70 * Math.cos(angle), y2 = 100 + 70 * Math.sin(angle);
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", `M300 100 L${x1} ${y1} A70 70 0 ${a > Math.PI ? 1 : 0} 1 ${x2} ${y2} Z`);
+        path.setAttribute("fill", ["#0a84ff", "#6a5cff", "#35c759", "#ff9f0a", "#ff375f", "#64d2ff"][i % 6]);
+        path.setAttribute("opacity", ".85");
+        svg.appendChild(path);
+      });
+    } else if (block.chart_type === "line") {
+      series.forEach((s, si) => {
+        const pts = (s.values || []).map((v, i) => `${i * w + w / 2},${190 - (v / max) * 160}`).join(" ");
+        const p = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        p.setAttribute("points", pts);
+        p.setAttribute("fill", "none");
+        p.setAttribute("stroke", ["#0a84ff", "#6a5cff", "#35c759", "#ff9f0a"][si % 4]);
+        p.setAttribute("stroke-width", "3");
+        svg.appendChild(p);
+      });
+    } else {
+      series.forEach((s, si) => {
+        (s.values || []).forEach((v, i) => {
+          const h = (v / max) * 160;
+          const bar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          const bw = Math.max(2, (w - 10) / Math.max(1, series.length));
+          bar.setAttribute("x", i * w + 6 + si * bw);
+          bar.setAttribute("y", 190 - h);
+          bar.setAttribute("width", bw - 3);
+          bar.setAttribute("height", h);
+          bar.setAttribute("fill", ["#0a84ff", "#6a5cff", "#35c759", "#ff9f0a"][si % 4]);
+          bar.setAttribute("opacity", ".85");
+          svg.appendChild(bar);
+        });
+      });
+    }
+    labels.forEach((label, i) => {
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", i * w + w / 2); t.setAttribute("y", 198);
+      t.setAttribute("text-anchor", "middle"); t.setAttribute("font-size", "9");
+      t.setAttribute("fill", "currentColor"); t.textContent = String(label).slice(0, 12);
+      svg.appendChild(t);
+    });
+    wrap.appendChild(svg);
+  } else if (kind === "graph") {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "surface-graph");
+    svg.setAttribute("viewBox", "0 0 600 300");
+    const nodes = block.nodes || [];
+    const pos = {};
+    nodes.forEach((n, i) => {
+      const a = (i / Math.max(1, nodes.length)) * Math.PI * 2;
+      pos[n.id] = { x: 300 + 110 * Math.cos(a), y: 145 + 105 * Math.sin(a) };
+    });
+    (block.edges || []).forEach((e) => {
+      const a = pos[e.from], b = pos[e.to];
+      if (!a || !b) return;
+      const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      l.setAttribute("x1", a.x); l.setAttribute("y1", a.y);
+      l.setAttribute("x2", b.x); l.setAttribute("y2", b.y);
+      l.setAttribute("stroke", "currentColor"); l.setAttribute("opacity", ".25");
+      l.setAttribute("stroke-width", "1.5"); svg.appendChild(l);
+    });
+    nodes.forEach((n) => {
+      const p = pos[n.id];
+      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      c.setAttribute("cx", p.x); c.setAttribute("cy", p.y); c.setAttribute("r", "13");
+      c.setAttribute("fill", "#0a84ff"); c.setAttribute("opacity", ".9"); svg.appendChild(c);
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", p.x); t.setAttribute("y", p.y + 4);
+      t.setAttribute("text-anchor", "middle"); t.setAttribute("font-size", "8");
+      t.setAttribute("fill", "#fff"); t.textContent = String(n.label || n.id).slice(0, 10);
+      svg.appendChild(t);
+    });
+    wrap.appendChild(svg);
+  } else if (kind === "diff") {
+    const pre = el("div", "surface-diff");
+    const before = String(block.before || "").split("\n");
+    const after = String(block.after || "").split("\n");
+    before.forEach((l) => { const d = el("div", "dl del", "- " + l); pre.appendChild(d); });
+    after.forEach((l) => { const d = el("div", "dl add", "+ " + l); pre.appendChild(d); });
+    wrap.appendChild(pre);
+  } else if (kind === "code") {
+    const pre = el("pre", "surface-code", block.text || "");
+    pre.dataset.lang = block.language || "text";
+    wrap.appendChild(pre);
+  } else if (kind === "progress") {
+    const p = el("div", "surface-progress");
+    const bar = document.createElement("i");
+    bar.style.width = Math.max(0, Math.min(100, (block.value / Math.max(1, block.max)) * 100)) + "%";
+    p.appendChild(bar); wrap.appendChild(p);
+    if (block.label) wrap.appendChild(el("div", "surface-note", block.label));
+  } else if (kind === "approval") {
+    const box = el("div", "surface-approval");
+    box.innerHTML = `<div class="sa-risk">${esc(block.risk || "high")} risk · ${block.reversible ? "reversible" : "irreversible"}</div>
+      <div class="sa-action">${esc(block.action)}</div>
+      <div class="sa-meta">target: ${esc(block.target)}${block.amount != null ? ` · ${esc(block.amount)} ${esc(block.currency || "")}` : ""}</div>
+      ${block.detail ? `<div class="sa-meta">${esc(block.detail)}</div>` : ""}
+      ${block.rollback ? `<div class="sa-meta">rollback: ${esc(block.rollback)}</div>` : ""}
+      <label class="surface-note" style="display:flex;gap:7px;align-items:flex-start;margin-top:10px">
+        <input type="checkbox" data-approval-check="1"> I understand this action is consequential.
+      </label>`;
+    wrap.appendChild(box);
+  } else if (kind === "file_drop") {
+    const d = el("label", "surface-file", block.label || "Drop files here");
+    const inp = document.createElement("input");
+    inp.type = "file"; inp.multiple = !!block.multiple; inp.accept = block.accept || "*/*";
+    inp.style.display = "none"; inp.dataset.surfaceFile = "1";
+    d.appendChild(inp);
+    const show = el("div", "surface-note", "");
+    inp.addEventListener("change", () => {
+      show.textContent = Array.from(inp.files || []).map((f) => f.name).join(", ");
+    });
+    wrap.appendChild(d); wrap.appendChild(show);
+  } else if (kind === "custom") {
+    const iframe = document.createElement("iframe");
+    iframe.className = "surface-custom";
+    iframe.style.height = (block.height || 360) + "px";
+    iframe.setAttribute("sandbox", "allow-scripts");
+    iframe.setAttribute("referrerpolicy", "no-referrer");
+    const csp = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:; media-src data:; form-action 'none'; frame-src 'none'; object-src 'none'; base-uri 'none';";
+    iframe.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="${csp}"><body>${block.html || ""}</body>`;
+    wrap.appendChild(iframe);
+  }
+  container.appendChild(wrap);
+}
+function surfaceValues(card, surface) {
+  const value = {};
+  $$("[data-surface-field]", card).forEach((inp) => {
+    const name = inp.dataset.surfaceField;
+    value[name] = inp.type === "checkbox" ? !!inp.checked : inp.value;
+  });
+  const others = [];
+  $$(".surface-block[data-block-kind='choice']", card).forEach((block) => {
+    const key = block.dataset.blockId || "choice";
+    const checked = Array.from(block.querySelectorAll("input:checked")).map((x) => x.value);
+    value[key] = block.dataset.multiple === "1" ? checked : (checked[0] || "");
+    const otherInput = block.querySelector("[data-surface-other]");
+    const otherText = otherInput ? otherInput.value.trim() : "";
+    if (otherText) {
+      value[key + "_other"] = otherText;
+      others.push(`${key}: ${otherText}`);
+    }
+  });
+  return { value, other: others.join(" | ") };
+}
+async function submitSurface(card, surface, jobId, actionId, button) {
+  if (card.dataset.submitted === "1") return;
+  const action = (surface.actions || []).find((a) => a.id === actionId) || {};
+  const approval = card.querySelector("[data-approval-check]");
+  const cancelling = action.kind === "cancel" || action.kind === "dismiss";
+  if (approval && !cancelling && !approval.checked) {
+    surfaceError(card, "Confirm the approval checkbox first.");
+    return;
+  }
+  const buttons = $$(".surface-actions button", card);
+  buttons.forEach((b) => { b.disabled = true; });
+  const { value, other } = surfaceValues(card, surface);
+  const files = [];
+  for (const inp of $$("[data-surface-file]", card)) {
+    for (const f of Array.from(inp.files || [])) {
+      try {
+        const r = await api("/upload", {
+          method: "PUT", headers: { "X-Filename": f.name }, body: f,
+        });
+        const b = await r.json().catch(() => ({}));
+        if (r.ok) files.push(b);
+        else surfaceError(card, b.error || `Could not upload ${f.name}`);
+      } catch (err) {
+        surfaceError(card, err.message || `Could not upload ${f.name}`);
+      }
+    }
+  }
+  if (files.length) value.uploads = files;
+  try {
+    const { status, body } = await postJSON(`/jobs/${jobId}/surfaces/${surface.id}/respond`, {
+      action_id: actionId, value, other_text: other, permission,
+    });
+    if (status !== 202 && status !== 200) throw new Error(body.error || "Could not continue.");
+    card.dataset.submitted = "1";
+    card.classList.add("surface-submitted");
+    buttons.forEach((b) => { b.disabled = true; });
+    card.querySelectorAll("input, textarea, select").forEach((x) => { x.disabled = true; });
+    const note = el("div", "surface-note", "Sent to ReverseAI. Continuing…");
+    card.appendChild(note);
+    if (body.job_id) {
+      currentJobId = body.job_id;
+      if (body.conversation_id) conversationId = body.conversation_id;
+      const ui = aiTurn(body.job_id);
+      currentUI = ui;
+      setBusy(true);
+      attachStream(body.job_id, ui, 0);
+    }
+  } catch (err) {
+    surfaceError(card, err.message || "Could not continue.");
+    buttons.forEach((b) => { b.disabled = false; });
+  }
+}
+function renderSurface(container, surface, jobId, ui) {
+  if (!surface || !surface.id) return;
+  if (ui && ui.surfaceIds.has(surface.id)) return;
+  if (ui) ui.surfaceIds.add(surface.id);
+  const card = el("div", "surface-card");
+  card.dataset.surface = surface.id;
+  const head = el("div", "surface-head");
+  const t = el("div");
+  t.appendChild(el("div", "surface-title", surface.title || "Interactive surface"));
+  t.appendChild(el("span", "surface-kind", surface.kind || "surface"));
+  head.appendChild(t);
+  card.appendChild(head);
+  if (surface.description) card.appendChild(el("div", "surface-desc", surface.description));
+  (surface.blocks || []).forEach((block) => surfaceBlock(card, block));
+  const actions = el("div", "surface-actions");
+  (surface.actions || [{ id: "submit", label: "Continue" }]).forEach((a) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = a.label || a.id;
+    if (a.kind === "approve" || a.risk === "high" || a.risk === "critical") b.classList.add("danger");
+    else b.classList.add("primary");
+    b.addEventListener("click", () => submitSurface(card, surface, jobId, a.id, b));
+    actions.appendChild(b);
+  });
+  card.appendChild(actions);
+  if (surface.status === "submitted") {
+    card.dataset.submitted = "1";
+    card.classList.add("surface-submitted");
+    card.querySelectorAll("input, textarea, select, button").forEach((x) => { x.disabled = true; });
+    const ev = surface.last_event || {};
+    const chosen = ev.value && Object.keys(ev.value).length
+      ? JSON.stringify(ev.value) : "";
+    const note = el("div", "surface-note",
+      "Answered" + (ev.action_id ? ` · ${ev.action_id}` : "") +
+      (chosen ? ` · ${chosen}` : "") +
+      (ev.other_text ? ` · ${ev.other_text}` : ""));
+    card.appendChild(note);
+  }
+  const wrap = el("div", "surface-wrap");
+  wrap.appendChild(card);
+  container.appendChild(wrap);
+  if (ui) ui.surfaces.push(surface);
+}
+function renderSurfaces(container, surfaces, jobId, ui) {
+  (surfaces || []).forEach((s) => renderSurface(container, s, jobId, ui));
+}
 function finishFinal(ui, ev, jobId) {
   if (!ui || ui.finished) return;
   ui.finished = true;
@@ -923,6 +1325,8 @@ function finishFinal(ui, ev, jobId) {
   } else {
     renderArtifact(ui.body, ev.artifact_meta, ev.artifact, jobId);
   }
+  renderAnswerActions(ui.body, ev.answer || "", jobId);
+  renderSurfaces(ui.body, ev.surfaces || [], jobId, ui);
   renderFeedback(ui.body, jobId);
 
   const u = ev.usage || {};
@@ -983,6 +1387,9 @@ function notifyDone(ev) {
 async function send(goal) {
   if (busy) return;
   setBusy(true);
+  if (!conversationId) {
+    setTopTitle(goal.length > 72 ? goal.slice(0, 69).trim() + "…" : goal);
+  }
   userTurn(goal);
   input.value = "";
   input.style.height = "auto";
@@ -1057,6 +1464,9 @@ function handleEvent(ui, ev, jobId) {
       break;
     case "source":
       addSource(ui, ev);
+      break;
+    case "surface":
+      if (ev.surface) renderSurface(ui.body, ev.surface, jobId, ui);
       break;
     case "finding":
       addFinding(ui, ev);
@@ -1217,6 +1627,7 @@ const TOOL_LABELS = {
   choose_modification_strategy: "Choosing the safest way to change it",
   plan_and_modify: "Planning and making the change",
   check_execution_readiness: "Checking whether it can be run",
+  create_surface: "Building an interactive surface",
   build_world_model: "Building the system model",
   query_world_model: "Asking the system model",
   project_memory: "Consulting project memory",
@@ -1270,24 +1681,45 @@ async function loadHistory() {
   let data;
   try { data = await getJSON("/jobs"); } catch (_) { return; }
   const jobs = data.jobs || [];
+  // A conversation can span many turns. Each turn is its own job record, so
+  // group by conversation_id before drawing the sidebar; otherwise every
+  // message looks like a separate chat.
+  const groups = new Map();
+  jobs.forEach((j) => {
+    const key = j.conversation_id || j.id;
+    let g = groups.get(key);
+    if (!g) {
+      g = { key, cid: j.conversation_id || null, jobs: [], latest: j, first: j };
+      groups.set(key, g);
+    }
+    g.jobs.push(j);
+    if ((j.created_at || 0) > (g.latest.created_at || 0)) g.latest = j;
+    if ((j.created_at || Infinity) < (g.first.created_at || Infinity)) g.first = j;
+  });
+  const convos = Array.from(groups.values())
+    .sort((a, b) => (b.latest.created_at || 0) - (a.latest.created_at || 0));
   const h = $("#convos");
   h.innerHTML = "";
-  $("#recentCount").textContent = jobs.length ? String(jobs.length) : "";
-  jobs.slice(0, 60).forEach((j) => {
+  $("#recentCount").textContent = convos.length ? String(convos.length) : "";
+  convos.slice(0, 60).forEach((g) => {
+    const j = g.latest;
+    const title = g.first.goal || j.goal || "(chat)";
     const it = el("button", "convo");
     it.type = "button";
-    it.dataset.goal = (j.goal || "").toLowerCase();
-    it.title = `${j.status || ""}${j.steps ? " · " + j.steps + " steps" : ""}`;
+    it.dataset.goal = title.toLowerCase();
+    it.dataset.cid = g.cid || "";
+    it.title = `${title}\n${j.status || ""}${j.steps ? " · " + j.steps + " steps" : ""}`;
+    if (g.cid && g.cid === conversationId) it.classList.add("active");
     const icon = el("span", "cv-ic");
     icon.innerHTML = ic(templateIcon(j.template), 9);
     it.appendChild(icon);
-    it.appendChild(el("span", "cv-label", (j.goal || "(chat)").slice(0, 52)));
+    it.appendChild(el("span", "cv-label", title.slice(0, 52)));
     const del = el("span", "cv-del");
     del.innerHTML = ic("x", 14);
     del.title = "Delete chat";
     del.addEventListener("click", (e) => {
       e.stopPropagation();
-      deleteChat(j.id, it);
+      deleteChat(g.jobs.map((x) => x.id), it, g.cid);
     });
     it.appendChild(del);
     it.addEventListener("click", () => {
@@ -1303,11 +1735,16 @@ function templateIcon(id) {
   const t = templates.find((x) => x.id === id);
   return t ? t.icon : "dot";
 }
-async function deleteChat(jobId, node) {
+async function deleteChat(jobIds, node, cid) {
+  const ids = Array.isArray(jobIds) ? jobIds : [jobIds];
   try {
-    await api(`/jobs/${jobId}`, { method: "DELETE" });
+    await Promise.all(ids.map((id) => api(`/jobs/${id}`, { method: "DELETE" })));
     node.remove();
-  } catch (_) {}
+    if (cid && cid === conversationId) newChat();
+    else loadHistory();
+  } catch (_) {
+    loadHistory();
+  }
 }
 async function openConversation(jobId) {
   if (busy) stopRun();
@@ -1321,6 +1758,7 @@ async function openConversation(jobId) {
   conversationId = rec.conversation_id || null;
   pendingTarget = rec.target_path || null;
   currentJobId = jobId;
+  setTopTitle(rec.goal || "Chat");
   const inner = $("#threadInner");
   inner.innerHTML = "";
   const msgs = rec.transcript || [];
@@ -1328,13 +1766,18 @@ async function openConversation(jobId) {
   msgs.forEach((m) => { if (m.role === "tool") toolResults.set(m.tool_call_id, m.content || ""); });
 
   let hasUser = false;
+  let firstUser = "";
   let finalAnswer = "";
   let archivedUI = null;
   msgs.forEach((m) => {
     if (m.role === "user") {
       if (m.tool_call_id || Array.isArray(m.content)) return;
       let text = String(m.content || "").split("\n\n[Attached target:")[0].replace(/^Goal:\s*/i, "").trim();
-      if (text) { userTurn(text); hasUser = true; }
+      if (text) {
+        if (!firstUser) firstUser = text;
+        userTurn(text);
+        hasUser = true;
+      }
     } else if (m.role === "assistant") {
       const calls = m.tool_calls || [];
       if (calls.length) {
@@ -1355,6 +1798,9 @@ async function openConversation(jobId) {
     }
   });
   if (!hasUser) userTurn(rec.goal || "(no goal recorded)");
+  if (firstUser) {
+    setTopTitle(firstUser.length > 72 ? firstUser.slice(0, 69).trim() + "…" : firstUser);
+  }
   const answer = finalAnswer || rec.final_answer || "";
   if (archivedUI) {
     archivedUI.finished = true;
@@ -1373,6 +1819,8 @@ async function openConversation(jobId) {
     } else {
       renderArtifact(archivedUI.body, rec.artifact_meta, rec.artifact, jobId);
     }
+    renderAnswerActions(archivedUI.body, answer, jobId);
+    renderSurfaces(archivedUI.body, rec.surfaces || [], jobId, archivedUI);
     renderFeedback(archivedUI.body, jobId);
     if (rec.usage && rec.usage.total_tokens) {
       const parts = [`${fmtTok(rec.usage.total_tokens)} tokens`];
@@ -1394,6 +1842,8 @@ async function openConversation(jobId) {
     } else {
       renderArtifact(body, rec.artifact_meta, rec.artifact, jobId);
     }
+    renderAnswerActions(body, answer, jobId);
+    renderSurfaces(body, rec.surfaces || [], jobId, null);
     renderFeedback(body, jobId);
     t.appendChild(body);
     inner.appendChild(t);
@@ -1800,8 +2250,8 @@ async function loadCaps() {
   try { caps = await getJSON("/caps"); } catch (_) { $("#hostText").textContent = "Host unavailable"; return; }
   $("#hostDot").classList.toggle("ok", !!caps.can_run_untrusted);
   $("#hostText").textContent = caps.can_run_untrusted
-    ? (caps.bubblewrap ? "Namespace sandbox ready" : "Sandbox ready")
-    : "No isolation available";
+    ? "Sandbox ready"
+    : "Sandbox unavailable";
   $("#hostText").title = caps.best_isolation || "";
   const g = $("#capsGrid");
   g.innerHTML = "";

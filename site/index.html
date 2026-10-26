@@ -204,6 +204,16 @@ reverseai audit -> version, deps, assets, tool metadata, secrets
 reverseai repo / xrefs -> repository map and direct call graph</code></pre>
 </section>
 
+<section class="wrap">
+  <div class="kicker">Inside the chat</div>
+  <h2>Not just answers. Surfaces you can use.</h2>
+  <p class="sub">ReverseAI can create the interaction the work needs: a clarification question with real options, a form, a comparison table, a chart, a control-flow graph, a before/after diff, an approval card, a file drop zone, or a small sandboxed custom view. Every choice has an "Other" escape hatch. The surface answer becomes structured state, and the agent continues from it.</p>
+  <pre><code>create_surface -> question / form / table / chart / graph / diff
+               -> approval / file drop / custom view
+               -> structured response -> continue the same conversation</code></pre>
+  <p class="muted" style="font-size:12px;color:var(--dim);margin-top:11px">Generated views are validated, rendered from allowlisted components, and custom views run in an opaque-origin iframe with no network.</p>
+</section>
+
 <section id="how" class="wrap">
   <div class="kicker">The loop</div>
   <h2>Plan. Act. Observe. Prove.</h2>

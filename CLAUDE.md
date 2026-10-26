@@ -68,10 +68,10 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | Clone | **working** | static fetch; opt-in headless render |
 | Memory/research/routines | **working** | durable notes, web sources, schedules |
 | Templates/delegation | **working** | eight specialists, one-shot delegation |
-| API + UI | **working** | stdlib HTTP + SSE, mobile-first PWA |
+| API + UI | **working** | stdlib HTTP + SSE, grouped conversations, interactive surfaces, mobile-first PWA |
 | Multi-tenant product layer | **planned** | accounts, quotas, object storage, worker queue |
 
-## Current capability (v0.8.0)
+## Current capability (v0.9.0)
 
 Zero third-party dependencies required (stdlib + binutils; optional libs enhance):
 
@@ -91,7 +91,10 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   cannot execute.
 - **Agent:** ReAct loop with policy-mediated tools (permission tiers, audit log,
   exception containment), evidence tiers, durable Job records + store, natural
-  narration, plan/step events, cancellation, context compaction.
+  narration, plan/step events, cancellation, context compaction. The output
+  budget is configurable with `REVERSEAI_MAX_TOKENS` (default 8192), and large
+  files are written in chunks with `write_file append=true`. Truncated tool
+  arguments produce an actionable error rather than a blind retry loop.
 - **State:** persistent conversations, replayable JSONL event logs, artifacts,
   long-term memory, routines, feedback, usage estimates.
 - **Templates:** Everyday, Reverse engineer, Engineer, Researcher, Security,
@@ -106,6 +109,13 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   adapters, tool forging, manifests, capability mapping, trust, and reality
   classification, plus coding, memory, research, delegate, routines, archive
   extraction, website cloning, and OCR.
+- **Interactive surfaces:** the agent can call `create_surface` to render a
+  validated question, form, table, chart, graph, diff, code view, progress
+  panel, approval card, file drop, dashboard, or sandboxed custom view inside
+  the chat. Every choice has an "Other - type your own" path. A response is
+  recorded as a structured event and can continue the same conversation. Custom
+  HTML runs in an opaque-origin iframe with a restrictive CSP and no network.
+  See `docs/UI_SURFACES.md`.
 - **Modify + verify:** byte patch on a copy + behavioral regression in the
   sandbox; LIEF structural edits when installed.
 - **Verified delivery gate:** `verify_modification` runs declared behavioral

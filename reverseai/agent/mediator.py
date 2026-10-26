@@ -78,6 +78,16 @@ class ToolMediator:
                          error="bad args type")
             return ToolResult.failure("arguments must be a JSON object")
 
+        if "__raw__" in args:
+            self._record(name, perm, allowed=True, ok=False, duration=0.0,
+                         error="unparseable tool arguments",
+                         note="usually a truncated response")
+            return ToolResult.failure(
+                "the arguments for this call were not valid JSON, usually "
+                "because the response was cut off. Do not repeat the same "
+                "call. Make it smaller: for a file, write a short skeleton "
+                "first and append the rest in separate calls.")
+
         missing = _missing_required(tool.parameters, args)
         if missing:
             self._record(name, perm, allowed=True, ok=False, duration=0.0,

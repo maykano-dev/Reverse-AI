@@ -175,6 +175,8 @@ class Conversation:
         job = Job(goal=goal, target_path=self.target_path)
         job.workspace = self.workspace
         job.template = self.template
+        job.permission = getattr(agent, "max_permission", None).label if getattr(
+            agent, "max_permission", None) is not None else ""
         emit = make_emitter(on_event)
         plan = plan_for(self.template, bool(self.target_path), goal)
         emit({"type": "start", "job_id": job.id, "goal": goal,
@@ -206,6 +208,7 @@ class Conversation:
         # Delivery is per-turn. A previous turn's artifact must not be silently
         # re-delivered by a follow-up that changed nothing.
         self.ctx.extra.pop("delivery", None)
+        self.ctx.extra.pop("surfaces", None)
         self._loop(job, emit, stop_event)
         if job.status not in ("cancelled", "failed"):
             self._enforce_delivery_gate(job, emit)
@@ -238,6 +241,7 @@ class Conversation:
         job.opportunities = list(self.ctx.extra.get("discovery") or [])
         job.hypotheses = list(self.ctx.extra.get("hypotheses") or [])
         job.test_strength = dict(self.ctx.extra.get("test_strength") or {})
+        job.surfaces = list(self.ctx.extra.get("surfaces") or [])
         diff = dict(self.ctx.extra.get("differential") or {})
         if self.ctx.extra.get("differential_turn") not in (None, job.id):
             diff = {}
@@ -260,7 +264,7 @@ class Conversation:
               "verification": job.verification, "delivery": job.delivery,
               "differential": job.differential, "world_model": job.world_model,
               "opportunities": job.opportunities, "hypotheses": job.hypotheses,
-              "test_strength": job.test_strength,
+              "test_strength": job.test_strength, "surfaces": job.surfaces,
               "template": self.template, "plan": plan})
         return job
 
@@ -348,7 +352,8 @@ class Conversation:
             try:
                 resp = agent.provider.chat(
                     self.messages, tools=agent.registry.provider_specs(),
-                    temperature=agent.temperature)
+                    temperature=agent.temperature,
+                    max_tokens=getattr(agent, "max_tokens", 8192))
             except Exception as exc:
                 job.status = "failed"
                 job.error = f"provider error: {exc}"

@@ -86,13 +86,20 @@ class WriteFileTool(Tool):
     name = "write_file"
     description = (
         "Create or overwrite a UTF-8 text file within the project root. Creates "
-        "parent directories as needed."
+        "parent directories as needed. For a large file, write a short skeleton "
+        "first, then append sections with append=true. Keep each call small "
+        "enough to finish inside one model response."
     )
     parameters = {
         "type": "object",
         "properties": {
             "path": {"type": "string"},
             "content": {"type": "string"},
+            "append": {
+                "type": "boolean",
+                "default": False,
+                "description": "append instead of overwriting; creates the file if absent",
+            },
         },
         "required": ["path", "content"],
     }
@@ -108,10 +115,16 @@ class WriteFileTool(Tool):
             return ToolResult.failure(str(exc))
         p.parent.mkdir(parents=True, exist_ok=True)
         existed = p.exists()
-        p.write_text(content, "utf-8")
+        if args.get("append"):
+            with p.open("a", encoding="utf-8") as fh:
+                fh.write(content)
+            action = "appended to" if existed else "created"
+        else:
+            p.write_text(content, "utf-8")
+            action = "overwrote" if existed else "created"
         return ToolResult.success(
-            f"{'overwrote' if existed else 'created'} {args['path']} "
-            f"({len(content)} chars)", path=args["path"], created=not existed)
+            f"{action} {args['path']} ({len(content)} chars)",
+            path=args["path"], created=not existed)
 
 
 class EditFileTool(Tool):

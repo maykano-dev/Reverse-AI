@@ -21,12 +21,12 @@ class ReleaseIntegrityTests(unittest.TestCase):
     def test_repository_release_is_consistent(self):
         truth = release_truth(ROOT)
         self.assertEqual(truth.issues, [])
-        self.assertEqual(truth.version, "0.8.0")
-        self.assertEqual(truth.changelog_version, "0.8.0")
-        self.assertEqual(truth.readme_version, "0.8.0")
-        self.assertEqual(truth.audit_version, "0.8.0")
-        self.assertEqual(truth.testing_version, "0.8.0")
-        self.assertGreaterEqual(truth.tests, 1)
+        self.assertEqual(truth.version, "0.9.0")
+        self.assertEqual(truth.changelog_version, "0.9.0")
+        self.assertEqual(truth.readme_version, "0.9.0")
+        self.assertEqual(truth.audit_version, "0.9.0")
+        self.assertEqual(truth.testing_version, "0.9.0")
+        self.assertEqual(truth.tests, 539)
         self.assertGreaterEqual(truth.tools, 50)
 
     def test_every_feature_claim_has_source_and_test(self):

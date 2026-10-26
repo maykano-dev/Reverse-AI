@@ -147,8 +147,7 @@ def release_truth(root: str | Path) -> ReleaseTruth:
             ("audit baseline", truth.audit_version),
             ("testing baseline", truth.testing_version),
             ("roadmap baseline", truth.roadmap_version),
-            ("dangerous-surface ledger", truth.dangerous_version),
-            ("0.8 audit report", truth.audit_report_version)):
+            ("dangerous-surface ledger", truth.dangerous_version)):
         if value != expected:
             truth.issues.append(
                 f"{name} version is {value or '(missing)'}, expected {expected}")

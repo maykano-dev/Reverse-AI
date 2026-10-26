@@ -1,0 +1,53 @@
+"""The browser surface renderer and its safety-facing pieces are present."""
+
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+ROOT = Path(__file__).resolve().parent.parent
+APP = ROOT / "reverseai/server/static/app.js"
+CSS = ROOT / "reverseai/server/static/style.css"
+
+
+class SurfaceUIContractTests(unittest.TestCase):
+    def test_renderer_handles_the_surface_vocabulary(self):
+        js = APP.read_text(encoding="utf-8")
+        for token in ("renderSurface", "renderSurfaces", "surface-card",
+                      "data-surface-other", "surface-approval",
+                      "surface-chart", "surface-graph", "surface-custom"):
+            self.assertIn(token, js, token)
+
+    def test_other_escape_hatch_is_default(self):
+        js = APP.read_text(encoding="utf-8")
+        self.assertIn("Other — type your own", js)
+        self.assertIn("data-surface-other", js)
+
+    def test_surface_styles_exist(self):
+        css = CSS.read_text(encoding="utf-8")
+        for token in (".surface-card", ".surface-option", ".surface-table",
+                      ".surface-approval", ".surface-custom"):
+            self.assertIn(token, css, token)
+
+    def test_answer_actions_exist(self):
+        js = APP.read_text(encoding="utf-8")
+        self.assertIn("renderAnswerActions", js)
+        self.assertIn("navigator.clipboard.writeText", js)
+
+    def test_sidebar_groups_turns_by_conversation(self):
+        js = APP.read_text(encoding="utf-8")
+        self.assertIn("j.conversation_id || j.id", js)
+        self.assertIn("groups.get(key)", js)
+        self.assertIn("g.jobs.map((x) => x.id)", js)
+
+    def test_custom_view_is_sandboxed(self):
+        js = APP.read_text(encoding="utf-8")
+        self.assertIn('iframe.setAttribute("sandbox", "allow-scripts")', js)
+        self.assertIn("referrerpolicy", js)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

@@ -179,6 +179,7 @@ def build_report(record: dict[str, Any]) -> dict[str, Any]:
         "world_model": record.get("world_model") or {},
         "opportunities": record.get("opportunities") or [],
         "test_strength": record.get("test_strength") or {},
+        "surfaces": record.get("surfaces") or [],
         "plan": {
             "steps": [
                 {"id": s.get("id"), "title": s.get("title"),
@@ -240,6 +241,11 @@ def render_html(report: dict[str, Any]) -> str:
     )
     delivery = report.get("delivery") or {}
     environment = (report.get("environment") or {}).get("isolation") or {}
+    surfaces = report.get("surfaces") or []
+    surface_rows = "".join(
+        f"<li><b>{_e(s.get('title'))}</b> "
+        f"<span class='muted'>({_e(s.get('kind'))})</span></li>"
+        for s in surfaces)
     blocked = not delivery.get("allowed")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -319,6 +325,8 @@ unexpected: {_e(', '.join(diff.get('unexpected') or []) or 'none')}</p></div>
 <b>Size</b><span>{_e(artifact.get('size'))}</span>
 <b>SHA-256</b><span><code>{_e(artifact.get('sha256') or '(none)')}</code></span>
 </div></div>
+<h2>Interactive surfaces</h2>
+<div class="card">{(('<ul>' + surface_rows + '</ul>') if surface_rows else '<p class="muted">No interactive surfaces were created.</p>')}</div>
 <h2>Replay</h2>
 <div class="card"><p>Re-run this verification without a model:</p>
 <pre>{_e((report.get('replay') or {}).get('command') or 'A replay command is not available for this report.')}</pre>

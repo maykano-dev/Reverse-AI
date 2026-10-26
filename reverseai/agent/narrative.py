@@ -37,6 +37,7 @@ _TOOL_ICON = {
     "choose_modification_strategy": "search",
     "plan_and_modify": "sparkle",
     "check_execution_readiness": "check",
+    "create_surface": "sparkle",
     "build_world_model": "globe",
     "query_world_model": "search",
     "project_memory": "memory",
@@ -177,6 +178,9 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "check_execution_readiness":
         title = "Checking whether this target can actually be run"
         detail = "Separating what can be analyzed from what can be verified behaviorally."
+    elif name == "create_surface":
+        title = "Building something you can interact with"
+        detail = "Creating a question, form, view, or control panel for this step."
     elif name == "remember":
         title = "Saving a durable note"
         detail = "Keeping a decision or preference for a later conversation."

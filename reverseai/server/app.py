@@ -27,6 +27,9 @@ Endpoints (JSON in / JSON out):
   GET  /jobs              -> [job summaries]
   GET  /jobs/<id>         -> full job record
   GET  /jobs/<id>/events?after=N -> SSE (durable, replayable)
+  GET  /jobs/<id>/surfaces -> interactive surfaces
+  POST /jobs/<id>/surfaces/<surface>/events -> record an interaction
+  POST /jobs/<id>/surfaces/<surface>/respond -> record + continue the agent
   POST /jobs/start        {goal, target?, template?, permission?, conversation_id?}
   POST /jobs              {goal, target?, ...}   -> full job record (synchronous)
   PUT  /upload            raw bytes, X-Filename header
@@ -60,6 +63,9 @@ from ..core.diff import diff_reports
 from ..naming import safe_download_name
 from ..routines import RoutineScheduler, RoutineStore
 from ..sandbox import detect_capabilities
+from ..surface import (
+    SurfaceError, SurfaceEventStore, event_from_body, find_surface,
+)
 from ..security.validate import ValidationError, read_target
 from ..util.logging import get_logger
 from .runs import RunManager
@@ -83,6 +89,11 @@ _MEMORY_PATH = re.compile(r"^/memory/(mem_[A-Za-z0-9]+)$")
 _ROUTINE_PATH = re.compile(r"^/routines/(rt_[A-Za-z0-9]+)$")
 _ROUTINE_RUN_PATH = re.compile(r"^/routines/(rt_[A-Za-z0-9]+)/run$")
 _JOB_CANCEL_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/cancel$")
+_JOB_SURFACES_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/surfaces$")
+_SURFACE_EVENT_PATH = re.compile(
+    r"^/jobs/(job_[A-Za-z0-9]+)/surfaces/(sf_[A-Za-z0-9]+)/events$")
+_SURFACE_RESPOND_PATH = re.compile(
+    r"^/jobs/(job_[A-Za-z0-9]+)/surfaces/(sf_[A-Za-z0-9]+)/respond$")
 _VENDOR_PATH = re.compile(r"^/vendor/([A-Za-z0-9._-]+)$")
 _STATIC_DIR = Path(__file__).parent / "static"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
@@ -299,6 +310,12 @@ class _Handler(BaseHTTPRequestHandler):
         jrhm = _JOB_REPORT_HTML_PATH.match(path)
         if jrhm:
             return self._job_report(jrhm.group(1), html=True)
+        jsm = _JOB_SURFACES_PATH.match(path)
+        if jsm:
+            rec = self.store.get(jsm.group(1))
+            if rec is None:
+                return self._send(404, {"error": "job not found"})
+            return self._send(200, {"surfaces": rec.get("surfaces") or []})
         fm = _FILES_PATH.match(path)
         if fm:
             return self._download_output(fm.group(1), fm.group(2))
@@ -344,6 +361,12 @@ class _Handler(BaseHTTPRequestHandler):
             ok = self.runs.cancel(cm.group(1))
             return self._send(200 if ok else 404,
                               {"cancelled": ok, "id": cm.group(1)})
+        sm = _SURFACE_EVENT_PATH.match(self.path)
+        if sm:
+            return self._surface_event(sm.group(1), sm.group(2), body)
+        srm = _SURFACE_RESPOND_PATH.match(self.path)
+        if srm:
+            return self._surface_respond(srm.group(1), srm.group(2), body)
         if self.path == "/memory":
             return self._memory_add(body)
         if self.path == "/routines":
@@ -629,6 +652,72 @@ class _Handler(BaseHTTPRequestHandler):
         except (ValidationError, OSError) as exc:
             return self._send(400, {"error": str(exc)})
         return self._send(200, report.to_dict())
+
+    def _record_surface_event(self, job_id: str, rec: dict, surface: dict,
+                              event) -> None:
+        """Persist the event and reflect the answered state on the job record."""
+        self.surface_events.append(job_id, surface["id"], event)
+        surface["status"] = "submitted"
+        surface["last_event"] = event.to_dict()
+        rec["surfaces"] = rec.get("surfaces") or []
+        try:
+            self.store.path_for(job_id).write_text(
+                json.dumps(rec, indent=2), encoding="utf-8")
+        except OSError:
+            pass
+
+    def _surface_event(self, job_id: str, surface_id: str, body: dict) -> None:
+        rec = self.store.get(job_id)
+        if rec is None:
+            return self._send(404, {"error": "job not found"})
+        surface = find_surface(rec.get("surfaces") or [], surface_id)
+        if surface is None:
+            return self._send(404, {"error": "surface not found"})
+        try:
+            event = event_from_body(job_id, surface, body)
+            self._record_surface_event(job_id, rec, surface, event)
+        except SurfaceError as exc:
+            return self._send(400, {"error": str(exc)})
+        return self._send(200, {"accepted": True, "event": event.to_dict()})
+
+    def _surface_respond(self, job_id: str, surface_id: str, body: dict) -> None:
+        rec = self.store.get(job_id)
+        if rec is None:
+            return self._send(404, {"error": "job not found"})
+        surface = find_surface(rec.get("surfaces") or [], surface_id)
+        if surface is None:
+            return self._send(404, {"error": "surface not found"})
+        try:
+            event = event_from_body(job_id, surface, body)
+            self._record_surface_event(job_id, rec, surface, event)
+        except SurfaceError as exc:
+            return self._send(400, {"error": str(exc)})
+        import json as _json
+
+        goal = (
+            "[Interactive surface response]\n"
+            f"Surface: {surface.get('title')} ({surface_id})\n"
+            f"Action: {event.action_id}\n"
+            f"Value: {_json.dumps(event.value, ensure_ascii=False)}\n"
+            f"Other text: {event.other_text}\n\n"
+            "Continue the task using this decision. Do not repeat the question "
+            "unless the answer is still genuinely ambiguous.")
+        run_body = {
+            "goal": goal,
+            "conversation_id": rec.get("conversation_id"),
+            "target": rec.get("target_path"),
+            "template": rec.get("template") or "general",
+            "permission": rec.get("permission") or body.get("permission") or "read",
+            "max_steps": max(1, min(int(body.get("max_steps", 24) or 24), 64)),
+        }
+        stream_id, cid, error = self.runs.start(run_body)
+        if error:
+            code = 402 if error.startswith("monthly budget") else 409
+            return self._send(code, {"error": error})
+        return self._send(202, {
+            "accepted": True, "job_id": stream_id,
+            "conversation_id": cid, "event": event.to_dict(),
+        })
 
     def _world(self, body):
         from ..intelligence.world import world_from_analysis
@@ -938,9 +1027,11 @@ class ReverseAIServer:
         routines = RoutineStore(Path(store_dir) / "routines.json")
         runs = RunManager(store, memory=memory, skills=skills, routines=routines)
         self.scheduler = RoutineScheduler(routines, runs)
+        surface_events = SurfaceEventStore(Path(store_dir) / "surface_events")
         handler = type("BoundHandler", (_Handler,), {
             "store": store, "runs": runs, "memory": memory,
             "routines": routines, "skills": skills,
+            "surface_events": surface_events,
         })
         self.httpd = ThreadingHTTPServer((host, port), handler)
         self.store = store

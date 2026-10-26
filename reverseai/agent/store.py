@@ -99,6 +99,7 @@ class JobStore:
                 continue
             out.append({
                 "id": d.get("id"),
+                "conversation_id": d.get("conversation_id"),
                 "goal": d.get("goal"),
                 "status": d.get("status"),
                 "steps": d.get("steps"),

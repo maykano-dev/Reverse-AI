@@ -28,6 +28,7 @@ class Job:
     target_path: str | None = None
     id: str = field(default_factory=_job_id)
     workspace: str = ""
+    permission: str = ""      # read | execute | write | dangerous
     status: str = "created"   # created|running|completed|failed|refused
     created_at: float = field(default_factory=time.time)
     finished_at: float | None = None
@@ -54,6 +55,7 @@ class Job:
     opportunities: list[dict[str, Any]] = field(default_factory=list)
     hypotheses: list[dict[str, Any]] = field(default_factory=list)
     test_strength: dict[str, Any] = field(default_factory=dict)
+    surfaces: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -61,6 +63,7 @@ class Job:
             "goal": self.goal,
             "target_path": self.target_path,
             "workspace": self.workspace,
+            "permission": self.permission,
             "status": self.status,
             "created_at": self.created_at,
             "finished_at": self.finished_at,
@@ -82,6 +85,7 @@ class Job:
             "opportunities": self.opportunities,
             "hypotheses": self.hypotheses,
             "test_strength": self.test_strength,
+            "surfaces": self.surfaces,
             "evidence": self.evidence.to_list(),
             "evidence_summary": self.evidence.summary(),
             "audit": self.audit,

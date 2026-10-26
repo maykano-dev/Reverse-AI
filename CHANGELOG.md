@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.9.0: interactive surfaces and a calmer workspace
+
+### Added
+
+- A validated interactive-surface protocol for questions, forms, tables,
+  charts, graphs, diffs, code, progress, approval cards, file drops, and
+  sandboxed custom views. Every choice supports an "Other - type your own"
+  escape hatch.
+- `create_surface` agent tool, `Job.surfaces` persistence, and SSE surface events.
+- `GET /jobs/<id>/surfaces`, `POST .../events`, and `POST .../respond`. A response
+  is recorded and continues the same conversation with a structured decision.
+- Surface rendering in live turns and archived chats, with per-surface state.
+- Warm, higher-contrast visual system: serif welcome, compact sidebar, context
+  header, suggestion cards, calmer composer, surface cards, mobile adjustments.
+- The system prompt now tells the agent to use surfaces for decisions, forms,
+  comparisons, graphs, diffs, approvals, and other task-native interactions.
+- 20 new tests; total 539; 57 tools covered by contract tests.
+- A larger default output budget and chunked `write_file` appends fix truncated
+  large-file writes. Invalid/truncated tool arguments now return a clear,
+  actionable message instead of retrying blindly.
+- The sidebar groups all turns by conversation, so a follow-up message no longer
+  appears as a separate chat.
+
 ## 0.8.0: gated dangerous surfaces and open-item closure
 
 ### Added

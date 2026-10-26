@@ -12,7 +12,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from reverseai.agent import Agent, Permission, ToolContext  # noqa: E402
+from reverseai.agent import (  # noqa: E402
+    Agent, Permission, ToolContext, ToolMediator, ToolRegistry,
+)
 from reverseai.agent.coding_tools import coding_tools  # noqa: E402
 from reverseai.agent.providers.mock import MockProvider, call, say  # noqa: E402
 from reverseai.sandbox import SandboxPolicy  # noqa: E402
@@ -40,6 +42,14 @@ class FileToolTests(unittest.TestCase):
         r2 = tool("read_file").run({"path": "a/b.txt"}, self.ctx)
         self.assertIn("hello", r2.content)
 
+    def test_append_builds_a_file_in_chunks(self):
+        tool("write_file").run({"path": "big.txt", "content": "one\n"}, self.ctx)
+        r = tool("write_file").run(
+            {"path": "big.txt", "content": "two\n", "append": True}, self.ctx)
+        self.assertTrue(r.ok, r.content)
+        self.assertEqual(Path(self.tmp.name, "big.txt").read_text(),
+                         "one\ntwo\n")
+
     def test_edit_unique(self):
         tool("write_file").run({"path": "f.py", "content": "x = 1\ny = 1\n"}, self.ctx)
         r = tool("edit_file").run({"path": "f.py", "old": "x = 1", "new": "x = 2"}, self.ctx)
@@ -63,6 +73,29 @@ class FileToolTests(unittest.TestCase):
         r = tool("list_dir").run({"path": "."}, self.ctx)
         self.assertIn("one.txt", r.content)
         self.assertIn("sub", r.content)
+
+
+class OutputBudgetTests(unittest.TestCase):
+    def test_output_budget_is_large_enough_and_configurable(self):
+        agent = Agent(MockProvider([]), max_permission=Permission.READ)
+        self.assertGreaterEqual(agent.max_tokens, 8192)
+        explicit = Agent(MockProvider([]), max_permission=Permission.READ,
+                         max_tokens=1234)
+        self.assertEqual(explicit.max_tokens, 1234)
+
+    def test_truncated_arguments_get_an_actionable_error(self):
+        with tempfile.TemporaryDirectory() as td:
+            reg = ToolRegistry()
+            for t in coding_tools():
+                reg.register(t)
+            med = ToolMediator(reg, max_permission=Permission.WRITE)
+            ctx = ToolContext(job_id="t", workspace=td,
+                              extra={"project_dir": td})
+            res = med.dispatch("write_file", {"__raw__": '{"path": "x"'}, ctx)
+            self.assertFalse(res.ok)
+            self.assertIn("not valid JSON", res.content)
+            self.assertIn("skeleton", res.content)
+            self.assertIn("truncated response", med.audit[-1].note)
 
 
 class RunCommandTests(unittest.TestCase):

@@ -16,7 +16,7 @@
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
-  <img alt="tests" src="https://img.shields.io/badge/tests-519%2B%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-539%2B%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
   <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
@@ -24,7 +24,8 @@
 <p align="center">
   <a href="https://maykano-dev.github.io/Reverse-AI/">Live site</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="#whats-new-in-080">What's new</a> ·
+  <a href="#whats-new-in-090">What's new</a> ·
+  <a href="docs/UI_SURFACES.md">Interactive surfaces</a> ·
   <a href="docs/UNIFIED_AGENT.md">Feature map</a> ·
   <a href="docs/POWER.md">Power map</a> ·
   <a href="docs/INTELLIGENCE_ROADMAP.md">Intelligence roadmap</a> ·
@@ -50,6 +51,15 @@ Most "AI + reverse engineering" demos stop at describing a binary. ReverseAI clo
 - **Untrusted by default.** Analysis is pure. Execution happens only inside a hardened bubblewrap sandbox (no network, dropped capabilities, read-only system, tmpfs workdir) and is refused when nothing can contain it.
 - **A real working memory.** Durable notes, web research with citations, scheduled routines, specialist agents, and conversations that survive a reload or a server restart.
 - **Mobile first.** A PWA that works as a full chat app on a phone, with a drawer, safe areas, touch-sized controls, and an installable manifest.
+
+## What's new in 0.9.0
+
+| Area | What landed |
+|---|---|
+| **Interactive surfaces** | The agent can create questions, forms, tables, charts, graphs, diffs, code views, progress panels, approval cards, file drops, and sandboxed custom views inside the conversation. Choices include an **Other - type your own** option. |
+| **Surface actions** | Every surface records its interaction and can continue the same conversation with a structured decision. Surfaces persist in the Job and in archived chats. |
+| **New visual system** | Warm neutral palette, serif welcome, compact sidebar, context header, calmer suggestion cards, a more spacious composer, smooth transitions, and mobile adjustments. |
+| **Practical interaction** | Live progress, explicit risk on approvals, recommended options, evidence tables, and a real sandboxed escape hatch for custom views. |
 
 ## What's new in 0.8.0
 
@@ -419,6 +429,7 @@ has no regression inputs.
 | `REVERSEAI_ALLOWED_ROOTS` | Colon-separated roots for file paths when auth is on (the store is always allowed) |
 | `REVERSEAI_MONTHLY_BUDGET` | Pause paid models after this many USD |
 | `REVERSEAI_MAX_REPAIR_ATTEMPTS` | Verification repair attempts (default 3, max 10) |
+| `REVERSEAI_MAX_TOKENS` | Maximum model output per step (default 8192) |
 | `REVERSEAI_ENABLE_DANGEROUS_CAPABILITIES` | Master opt-in for deferred high-risk capabilities (default off) |
 | `REVERSEAI_APPROVAL_KEY` | HMAC key for short-lived action approvals (optional) |
 | `REVERSEAI_VAULT_KEY` | Key material for the optional encrypted vault (optional) |

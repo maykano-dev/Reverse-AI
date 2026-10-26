@@ -110,7 +110,7 @@ actually enforced.
 
 ## High-risk capabilities are denied by default
 
-The 0.8 release adds **gated surfaces**, not enabled authorities:
+The 0.9 release adds **gated surfaces**, not enabled authorities:
 
 - Desktop session broker and loopback listener (no VNC/input backend).
 - Read-only Telegram channel (no shell/payment/deployment commands).
@@ -150,7 +150,7 @@ inventing a weaker boundary.
 
 ## Gated dangerous surfaces
 
-The v0.8 surfaces are deliberately narrow:
+The v0.9 surfaces are deliberately narrow:
 
 - **Desktop**: loopback listener with a bearer token, allowlisted actions, and a
   scoped approval for `takeover`/`focus`/`refresh`. No VNC endpoint and no

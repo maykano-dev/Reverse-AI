@@ -8,6 +8,8 @@ stateful, multi-turn dialogue. ``Agent.run`` is a single-turn convenience.
 
 from __future__ import annotations
 
+import os
+
 from ..sandbox import SandboxPolicy
 from .builtins import default_tools
 from .context import DEFAULT_MAX_CHARS
@@ -31,6 +33,7 @@ class Agent:
         temperature: float = 0.0,
         enable_coding: bool = True,
         max_context_chars: int = DEFAULT_MAX_CHARS,
+        max_tokens: int | None = None,
         template: str = "general",
         memory=None,
         skills: list | None = None,
@@ -45,6 +48,8 @@ class Agent:
         self.sandbox_policy = sandbox_policy or SandboxPolicy()
         self.temperature = temperature
         self.max_context_chars = max_context_chars
+        self.max_tokens = max_tokens or int(
+            os.environ.get("REVERSEAI_MAX_TOKENS", "8192"))
         self.template = template
         self.memory = memory
         self.skills = skills or []
