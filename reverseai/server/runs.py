@@ -33,6 +33,28 @@ _TERMINAL = {"final", "error"}
 
 _MAX_RUNS = 300       # keep recent run event-streams in memory
 _MAX_CONVOS = 150     # keep recent conversations resumable in memory
+CLIENT_VERSION = 2    # bump when the browser needs a compatibility shim
+
+
+def preview_compat_event(event: dict[str, Any], legacy: bool) -> dict[str, Any] | None:
+    """Old shells cannot render the new preview card.
+
+    They do, however, open the Preview panel when a ``clone_website`` result
+    arrives. Emit an honest "Opening the live preview" event for those clients
+    so a generated site is still usable without forcing a reload.
+    """
+    if not legacy or event.get("type") != "final" or not event.get("preview"):
+        return None
+    return {
+        "type": "tool_result",
+        "step": event.get("steps") or 1,
+        "name": "clone_website",
+        "ok": True,
+        "permission": "read",
+        "title": "Opening the live preview",
+        "content": "The generated site is ready in the Preview panel.",
+        "compat": "preview",
+    }
 
 
 @dataclass
@@ -44,6 +66,7 @@ class Run:
     created_at: float = field(default_factory=time.time)
     conversation_id: str | None = None
     cancel: threading.Event = field(default_factory=threading.Event)
+    legacy_client: bool = False
 
 
 class RunManager:
@@ -103,7 +126,8 @@ class RunManager:
         from ..agent.job import _job_id
 
         stream_id = _job_id()
-        run = Run(job_id=stream_id, conversation_id=cid)
+        legacy = int(body.get("client") or 1) < CLIENT_VERSION
+        run = Run(job_id=stream_id, conversation_id=cid, legacy_client=legacy)
         with self._lock:
             self._runs[stream_id] = run
             self._evict()
@@ -116,6 +140,10 @@ class RunManager:
 
         def _worker():
             def on_event(ev: dict) -> None:
+                compat = preview_compat_event(ev, run.legacy_client)
+                if compat is not None:
+                    self.store.append_event(stream_id, compat)
+                    run.events.put(compat)
                 self.store.append_event(stream_id, ev)
                 run.events.put(ev)
 

@@ -1224,7 +1224,7 @@ async function submitSurface(card, surface, jobId, actionId, button) {
   if (files.length) value.uploads = files;
   try {
     const { status, body } = await postJSON(`/jobs/${jobId}/surfaces/${surface.id}/respond`, {
-      action_id: actionId, value, other_text: other, permission,
+      action_id: actionId, value, other_text: other, permission, client: 2,
     });
     if (status !== 202 && status !== 200) throw new Error(body.error || "Could not continue.");
     card.dataset.submitted = "1";
@@ -1420,7 +1420,7 @@ async function send(goal) {
   userTurn(goal);
   input.value = "";
   input.style.height = "auto";
-  const payload = { goal, template, permission };
+  const payload = { goal, template, permission, client: 2 };
   if (attached) { payload.target = attached.path; clearAttachment(); }
   else if (pendingTarget) { payload.target = pendingTarget; pendingTarget = null; }
   if (conversationId) payload.conversation_id = conversationId;

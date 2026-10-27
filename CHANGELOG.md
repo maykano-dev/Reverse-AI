@@ -16,7 +16,7 @@
   header, suggestion cards, calmer composer, surface cards, mobile adjustments.
 - The system prompt now tells the agent to use surfaces for decisions, forms,
   comparisons, graphs, diffs, approvals, and other task-native interactions.
-- 27 new tests; total 546; 57 tools covered by contract tests.
+- 29 new tests; total 548; 57 tools covered by contract tests.
 - A larger default output budget and chunked `write_file` appends fix truncated
   large-file writes. Invalid/truncated tool arguments now return a clear,
   actionable message instead of retrying blindly.
@@ -27,7 +27,9 @@
   detected at `index.html`, `site/index.html`, `public/index.html`,
   `dist/index.html`, `build/index.html`, `app/index.html`, or
   `clone/index.html`, with a Preview card in chat and automatic opening when the
-  site is fresh. The preview route serves workspace assets safely.
+  site is fresh. The preview route serves workspace assets safely. A legacy
+  browser shell gets a compatibility event so it still opens the Preview panel
+  without requiring an immediate reload.
 
 ## 0.8.0: gated dangerous surfaces and open-item closure
 

@@ -16,6 +16,7 @@ from reverseai.agent.job import Job  # noqa: E402
 from reverseai.agent.surface_tools import CreateSurfaceTool  # noqa: E402
 from reverseai.agent.tools import ToolContext  # noqa: E402
 from reverseai.server.app import ReverseAIServer  # noqa: E402
+from reverseai.server.runs import preview_compat_event  # noqa: E402
 from reverseai.surface import (  # noqa: E402
     SurfaceError, SurfaceEventStore, event_from_body, validate_surface,
 )
@@ -116,6 +117,19 @@ class SurfaceToolTests(unittest.TestCase):
         self.assertEqual(data["surfaces"][0]["kind"], "question")
 
 
+class LegacyClientTests(unittest.TestCase):
+    def test_old_shells_get_a_preview_event(self):
+        final = {"type": "final", "preview": "site/index.html", "steps": 3}
+        ev = preview_compat_event(final, legacy=True)
+        self.assertIsNotNone(ev)
+        self.assertEqual(ev["name"], "clone_website")
+        self.assertEqual(ev["title"], "Opening the live preview")
+        self.assertEqual(ev["compat"], "preview")
+        self.assertIsNone(preview_compat_event(final, legacy=False))
+        self.assertIsNone(preview_compat_event(
+            {"type": "final", "preview": ""}, legacy=True))
+
+
 class SurfaceHTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -165,6 +179,27 @@ class SurfaceHTTPTests(unittest.TestCase):
             f"{self.base}/jobs/{sid}/surfaces/{surface['id']}/events",
             {"action_id": "not-real"},)
         self.assertEqual(status, 400, body)
+
+    def test_legacy_client_gets_a_preview_open_event(self):
+        sid, cid, err = self.srv.runs.start({"goal": "hello", "provider": "mock"})
+        self.assertIsNone(err)
+        self.srv.runs.get(sid).done.wait(5)
+        conv = self.srv.runs.conversation(cid)
+        site = Path(conv.workspace) / "site"
+        site.mkdir(parents=True, exist_ok=True)
+        (site / "index.html").write_text("<h1>legacy preview</h1>")
+        sid2, cid2, err = self.srv.runs.start(
+            {"goal": "show me the preview", "conversation_id": cid})
+        self.assertIsNone(err)
+        self.assertEqual(cid2, cid)
+        self.srv.runs.get(sid2).done.wait(5)
+        events = self.srv.store.read_events(sid2)
+        compat = [e for e in events if e.get("compat") == "preview"]
+        self.assertEqual(len(compat), 1)
+        self.assertEqual(compat[0]["name"], "clone_website")
+        self.assertEqual(compat[0]["title"], "Opening the live preview")
+        final = next(e for e in events if e.get("type") == "final")
+        self.assertEqual(final["preview"], "site/index.html")
 
     def test_respond_continues_the_conversation(self):
         sid, surface = self._make_job_with_surface()

@@ -718,6 +718,7 @@ class _Handler(BaseHTTPRequestHandler):
             "template": rec.get("template") or "general",
             "permission": rec.get("permission") or body.get("permission") or "read",
             "max_steps": max(1, min(int(body.get("max_steps", 24) or 24), 64)),
+            "client": body.get("client", 1),
         }
         stream_id, cid, error = self.runs.start(run_body)
         if error:

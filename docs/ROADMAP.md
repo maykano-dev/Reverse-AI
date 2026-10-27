@@ -15,7 +15,7 @@ A living map of what exists and what comes next. Updated with v0.9.0.
   calmer composer, surface cards, smooth transitions, mobile behavior.
 - **Live site preview**: generated entry pages are served from the workspace,
   shown as a Preview card, and opened automatically when fresh.
-- **Tests**: 546; 57 tools contract-tested.
+- **Tests**: 548; 57 tools contract-tested.
 
 ### v0.8.0: gated dangerous surfaces and open-item closure
 
