@@ -11,14 +11,46 @@ workspace). All paths are resolved through ``safe_join`` so nothing escapes it.
 
 from __future__ import annotations
 
+import mimetypes
 import os
+import re
+import urllib.parse
 from pathlib import Path
 
+from ..preview import preview_entry
+from ..security.net import NetworkError, fetch as safe_fetch
 from ..security.validate import ValidationError, safe_join
 from .tools import Permission, Tool, ToolContext, ToolResult
 
 _MAX_READ_BYTES = 256 * 1024
 _MAX_WRITE_BYTES = 2 * 1024 * 1024
+_MAX_MEDIA_BYTES = 15 * 1024 * 1024
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".avif", ".ico"}
+_MIME_EXT = {
+    "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp",
+    "image/gif": ".gif", "image/svg+xml": ".svg", "image/avif": ".avif",
+    "image/x-icon": ".ico", "image/vnd.microsoft.icon": ".ico",
+}
+
+
+def _looks_like_image(data: bytes, ext: str) -> bool:
+    head = data[:512]
+    if ext == ".png":
+        return head.startswith(b"\x89PNG\r\n\x1a\n")
+    if ext in (".jpg", ".jpeg"):
+        return head.startswith(b"\xff\xd8\xff")
+    if ext == ".gif":
+        return head.startswith((b"GIF87a", b"GIF89a"))
+    if ext == ".webp":
+        return head[:4] == b"RIFF" and head[8:12] == b"WEBP"
+    if ext == ".avif":
+        return b"ftypavif" in head[:32] or b"ftypavis" in head[:32]
+    if ext == ".ico":
+        return head.startswith(b"\x00\x00\x01\x00")
+    if ext == ".svg":
+        text = head.lstrip().lower()
+        return b"<svg" in text or (text.startswith(b"<?xml") and b"<svg" in data[:4096].lower())
+    return False
 
 
 def _project_root(ctx: ToolContext) -> Path:
@@ -127,6 +159,123 @@ class WriteFileTool(Tool):
             path=args["path"], created=not existed)
 
 
+class InstallMediaTool(Tool):
+    name = "install_media"
+    description = (
+        "Install a real image into the generated site. Accepts an uploaded file "
+        "path (shown as an attachment) or a public http(s) image URL. It validates "
+        "the image, copies it under the site's assets folder, and returns the "
+        "relative src to use in HTML. Use this instead of saying you cannot add "
+        "images, and never substitute fabricated photos for real ones."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "source": {
+                "type": "string",
+                "description": "uploaded file path or a public image URL",
+            },
+            "name": {"type": "string", "description": "optional output filename"},
+            "dest": {
+                "type": "string",
+                "description": "optional workspace-relative directory (default: "
+                               "the site's assets folder)",
+            },
+            "alt": {"type": "string", "description": "optional alt text"},
+        },
+        "required": ["source"],
+    }
+    permission = Permission.WRITE
+
+    def run(self, args, ctx) -> ToolResult:
+        source = str(args.get("source") or "").strip()
+        if not source:
+            return ToolResult.failure("source is required")
+        root = _project_root(ctx).resolve()
+        name = str(args.get("name") or "").strip()
+        mime = ""
+        if source.lower().startswith(("http://", "https://")):
+            try:
+                data, mime, final = safe_fetch(
+                    source, max_bytes=_MAX_MEDIA_BYTES, timeout=20.0,
+                    accept="image/avif,image/webp,image/png,image/jpeg,image/*")
+            except NetworkError as exc:
+                return ToolResult.failure(f"could not fetch image: {exc}")
+            if not name:
+                name = Path(urllib.parse.urlparse(final).path).name
+        else:
+            p = Path(source)
+            if not p.is_absolute():
+                p = root / p
+            p = p.resolve()
+            allowed = [root]
+            upload_root = ctx.extra.get("upload_root")
+            if upload_root:
+                allowed.append(Path(upload_root).resolve())
+            if not any(p == a or a in p.parents for a in allowed):
+                return ToolResult.failure(
+                    "source must be an uploaded file or inside the project")
+            try:
+                if not p.is_file():
+                    return ToolResult.failure(f"no such image: {source}")
+                if p.stat().st_size > _MAX_MEDIA_BYTES:
+                    return ToolResult.failure("image exceeds the 15 MiB limit")
+                data = p.read_bytes()
+            except OSError as exc:
+                return ToolResult.failure(f"could not read image: {exc}")
+            mime = mimetypes.guess_type(p.name)[0] or ""
+            if not name:
+                name = p.name
+        if not data:
+            return ToolResult.failure("image is empty")
+        if len(data) > _MAX_MEDIA_BYTES:
+            return ToolResult.failure("image exceeds the 15 MiB limit")
+        ext = Path(name).suffix.lower()
+        if ext not in _IMAGE_EXTS:
+            ext = _MIME_EXT.get(mime.split(";", 1)[0].lower(), "")
+        if not ext:
+            return ToolResult.failure("unsupported image type")
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "-", Path(name).name).strip("-.") or "image"
+        if Path(safe).suffix.lower() not in _IMAGE_EXTS:
+            safe += ext
+        if not _looks_like_image(data, Path(safe).suffix.lower()):
+            return ToolResult.failure("file does not look like the claimed image type")
+
+        entry = preview_entry(root)
+        if args.get("dest"):
+            target_dir = _resolve(ctx, str(args["dest"]))
+        elif entry and Path(entry).parent != Path("."):
+            target_dir = root / Path(entry).parent / "assets"
+        else:
+            target_dir = root / "assets"
+        target_dir = target_dir.resolve()
+        if target_dir != root and root not in target_dir.parents:
+            return ToolResult.failure("destination escapes the project")
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = target_dir / safe
+        if target.exists():
+            stem, suffix = target.stem, target.suffix
+            n = 2
+            while (target_dir / f"{stem}-{n}{suffix}").exists():
+                n += 1
+            target = target_dir / f"{stem}-{n}{suffix}"
+        try:
+            target.write_bytes(data)
+        except OSError as exc:
+            return ToolResult.failure(f"could not write image: {exc}")
+        rel = target.relative_to(root).as_posix()
+        entry_parent = (root / Path(entry).parent) if entry else root
+        try:
+            src = target.relative_to(entry_parent).as_posix()
+        except ValueError:
+            src = rel
+        alt = str(args.get("alt") or Path(safe).stem.replace("-", " ").replace("_", " "))
+        return ToolResult.success(
+            f"installed image at {rel}; use src=\"{src}\"",
+            path=rel, src=src, filename=target.name,
+            bytes=len(data), alt=alt, mime=mime)
+
+
 class EditFileTool(Tool):
     name = "edit_file"
     description = (
@@ -222,4 +371,5 @@ class RunCommandTool(Tool):
 
 
 def coding_tools() -> list[Tool]:
-    return [ListDirTool(), ReadFileTool(), WriteFileTool(), EditFileTool(), RunCommandTool()]
+    return [ListDirTool(), ReadFileTool(), WriteFileTool(), EditFileTool(),
+            RunCommandTool()]

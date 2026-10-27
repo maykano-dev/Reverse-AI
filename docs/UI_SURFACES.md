@@ -38,6 +38,10 @@ continue from the user's interaction.
 }
 ```
 
+Question, form, and approval surfaces wait by default: the turn ends with
+`awaiting_input` and the next turn is the user's structured response. Set
+`"wait": false` for a dashboard or review surface that should not pause.
+
 Every choice block has an **Other - type your own** path by default. A form can
 collect free text, numbers, selects, checkboxes, and files. The surface can also
 include a table, bar/line/pie chart, node/edge graph, before/after diff, code,

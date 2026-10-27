@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from reverseai.agent import Agent, Permission  # noqa: E402
+from reverseai.agent.conversation import _attachment_note  # noqa: E402
 from reverseai.agent.providers.mock import MockProvider, call, say  # noqa: E402
 
 CC = shutil.which("cc") is not None
@@ -27,6 +28,17 @@ def compile_marker(marker="HELLO"):
     out = Path(tmp.name) / "a"
     subprocess.run(["cc", "-no-pie", str(src), "-o", str(out)], check=True, capture_output=True)
     return tmp, out
+
+
+class AttachmentTests(unittest.TestCase):
+    def test_attachment_note_names_the_image_and_path(self):
+        note = _attachment_note([{"path": "/tmp/uploads/u1/p.png",
+                                  "filename": "p.png", "mime": "image/png",
+                                  "size": 1234}])
+        self.assertIn("Attached images", note)
+        self.assertIn("p.png", note)
+        self.assertIn("/tmp/uploads/u1/p.png", note)
+        self.assertIn("install_media", note)
 
 
 @unittest.skipUnless(CC, "cc unavailable")

@@ -66,6 +66,7 @@ _TOOL_ICON = {
     "diff_modified": "bars",
     "extract_archive": "archive",
     "clone_website": "globe",
+    "install_media": "file",
     "add_imported_library": "code",
     "add_section": "code",
     "list_dir": "file",
@@ -181,6 +182,9 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "create_surface":
         title = "Building something you can interact with"
         detail = "Creating a question, form, view, or control panel for this step."
+    elif name == "install_media":
+        title = "Adding an image to the page"
+        detail = "Copying a real image from an upload or URL into the site assets."
     elif name == "remember":
         title = "Saving a durable note"
         detail = "Keeping a decision or preference for a later conversation."

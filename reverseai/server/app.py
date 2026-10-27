@@ -555,6 +555,8 @@ class _Handler(BaseHTTPRequestHandler):
         except OSError:
             pass
         kind, arch, bits = "unknown", None, None
+        import mimetypes
+        mime = mimetypes.guess_type(safe)[0] or self.headers.get("Content-Type") or "application/octet-stream"
         try:
             from ..core.identify import detect_format
             from ..security.archive import is_archive
@@ -568,7 +570,7 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception:
             pass
         return self._send(200, {"path": str(dest), "filename": safe,
-                                "size": written, "kind": kind,
+                                "size": written, "kind": kind, "mime": mime,
                                 "arch": arch, "bits": bits})
 
     def _download_artifact(self, cid: str) -> None:

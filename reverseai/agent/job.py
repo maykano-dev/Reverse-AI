@@ -29,7 +29,7 @@ class Job:
     id: str = field(default_factory=_job_id)
     workspace: str = ""
     permission: str = ""      # read | execute | write | dangerous
-    status: str = "created"   # created|running|completed|failed|refused
+    status: str = "created"   # created|running|awaiting_input|completed|failed|refused|cancelled
     created_at: float = field(default_factory=time.time)
     finished_at: float | None = None
 
@@ -57,6 +57,7 @@ class Job:
     test_strength: dict[str, Any] = field(default_factory=dict)
     surfaces: list[dict[str, Any]] = field(default_factory=list)
     preview: str = ""          # workspace-relative HTML entry point
+    awaiting_surface: str = "" # a question/form/approval waiting for input
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -88,6 +89,7 @@ class Job:
             "test_strength": self.test_strength,
             "surfaces": self.surfaces,
             "preview": self.preview,
+            "awaiting_surface": self.awaiting_surface,
             "evidence": self.evidence.to_list(),
             "evidence_summary": self.evidence.summary(),
             "audit": self.audit,

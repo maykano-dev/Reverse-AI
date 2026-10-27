@@ -897,6 +897,7 @@ def default_tools() -> list[Tool]:
     from .corpus_tools import CaptureBehaviorCorpusTool
     from .intelligence_tools import intelligence_tools
     from .modify_engine import ChooseModificationStrategyTool, PlanAndModifyTool
+    from .coding_tools import InstallMediaTool
     from .surface_tools import surface_tools
     from .verify_tools import (
         AssessTestStrengthTool, DifferentialFuzzTool, DifferentialTestTool,
@@ -945,6 +946,7 @@ def default_tools() -> list[Tool]:
         ListCheckpointsTool(),
         ReviewWorkspaceChangesTool(),
         RestoreCheckpointTool(),
+        InstallMediaTool(),
     ]
     tools.extend(intelligence_tools())
     tools.extend(surface_tools())

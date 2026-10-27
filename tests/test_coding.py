@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from reverseai.agent import (  # noqa: E402
     Agent, Permission, ToolContext, ToolMediator, ToolRegistry,
 )
-from reverseai.agent.coding_tools import coding_tools  # noqa: E402
+from reverseai.agent.coding_tools import InstallMediaTool, coding_tools  # noqa: E402
 from reverseai.agent.providers.mock import MockProvider, call, say  # noqa: E402
 from reverseai.sandbox import SandboxPolicy  # noqa: E402
 
@@ -75,6 +75,68 @@ class FileToolTests(unittest.TestCase):
         self.assertIn("sub", r.content)
 
 
+PNG = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
+
+
+class MediaToolTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.ctx = ToolContext(job_id="t", workspace=self.tmp.name,
+                               extra={"project_dir": self.tmp.name})
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_installs_an_uploaded_image_into_site_assets(self):
+        site = self.root / "site"
+        site.mkdir()
+        (site / "index.html").write_text("<h1>x</h1>")
+        (self.root / "photo.png").write_bytes(PNG)
+        r = InstallMediaTool().run({"source": "photo.png"}, self.ctx)
+        self.assertTrue(r.ok, r.content)
+        self.assertEqual(r.data["path"], "site/assets/photo.png")
+        self.assertEqual(r.data["src"], "assets/photo.png")
+        self.assertTrue((site / "assets" / "photo.png").is_file())
+
+    def test_accepts_an_image_in_the_store_upload_root(self):
+        uploads = self.root / "uploads" / "u1"
+        uploads.mkdir(parents=True)
+        source = uploads / "shot.png"
+        source.write_bytes(PNG)
+        self.ctx.extra["upload_root"] = str(self.root / "uploads")
+        r = InstallMediaTool().run({"source": str(source), "dest": "assets"}, self.ctx)
+        self.assertTrue(r.ok, r.content)
+        self.assertTrue((self.root / "assets" / "shot.png").is_file())
+
+    def test_refuses_a_disguised_text_file(self):
+        (self.root / "fake.png").write_text("not an image")
+        r = InstallMediaTool().run({"source": "fake.png"}, self.ctx)
+        self.assertFalse(r.ok)
+        self.assertIn("does not look like", r.content)
+
+    def test_refuses_a_path_outside_the_project_and_uploads(self):
+        outside = Path(tempfile.mkdtemp()) / "secret.png"
+        outside.write_bytes(PNG)
+        try:
+            r = InstallMediaTool().run({"source": str(outside)}, self.ctx)
+            self.assertFalse(r.ok)
+            self.assertIn("uploaded file or inside the project", r.content)
+        finally:
+            outside.unlink(missing_ok=True)
+            outside.parent.rmdir()
+
+    def test_fetches_a_public_image_url(self):
+        from unittest.mock import patch
+
+        with patch("reverseai.agent.coding_tools.safe_fetch",
+                   return_value=(PNG, "image/png", "https://example.com/photo.png")):
+            r = InstallMediaTool().run(
+                {"source": "https://example.com/photo.png"}, self.ctx)
+        self.assertTrue(r.ok, r.content)
+        self.assertTrue((self.root / "assets" / "photo.png").is_file())
+
+
 class PreviewTests(unittest.TestCase):
     def test_generated_site_is_detected_as_a_preview(self):
         with tempfile.TemporaryDirectory() as td:
@@ -94,8 +156,12 @@ class PreviewTests(unittest.TestCase):
                 say("Built it."),
             ]
             agent = Agent(MockProvider(script), max_permission=Permission.WRITE)
-            job = agent.run("build a page", project_dir=td, workspace=td)
+            events = []
+            job = agent.run("build a page", project_dir=td, workspace=td,
+                            on_event=events.append)
             self.assertEqual(job.preview, "site/index.html")
+            self.assertTrue(any(e.get("type") == "preview_changed"
+                                for e in events))
 
 
 class OutputBudgetTests(unittest.TestCase):

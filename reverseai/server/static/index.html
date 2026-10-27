@@ -138,14 +138,42 @@
         The plain-language report and evidence appear here when a turn finishes.</div></div>
       <div class="pane caps" id="capsPane"><div class="caps-grid" id="capsGrid"></div></div>
       <div class="pane preview" id="previewPane">
+        <div class="pv-tabs">
+          <div class="pv-tab active">
+            <span class="pv-tab-dot"></span>
+            <span id="pvTabTitle">New tab</span>
+          </div>
+          <button class="pv-ic" id="pvNewTab" title="New tab" aria-label="New tab" data-icon="plus"></button>
+          <span class="pv-grow"></span>
+          <span class="pv-live" id="pvLive"><i></i> Live</span>
+          <button class="pv-ic" id="pvExternal" title="Open in a new tab" aria-label="Open in a new tab" data-icon="external"></button>
+          <button class="pv-ic" id="pvFull" title="Fullscreen" aria-label="Fullscreen" data-icon="maximize"></button>
+          <button class="pv-ic" id="pvClosePreview" title="Close preview" aria-label="Close preview" data-icon="x"></button>
+        </div>
         <div class="pv-bar">
-          <input type="text" id="pvUrl" placeholder="Paste a URL, or open your built site" aria-label="Preview URL" />
+          <button class="pv-ic" id="pvBack" title="Back" aria-label="Back" data-icon="chevronLeft" disabled></button>
+          <button class="pv-ic" id="pvForward" title="Forward" aria-label="Forward" data-icon="chevronRight" disabled></button>
+          <button class="pv-ic" id="pvReload" title="Reload" aria-label="Reload" data-icon="refresh"></button>
+          <input type="text" id="pvUrl" placeholder="Type a URL" aria-label="Preview URL" />
           <button class="pv-go" id="pvGo">Open</button>
         </div>
-        <div id="pvEmpty" class="canvas-empty"><div class="ce-big" data-icon="globe" data-size="28"></div>
-          Built sites and pages you ask me to open show up here.</div>
-        <iframe id="pvFrame" class="pv-frame" style="display:none;"
-          sandbox="allow-scripts allow-forms allow-popups" title="Preview"></iframe>
+        <div class="pv-body">
+          <div id="pvEmpty" class="pv-empty">
+            <div class="pv-launch" id="pvLaunch" style="display:none;">
+              <span class="pv-launch-ic" data-icon="server" data-size="17"></span>
+              <div class="pv-launch-main">
+                <b id="pvLaunchName">Built site</b>
+                <span id="pvLaunchMeta">site/index.html</span>
+              </div>
+              <button class="pv-launch-go" id="pvLaunchGo" title="Open built site" aria-label="Open built site" data-icon="play"></button>
+            </div>
+            <div class="ce-big" data-icon="globe" data-size="28"></div>
+            <p>Run a server to preview your app, or enter a URL.</p>
+            <span class="pv-hint">Built sites appear here automatically, with live reload.</span>
+          </div>
+          <iframe id="pvFrame" class="pv-frame" style="display:none;"
+            sandbox="allow-scripts allow-forms allow-popups" title="Preview"></iframe>
+        </div>
       </div>
     </div>
   </aside>

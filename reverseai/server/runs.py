@@ -148,7 +148,8 @@ class RunManager:
                 run.events.put(ev)
 
             try:
-                job = conv.run_turn(goal, on_event=on_event, stop_event=run.cancel)
+                job = conv.run_turn(goal, on_event=on_event, stop_event=run.cancel,
+                                    attachments=body.get("attachments") or [])
                 job.id = stream_id  # align stored id with the streamed one
                 job.conversation_id = cid
                 # Persist a delivered artifact only when the delivery gate
@@ -194,6 +195,7 @@ class RunManager:
                           project_dir=body.get("project_dir"),
                           workspace=workspace)
         conv.ctx.extra["routine_store"] = self.routines
+        conv.ctx.extra["upload_root"] = str(Path(self.store.dir) / "uploads")
         conv.ctx.extra["corpus_store"] = self.corpus
         conv.ctx.extra["checkpoint_store"] = CheckpointStore(
             Path(conv.workspace).parent / "checkpoints" / Path(conv.workspace).name,
@@ -225,6 +227,7 @@ class RunManager:
                       mode=state.get("mode") or body.get("mode"))
         conv = Conversation.from_state(agent, state)
         conv.ctx.extra["routine_store"] = self.routines
+        conv.ctx.extra["upload_root"] = str(Path(self.store.dir) / "uploads")
         conv.ctx.extra["corpus_store"] = self.corpus
         conv.ctx.extra["checkpoint_store"] = CheckpointStore(
             Path(conv.workspace).parent / "checkpoints" / Path(conv.workspace).name,

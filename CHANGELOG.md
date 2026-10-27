@@ -16,13 +16,21 @@
   header, suggestion cards, calmer composer, surface cards, mobile adjustments.
 - The system prompt now tells the agent to use surfaces for decisions, forms,
   comparisons, graphs, diffs, approvals, and other task-native interactions.
-- 29 new tests; total 548; 57 tools covered by contract tests.
+- 39 new tests; total 558; 58 tools covered by contract tests.
 - A larger default output budget and chunked `write_file` appends fix truncated
   large-file writes. Invalid/truncated tool arguments now return a clear,
   actionable message instead of retrying blindly.
+- The preview pane is now a browser-like live server: back/forward, reload,
+  URL bar, new tab, open externally, fullscreen, and automatic reload as site
+  files change during a turn.
 - The sidebar groups all turns by conversation, so a follow-up message no longer
   appears as a separate chat. `GET /jobs` now returns one summary per
   conversation by default; `GET /jobs?all=1` returns every turn.
+- Question, form, and approval surfaces now pause the turn instead of continuing
+  with guessed preferences. The user's response resumes the same conversation.
+- Real image input: image attachments and public image URLs can be installed with
+  `install_media`, validated, and copied into the site's assets. The previous
+  "cannot fetch images" limitation is gone.
 - Generated websites are exposed in the live Preview panel. The entry page is
   detected at `index.html`, `site/index.html`, `public/index.html`,
   `dist/index.html`, `build/index.html`, `app/index.html`, or

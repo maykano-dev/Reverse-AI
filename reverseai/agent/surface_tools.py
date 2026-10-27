@@ -37,6 +37,11 @@ class CreateSurfaceTool(Tool):
             "actions": {"type": "array", "items": {"type": "object"}},
             "allow_other": {"type": "boolean", "default": True},
             "persist": {"type": "boolean", "default": True},
+            "wait": {
+                "type": "boolean",
+                "description": "pause this turn and wait for the user's response; "
+                               "defaults to true for question/form/approval",
+            },
         },
     }
     permission = Permission.WRITE
@@ -52,11 +57,12 @@ class CreateSurfaceTool(Tool):
                 "actions": args.get("actions") or [],
                 "allow_other": args.get("allow_other", True),
                 "persist": args.get("persist", True),
+                "wait": args.get("wait", True),
             }
         else:
             spec = dict(spec)
             for key in ("kind", "title", "description", "blocks", "actions",
-                        "allow_other", "persist"):
+                        "allow_other", "persist", "wait"):
                 if key in args and key not in spec:
                     spec[key] = args[key]
         spec.setdefault("meta", {})
@@ -70,6 +76,8 @@ class CreateSurfaceTool(Tool):
         surfaces = [s for s in surfaces if s.get("id") != surface["id"]]
         surfaces.append(surface)
         ctx.extra["surfaces"] = surfaces
+        if surface.get("wait"):
+            ctx.extra["pending_surface"] = surface
         emit = ctx.extra.get("emit")
         if callable(emit):
             try:

@@ -11,8 +11,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from reverseai.agent import Agent, Permission  # noqa: E402
 from reverseai.agent.evidence import EvidenceLog  # noqa: E402
 from reverseai.agent.job import Job  # noqa: E402
+from reverseai.agent.providers.mock import MockProvider, call, say  # noqa: E402
 from reverseai.agent.surface_tools import CreateSurfaceTool  # noqa: E402
 from reverseai.agent.tools import ToolContext  # noqa: E402
 from reverseai.server.app import ReverseAIServer  # noqa: E402
@@ -128,6 +130,39 @@ class LegacyClientTests(unittest.TestCase):
         self.assertIsNone(preview_compat_event(final, legacy=False))
         self.assertIsNone(preview_compat_event(
             {"type": "final", "preview": ""}, legacy=True))
+
+
+class SurfacePauseTests(unittest.TestCase):
+    def test_a_question_surface_stops_the_turn_and_waits(self):
+        with tempfile.TemporaryDirectory() as td:
+            script = [
+                call("create_surface", {"surface": question_spec()}),
+                call("list_dir", {"path": "."}),
+                say("this should not run"),
+            ]
+            agent = Agent(MockProvider(script), max_permission=Permission.WRITE)
+            job = agent.run("ask me first", project_dir=td, workspace=td)
+            self.assertEqual(job.status, "awaiting_input")
+            self.assertEqual(job.steps, 1)
+            self.assertEqual(job.awaiting_surface, job.surfaces[0]["id"])
+            self.assertTrue(job.surfaces[0]["wait"])
+            self.assertIn("Pick an option", job.final_answer)
+
+    def test_a_dashboard_surface_does_not_block_the_turn(self):
+        with tempfile.TemporaryDirectory() as td:
+            spec = {
+                "kind": "dashboard",
+                "title": "Snapshot",
+                "blocks": [{"kind": "text", "text": "all good"}],
+                "wait": False,
+            }
+            script = [call("create_surface", {"surface": spec}),
+                      say("Here is the snapshot.")]
+            agent = Agent(MockProvider(script), max_permission=Permission.WRITE)
+            job = agent.run("show a snapshot", project_dir=td, workspace=td)
+            self.assertEqual(job.status, "completed")
+            self.assertEqual(job.awaiting_surface, "")
+            self.assertEqual(job.final_answer, "Here is the snapshot.")
 
 
 class SurfaceHTTPTests(unittest.TestCase):

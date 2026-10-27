@@ -186,6 +186,26 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(rec["goal"], "demo")
 
+    def test_image_attachments_reach_the_model_transcript(self):
+        sid, cid, err = self.srv.runs.start({
+            "goal": "use this image",
+            "provider": "mock",
+            "attachments": [{
+                "path": "/tmp/uploads/u1/photo.png",
+                "filename": "photo.png",
+                "mime": "image/png",
+                "size": 1234,
+            }],
+        })
+        self.assertIsNone(err)
+        self.srv.runs.get(sid).done.wait(5)
+        rec = self.srv.store.get(sid)
+        first = next(m["content"] for m in rec["transcript"]
+                     if m.get("role") == "user")
+        self.assertIn("Attached images", first)
+        self.assertIn("photo.png", first)
+        self.assertIn("install_media", first)
+
     def test_jobs_group_turns_and_all_exposes_every_turn(self):
         first = Job(goal="first turn", conversation_id="conv_group_test",
                     created_at=100.0)
@@ -248,6 +268,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(body["kind"], "elf")
         self.assertTrue(body["path"].endswith(".bin"))
         self.assertEqual(body["filename"], "mal_ware_.bin")  # sanitized
+        self.assertTrue(body["mime"])
         self.assertTrue(Path(body["path"]).exists())
         import os
         if os.name == "posix":

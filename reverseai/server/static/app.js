@@ -61,6 +61,7 @@ const P = {
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>',
   menu: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
   chevronLeft: '<polyline points="15 18 9 12 15 6"/>',
+  chevronRight: '<polyline points="9 18 15 12 9 6"/>',
   chevronDown: '<polyline points="6 9 12 15 18 9"/>',
   arrowUp: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
   arrowDown: '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>',
@@ -83,6 +84,8 @@ const P = {
   thumbsDown: '<path d="M17 14V2"/><path d="M9 18.1L10 14H4.2a2 2 0 0 1-2-2.4l1.4-6A2 2 0 0 1 5.6 4H17v10l-4 7a2 2 0 0 1-4 0z"/>',
   trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
   external: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
+  maximize: '<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>',
+  server: '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="16.5" x2="7.01" y2="16.5"/>',
   lock: '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
   book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
   play: '<polygon points="6 3 20 12 6 21 6 3"/>',
@@ -920,6 +923,7 @@ function renderPreviewCard(container, cid, rel) {
   open.addEventListener("click", () => showPreview(previewHref(cid, rel), { local: true }));
   card.appendChild(info);
   card.appendChild(open);
+  showLaunchCard(cid, rel);
   container.appendChild(card);
 }
 
@@ -1301,8 +1305,10 @@ function finishFinal(ui, ev, jobId) {
   ui.bar.classList.add("done");
   ui.bar.querySelector(".orbit").outerHTML = ic("check", 16);
   const n = ui.steps || ev.steps || 1;
+  const awaiting = ev.status === "awaiting_input";
   ui.label.textContent = ev.status === "cancelled"
     ? "Stopped"
+    : awaiting ? "Waiting for your choice"
     : (n <= 1 ? "Thought it through" : `Thought through ${n} steps`);
   ui.label.classList.remove("shimmer");
   ui.elapsed.textContent = fmtElapsed(Date.now() - ui.start);
@@ -1311,9 +1317,11 @@ function finishFinal(ui, ev, jobId) {
   $$(".plan-step", ui.plan).forEach((s) => s.classList.add("done"));
   ui.think.classList.add("closed");
 
-  const ans = el("div", "answer");
-  renderMd(ans, ev.answer || "_(no conclusion)_");
-  ui.body.appendChild(ans);
+  if (ev.answer || !awaiting) {
+    const ans = el("div", "answer");
+    renderMd(ans, ev.answer || "_(no conclusion)_");
+    ui.body.appendChild(ans);
+  }
 
   if (ev.status === "incomplete") {
     const note = el("div", "usage-line", "This turn reached its step limit. Ask me to continue and I'll pick up where I stopped.");
@@ -1421,8 +1429,19 @@ async function send(goal) {
   input.value = "";
   input.style.height = "auto";
   const payload = { goal, template, permission, client: 2 };
-  if (attached) { payload.target = attached.path; clearAttachment(); }
-  else if (pendingTarget) { payload.target = pendingTarget; pendingTarget = null; }
+  if (attached) {
+    if (String(attached.mime || "").startsWith("image/")) {
+      payload.attachments = [{
+        path: attached.path,
+        filename: attached.filename,
+        mime: attached.mime,
+        size: attached.size,
+      }];
+    } else {
+      payload.target = attached.path;
+    }
+    clearAttachment();
+  } else if (pendingTarget) { payload.target = pendingTarget; pendingTarget = null; }
   if (conversationId) payload.conversation_id = conversationId;
   const ui = aiTurn();
   currentUI = ui;
@@ -1494,6 +1513,9 @@ function handleEvent(ui, ev, jobId) {
       break;
     case "surface":
       if (ev.surface) renderSurface(ui.body, ev.surface, jobId, ui);
+      break;
+    case "preview_changed":
+      if (previewLocal) schedulePreviewReload();
       break;
     case "finding":
       addFinding(ui, ev);
@@ -1655,6 +1677,7 @@ const TOOL_LABELS = {
   plan_and_modify: "Planning and making the change",
   check_execution_readiness: "Checking whether it can be run",
   create_surface: "Building an interactive surface",
+  install_media: "Adding an image",
   build_world_model: "Building the system model",
   query_world_model: "Asking the system model",
   project_memory: "Consulting project memory",
@@ -1801,7 +1824,7 @@ async function openConversation(jobId) {
   msgs.forEach((m) => {
     if (m.role === "user") {
       if (m.tool_call_id || Array.isArray(m.content)) return;
-      let text = String(m.content || "").split("\n\n[Attached target:")[0].replace(/^Goal:\s*/i, "").trim();
+      let text = String(m.content || "").split("\n\n[Attached ")[0].replace(/^Goal:\s*/i, "").trim();
       if (text) {
         if (!firstUser) firstUser = text;
         userTurn(text);
@@ -1838,10 +1861,14 @@ async function openConversation(jobId) {
     archivedUI.think.classList.add("closed");
     archivedUI.label.classList.remove("shimmer");
     const n = archivedUI.steps || rec.steps || 1;
-    archivedUI.label.textContent = n <= 1 ? "Thought it through" : `Thought through ${n} steps`;
-    const ans = el("div", "answer");
-    renderMd(ans, answer || "_(no conclusion)_");
-    archivedUI.body.appendChild(ans);
+    const waiting = rec.status === "awaiting_input" || rec.awaiting_surface;
+    archivedUI.label.textContent = waiting ? "Waiting for your choice"
+      : (n <= 1 ? "Thought it through" : `Thought through ${n} steps`);
+    if (answer || !waiting) {
+      const ans = el("div", "answer");
+      renderMd(ans, answer || "_(no conclusion)_");
+      archivedUI.body.appendChild(ans);
+    }
     renderSources(archivedUI.body, rec.sources || []);
     if (rec.delivery && rec.delivery.allowed === false) {
       renderDeliveryBlocked(archivedUI.body, rec.delivery.reason, jobId);
@@ -1863,9 +1890,11 @@ async function openConversation(jobId) {
     av.innerHTML = ic("logo", 17);
     t.appendChild(av);
     const body = el("div", "ai-body");
-    const ans = el("div", "answer");
-    renderMd(ans, answer || "_(no conclusion)_");
-    body.appendChild(ans);
+    if (answer || rec.status !== "awaiting_input") {
+      const ans = el("div", "answer");
+      renderMd(ans, answer || "_(no conclusion)_");
+      body.appendChild(ans);
+    }
     renderSources(body, rec.sources || []);
     if (rec.delivery && rec.delivery.allowed === false) {
       renderDeliveryBlocked(body, rec.delivery.reason, jobId);
@@ -2204,6 +2233,29 @@ function openCanvas(pane) {
     if (tab) tab.click();
   }
 }
+let previewUrl = "";
+let previewLocal = false;
+let previewHistory = [];
+let previewIndex = -1;
+let previewTimer = null;
+
+function resetPreview() {
+  previewUrl = "";
+  previewLocal = false;
+  previewHistory = [];
+  previewIndex = -1;
+  clearTimeout(previewTimer);
+  $("#previewPane").classList.remove("pv-full");
+  $("#pvFrame").style.display = "none";
+  $("#pvFrame").src = "about:blank";
+  $("#pvEmpty").style.display = "flex";
+  $("#pvLaunch").style.display = "none";
+  $("#pvUrl").value = "";
+  $("#pvTabTitle").textContent = "New tab";
+  $("#pvLive").classList.remove("on");
+  $("#pvBack").disabled = true;
+  $("#pvForward").disabled = true;
+}
 function resetCanvas() {
   views = {};
   viewOrder = [];
@@ -2213,9 +2265,7 @@ function resetCanvas() {
   $("#codeOut").style.display = "none";
   $("#codeOut").textContent = "";
   $("#reportPane").innerHTML = `<div class="canvas-empty"><div class="ce-big">${ic("file", 28)}</div>The plain-language report and evidence appear here when a turn finishes.</div>`;
-  $("#pvFrame").style.display = "none";
-  $("#pvEmpty").style.display = "";
-  $("#pvFrame").src = "about:blank";
+  resetPreview();
 }
 $$(".tab").forEach((t) => t.addEventListener("click", () => {
   $$(".tab").forEach((x) => x.classList.remove("active"));
@@ -2249,29 +2299,114 @@ function showView(key) {
   $$(".vopt").forEach((o) => o.classList.toggle("sel", o.dataset.key === key));
   openCanvas("editor");
 }
+function previewAddress(url) {
+  if (!url) return "";
+  if (url.startsWith("/")) return url;
+  return url;
+}
+function setPreviewNav() {
+  $("#pvBack").disabled = previewIndex <= 0;
+  $("#pvForward").disabled = previewIndex < 0 || previewIndex >= previewHistory.length - 1;
+}
 function showPreview(url, opts) {
+  if (!url) return;
+  const o = opts || {};
   const f = $("#pvFrame");
   // Never give untrusted/cloned pages the app's origin. No allow-same-origin.
   f.sandbox = "allow-scripts allow-forms allow-popups";
+  if (o.history !== false) {
+    previewHistory = previewHistory.slice(0, previewIndex + 1);
+    if (previewHistory[previewHistory.length - 1] !== url) previewHistory.push(url);
+    previewIndex = previewHistory.length - 1;
+  }
+  previewUrl = url;
+  previewLocal = !!o.local;
   f.src = url;
   f.style.display = "block";
   $("#pvEmpty").style.display = "none";
-  if (!(opts && opts.keepBar)) {
-    $("#pvUrl").value = opts && opts.local ? "Built site (live preview)" : ((opts && opts.shown) || url);
-  }
+  $("#pvLaunch").style.display = "none";
+  $("#pvUrl").value = previewAddress(o.shown || url);
+  $("#pvTabTitle").textContent = o.local ? "Live preview" : (o.title || hostOf(url) || "Preview");
+  $("#pvLive").classList.toggle("on", !!o.local);
+  setPreviewNav();
   openCanvas("preview");
+}
+function reloadPreview() {
+  if (!previewUrl) return;
+  const f = $("#pvFrame");
+  const sep = previewUrl.includes("?") ? "&" : "?";
+  f.src = `${previewUrl}${sep}__live=${Date.now()}`;
+}
+function schedulePreviewReload() {
+  if (!previewUrl || !previewLocal) return;
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(reloadPreview, 260);
 }
 function browse(u) {
   if (!u) return;
+  if (u.startsWith("/")) { showPreview(u, { local: true }); return; }
   if (!/^https?:\/\//i.test(u)) u = "https://" + u;
-  showPreview("/proxy?url=" + encodeURIComponent(u), { shown: u, keepBar: true });
+  showPreview("/proxy?url=" + encodeURIComponent(u),
+    { shown: u, keepBar: true, title: hostOf(u) });
+}
+function showLaunchCard(cid, rel) {
+  const url = previewHref(cid, rel);
+  $("#pvLaunch").dataset.url = url;
+  $("#pvLaunchName").textContent = previewName(rel);
+  $("#pvLaunchMeta").textContent = rel;
+  if (!previewUrl) {
+    $("#pvLaunch").style.display = "flex";
+    $("#pvEmpty").style.display = "flex";
+    $("#pvTabTitle").textContent = "New tab";
+  }
+}
+function previewName(p) {
+  return String(p || "").split("/").filter(Boolean).pop() || "Built site";
+}
+function startBuiltPreview() {
+  const url = $("#pvLaunch").dataset.url;
+  if (url) showPreview(url, { local: true });
+  else $("#pvUrl").focus();
 }
 $("#pvGo").addEventListener("click", () => {
   const u = $("#pvUrl").value.trim();
-  if (!u || u === "Built site (live preview)") return;
+  if (!u) return;
   browse(u);
 });
 $("#pvUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#pvGo").click(); });
+$("#pvReload").addEventListener("click", reloadPreview);
+$("#pvBack").addEventListener("click", () => {
+  if (previewIndex <= 0) return;
+  previewIndex--;
+  showPreview(previewHistory[previewIndex], { history: false,
+    local: previewHistory[previewIndex].startsWith("/preview/") });
+});
+$("#pvForward").addEventListener("click", () => {
+  if (previewIndex < 0 || previewIndex >= previewHistory.length - 1) return;
+  previewIndex++;
+  showPreview(previewHistory[previewIndex], { history: false,
+    local: previewHistory[previewIndex].startsWith("/preview/") });
+});
+$("#pvNewTab").addEventListener("click", () => {
+  resetPreview();
+  $("#pvUrl").focus();
+});
+$("#pvLaunchGo").addEventListener("click", startBuiltPreview);
+$("#pvExternal").addEventListener("click", () => {
+  const u = previewUrl || $("#pvUrl").value.trim();
+  if (!u) return;
+  const abs = u.startsWith("/") ? location.origin + u : u;
+  window.open(abs, "_blank", "noopener,noreferrer");
+});
+$("#pvFull").addEventListener("click", () => {
+  const on = $("#previewPane").classList.toggle("pv-full");
+  $("#pvFull").title = on ? "Exit fullscreen" : "Fullscreen";
+  $("#pvFull").setAttribute("aria-label", $("#pvFull").title);
+});
+$("#pvClosePreview").addEventListener("click", () => {
+  $("#previewPane").classList.remove("pv-full");
+  $("#canvas").classList.remove("open");
+});
 
 // ---------------------------------------------------------------------------
 // host capabilities
@@ -2309,6 +2444,9 @@ document.addEventListener("keydown", (e) => {
     if ($("#authModal").classList.contains("show")) return;
     const open = $$(".sheet.show");
     if (open.length) { open.forEach(closeSheet); return; }
+    if ($("#previewPane").classList.contains("pv-full")) {
+      $("#previewPane").classList.remove("pv-full"); return;
+    }
     if ($("#canvas").classList.contains("open")) { $("#canvas").classList.remove("open"); return; }
     if ($("#app").classList.contains("side-open")) { setSidebar(false); return; }
     if ($("#vdrop").classList.contains("open")) $("#vdrop").classList.remove("open");

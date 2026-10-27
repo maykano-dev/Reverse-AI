@@ -248,6 +248,7 @@ def validate_surface(spec: Any) -> dict[str, Any]:
         "actions": actions,
         "allow_other": bool(spec.get("allow_other", True)),
         "persist": bool(spec.get("persist", True)),
+        "wait": bool(spec.get("wait", kind in ("question", "form", "approval"))),
         "created_at": float(spec.get("created_at") or time.time()),
         "meta": dict(spec.get("meta") or {}),
     }

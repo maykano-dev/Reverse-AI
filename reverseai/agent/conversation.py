@@ -62,6 +62,8 @@ _SAFE_EXTRA = {
     "mode", "strategy", "modification_plan", "last_checkpoint",
 }
 _GATED_OPERATIONS = {"patch", "imports", "section", "rebuild", "reimplement"}
+_PREVIEW_WRITE_TOOLS = {"write_file", "edit_file", "install_media",
+                        "run_command", "clone_website"}
 
 
 class Conversation:
@@ -165,13 +167,16 @@ class Conversation:
         self.messages.append(Message(Role.USER, goal))
         self._first = False
 
-    def run_turn(self, goal: str, on_event=None, stop_event=None) -> Job:
+    def run_turn(self, goal: str, on_event=None, stop_event=None,
+                 attachments: list[dict] | None = None) -> Job:
         # Serialize: a follow-up can't corrupt state while a turn is still
         # running (e.g. a long clone). It waits for the previous turn to finish.
         with self._lock:
-            return self._run_turn_locked(goal, on_event, stop_event)
+            return self._run_turn_locked(goal, on_event, stop_event,
+                                         attachments=attachments)
 
-    def _run_turn_locked(self, goal: str, on_event=None, stop_event=None) -> Job:
+    def _run_turn_locked(self, goal: str, on_event=None, stop_event=None,
+                         attachments: list[dict] | None = None) -> Job:
         agent = self.agent
         job = Job(goal=goal, target_path=self.target_path)
         job.workspace = self.workspace
@@ -194,15 +199,18 @@ class Conversation:
         self.turns += 1
         self.ctx.job_id = job.id
         self.ctx.goal = goal
+        note = _attachment_note(attachments)
+        self.ctx.extra["attachments"] = list(attachments or [])
         if self._first:
             self.messages.append(Message(
-                Role.USER, _initial_user_message(goal, self.target_path)))
+                Role.USER, _initial_user_message(goal, self.target_path) + note))
             self._first = False
         else:
             # Only add if not already queued via add_user for this goal.
+            text = goal + note
             if not (self.messages and self.messages[-1].role == Role.USER
-                    and self.messages[-1].content == goal):
-                self.messages.append(Message(Role.USER, goal))
+                    and self.messages[-1].content == text):
+                self.messages.append(Message(Role.USER, text))
 
         job.status = "running"
         self.ctx.extra["emit"] = emit
@@ -211,6 +219,7 @@ class Conversation:
         # re-delivered by a follow-up that changed nothing.
         self.ctx.extra.pop("delivery", None)
         self.ctx.extra.pop("surfaces", None)
+        self.ctx.extra.pop("pending_surface", None)
         self._loop(job, emit, stop_event)
         if job.status not in ("cancelled", "failed"):
             self._enforce_delivery_gate(job, emit)
@@ -269,6 +278,7 @@ class Conversation:
               "test_strength": job.test_strength, "surfaces": job.surfaces,
               "preview": job.preview,
               "preview_fresh": getattr(self, "_preview_fresh", False),
+              "awaiting_surface": job.awaiting_surface,
               "template": self.template, "plan": plan})
         return job
 
@@ -345,6 +355,7 @@ class Conversation:
 
     def _loop(self, job: Job, emit, stop_event=None) -> None:
         agent = self.agent
+        awaiting = None
         for step in range(1, agent.max_steps + 1):
             if stop_event is not None and stop_event.is_set():
                 job.status = "cancelled"
@@ -411,6 +422,29 @@ class Conversation:
                             self.ctx.sources.append(s)
                             known.add(s["url"])
                             emit({"type": "source", **s})
+
+                if result.ok and tc.name in _PREVIEW_WRITE_TOOLS:
+                    rel = preview_entry(self.workspace)
+                    if rel:
+                        job.preview = rel
+                        emit({"type": "preview_changed", "path": rel})
+
+                # A question/form/approval surface is a control-flow boundary,
+                # not decoration. Stop here and let the user answer it instead
+                # of spending another model turn guessing on their behalf.
+                pending = self.ctx.extra.get("pending_surface")
+                if isinstance(pending, dict) and pending.get("id"):
+                    awaiting = pending
+                    break
+            if awaiting is not None:
+                break
+
+        if awaiting is not None:
+            job.status = "awaiting_input"
+            job.awaiting_surface = str(awaiting.get("id") or "")
+            job.final_answer = "Pick an option above and I'll continue."
+            self.ctx.extra.pop("pending_surface", None)
+            return
 
         job.status = "incomplete"
         job.final_answer = job.final_answer or (
@@ -555,6 +589,28 @@ def _message_from_state(d: dict) -> Message:
              for c in (d.get("tool_calls") or []) if isinstance(c, dict)]
     return Message(role, content=d.get("content"), tool_calls=calls,
                    tool_call_id=d.get("tool_call_id"), name=d.get("name"))
+
+
+def _attachment_note(attachments: list[dict] | None) -> str:
+    if not attachments:
+        return ""
+    lines = []
+    for item in list(attachments)[:8]:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        if not path:
+            continue
+        name = str(item.get("filename") or Path(path).name)
+        mime = str(item.get("mime") or "image")
+        size = item.get("size")
+        extra = f", {size} bytes" if isinstance(size, int) else ""
+        lines.append(f"- {name} ({mime}{extra}) at {path}")
+    if not lines:
+        return ""
+    return ("\n\n[Attached images:\n" + "\n".join(lines) +
+            "\nUse install_media with one of these paths to place an image "
+            "in the site. Do not say you cannot use images.]")
 
 
 def _initial_user_message(goal: str, target_path: str | None) -> str:

@@ -117,10 +117,18 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   HTML runs in an opaque-origin iframe with a restrictive CSP and no network.
   See `docs/UI_SURFACES.md`.
 - **Live site preview:** a website written to `index.html` or `site/index.html`
-  is detected at the end of a turn and served from the conversation workspace
-  through `/preview/<conversation>/<path>`. Fresh sites open in the Preview
-  panel automatically and every preview gets an in-chat card. Archived jobs are
-  backfilled, and `/jobs` returns one summary per conversation.
+  is detected and served from the conversation workspace through
+  `/preview/<conversation>/<path>`. The Preview pane is browser-like: tabs,
+  back/forward, reload, URL entry, fullscreen, open externally, and live reload
+  as site files change during a turn. Fresh sites open automatically and every
+  preview gets an in-chat card. Archived jobs are backfilled, and `/jobs`
+  returns one summary per conversation.
+- **Media input:** `install_media` copies an uploaded image or fetches a public
+  image URL, validates the bytes and type, and places it under the site's
+  `assets/` folder. Image attachments are passed to the agent as paths.
+- **Input boundaries:** question, form, and approval surfaces stop the turn with
+  `status=awaiting_input`; the user's surface response starts the next turn. A
+  dashboard or review surface does not pause.
 - **Modify + verify:** byte patch on a copy + behavioral regression in the
   sandbox; LIEF structural edits when installed.
 - **Verified delivery gate:** `verify_modification` runs declared behavioral

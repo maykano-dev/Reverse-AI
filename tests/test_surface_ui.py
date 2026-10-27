@@ -52,11 +52,22 @@ class SurfaceUIContractTests(unittest.TestCase):
         self.assertIn("client: 2", js)
         self.assertIn(".preview-card", CSS.read_text(encoding="utf-8"))
 
+    def test_preview_panel_is_a_live_browser(self):
+        js = APP.read_text(encoding="utf-8")
+        html = (ROOT / "reverseai/server/static/index.html").read_text(encoding="utf-8")
+        for token in ("pvReload", "pvBack", "pvForward", "pvFull", "pvNewTab",
+                      "pvExternal", "pvLaunch"):
+            self.assertIn(token, js, token)
+            self.assertIn(token, html, token)
+        self.assertIn("preview_changed", js)
+        self.assertIn("schedulePreviewReload", js)
+        self.assertIn("pv-live", CSS.read_text(encoding="utf-8"))
+
     def test_service_worker_updates_do_not_leave_a_stale_shell(self):
         js = APP.read_text(encoding="utf-8")
         sw = (ROOT / "reverseai/server/static/sw.js").read_text(encoding="utf-8")
         self.assertIn("controllerchange", js)
-        self.assertIn("rvai-v12", sw)
+        self.assertIn("rvai-v15", sw)
 
     def test_custom_view_is_sandboxed(self):
         js = APP.read_text(encoding="utf-8")
