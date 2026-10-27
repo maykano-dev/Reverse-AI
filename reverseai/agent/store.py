@@ -111,6 +111,46 @@ class JobStore:
             })
         return out
 
+    def list_conversations(self, limit: int = 100) -> list[dict[str, Any]]:
+        """One summary per conversation, anchored to its latest turn.
+
+        A turn writes its own Job, so a long conversation produces many job
+        files. The sidebar should show one entry per conversation. The returned
+        ``ids`` list lets the UI delete the whole conversation.
+
+        Raw per-job summaries remain available with ``list_summaries`` (and
+        ``GET /jobs?all=1``).
+        """
+        rows = self.list_summaries(limit=max(limit, 1) * 4)
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            key = row.get("conversation_id") or row.get("id") or ""
+            groups.setdefault(key, []).append(row)
+        out: list[dict[str, Any]] = []
+        for cid, jobs in groups.items():
+            jobs.sort(key=lambda r: r.get("created_at") or 0, reverse=True)
+            latest, first = jobs[0], jobs[-1]
+            costs = [r.get("cost_usd") for r in jobs
+                     if isinstance(r.get("cost_usd"), (int, float))]
+            out.append({
+                "id": latest.get("id"),
+                "conversation_id": cid if cid.startswith("conv_") else None,
+                "goal": first.get("goal"),
+                "latest_goal": latest.get("goal"),
+                "status": latest.get("status"),
+                "steps": sum(int(r.get("steps") or 0) for r in jobs),
+                "turns": len(jobs),
+                "created_at": latest.get("created_at"),
+                "updated_at": latest.get("created_at"),
+                "evidence_summary": latest.get("evidence_summary") or {},
+                "template": latest.get("template", "general"),
+                "artifact": latest.get("artifact"),
+                "cost_usd": round(sum(costs), 6) if costs else None,
+                "ids": [r.get("id") for r in jobs if r.get("id")],
+            })
+        out.sort(key=lambda r: r.get("created_at") or 0, reverse=True)
+        return out[:limit]
+
     # -- durable conversation state ---------------------------------------
     def save_conversation(self, cid: str, state: dict[str, Any]) -> Path | None:
         if not _safe_conv_id(cid):

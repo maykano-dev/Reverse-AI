@@ -24,6 +24,7 @@ from ..security.validate import ValidationError, read_target
 from ..util.text import strip_dashes
 from ..checkpoints import CheckpointStore
 from ..missions import MissionStore
+from ..preview import preview_entry, preview_is_fresh
 from ..verify.corpus import CorpusStore, default_corpus_dir
 from .context import compact_messages
 from .evidence import Confidence, EvidenceLog, Finding
@@ -205,6 +206,7 @@ class Conversation:
 
         job.status = "running"
         self.ctx.extra["emit"] = emit
+        self._turn_started = time.time()
         # Delivery is per-turn. A previous turn's artifact must not be silently
         # re-delivered by a follow-up that changed nothing.
         self.ctx.extra.pop("delivery", None)
@@ -265,6 +267,8 @@ class Conversation:
               "differential": job.differential, "world_model": job.world_model,
               "opportunities": job.opportunities, "hypotheses": job.hypotheses,
               "test_strength": job.test_strength, "surfaces": job.surfaces,
+              "preview": job.preview,
+              "preview_fresh": getattr(self, "_preview_fresh", False),
               "template": self.template, "plan": plan})
         return job
 
@@ -413,10 +417,25 @@ class Conversation:
             "I reached the step limit before I could wrap this up. "
             "Ask me to continue and I'll pick up where I stopped.")
 
+    def _preview_entry(self) -> tuple[str, bool]:
+        """Return the workspace-relative HTML entry point and whether it is new.
+
+        The UI can render any generated site in its sandboxed Preview panel.
+        Returning the path here lets the model stop claiming it cannot render a
+        page, and lets the browser open it automatically when it is fresh.
+        """
+        rel = preview_entry(self.workspace)
+        if not rel:
+            return "", False
+        started = getattr(self, "_turn_started", 0.0)
+        return rel, preview_is_fresh(self.workspace, rel, started)
+
     def _finish(self, job: Job) -> Job:
         job.evidence = self.evidence
         job.audit = self.agent.mediator.audit_log()
         job.transcript = [m.to_openai() for m in self.messages]
+        job.preview, preview_fresh = self._preview_entry()
+        self._preview_fresh = preview_fresh
         job.usage = dict(job.usage)
         job.sources = list(self.ctx.sources)
         job.finished_at = time.time()

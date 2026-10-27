@@ -116,6 +116,11 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   recorded as a structured event and can continue the same conversation. Custom
   HTML runs in an opaque-origin iframe with a restrictive CSP and no network.
   See `docs/UI_SURFACES.md`.
+- **Live site preview:** a website written to `index.html` or `site/index.html`
+  is detected at the end of a turn and served from the conversation workspace
+  through `/preview/<conversation>/<path>`. Fresh sites open in the Preview
+  panel automatically and every preview gets an in-chat card. Archived jobs are
+  backfilled, and `/jobs` returns one summary per conversation.
 - **Modify + verify:** byte patch on a copy + behavioral regression in the
   sandbox; LIEF structural edits when installed.
 - **Verified delivery gate:** `verify_modification` runs declared behavioral

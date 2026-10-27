@@ -41,13 +41,21 @@ class SurfaceUIContractTests(unittest.TestCase):
         js = APP.read_text(encoding="utf-8")
         self.assertIn("j.conversation_id || j.id", js)
         self.assertIn("groups.get(key)", js)
-        self.assertIn("g.jobs.map((x) => x.id)", js)
+        self.assertIn("g.jobs.flatMap(", js)
+        self.assertIn("x.ids", js)
+
+    def test_generated_sites_have_a_live_preview(self):
+        js = APP.read_text(encoding="utf-8")
+        self.assertIn("renderPreviewCard", js)
+        self.assertIn("previewHref", js)
+        self.assertIn("preview_fresh", js)
+        self.assertIn(".preview-card", CSS.read_text(encoding="utf-8"))
 
     def test_service_worker_updates_do_not_leave_a_stale_shell(self):
         js = APP.read_text(encoding="utf-8")
         sw = (ROOT / "reverseai/server/static/sw.js").read_text(encoding="utf-8")
         self.assertIn("controllerchange", js)
-        self.assertIn("rvai-v10", sw)
+        self.assertIn("rvai-v11", sw)
 
     def test_custom_view_is_sandboxed(self):
         js = APP.read_text(encoding="utf-8")

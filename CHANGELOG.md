@@ -16,12 +16,18 @@
   header, suggestion cards, calmer composer, surface cards, mobile adjustments.
 - The system prompt now tells the agent to use surfaces for decisions, forms,
   comparisons, graphs, diffs, approvals, and other task-native interactions.
-- 21 new tests; total 540; 57 tools covered by contract tests.
+- 27 new tests; total 546; 57 tools covered by contract tests.
 - A larger default output budget and chunked `write_file` appends fix truncated
   large-file writes. Invalid/truncated tool arguments now return a clear,
   actionable message instead of retrying blindly.
 - The sidebar groups all turns by conversation, so a follow-up message no longer
-  appears as a separate chat.
+  appears as a separate chat. `GET /jobs` now returns one summary per
+  conversation by default; `GET /jobs?all=1` returns every turn.
+- Generated websites are exposed in the live Preview panel. The entry page is
+  detected at `index.html`, `site/index.html`, `public/index.html`,
+  `dist/index.html`, `build/index.html`, `app/index.html`, or
+  `clone/index.html`, with a Preview card in chat and automatic opening when the
+  site is fresh. The preview route serves workspace assets safely.
 
 ## 0.8.0: gated dangerous surfaces and open-item closure
 

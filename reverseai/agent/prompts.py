@@ -49,6 +49,10 @@ clone, rebuild, verify), switch into engineer mode and use your tools:
   write_file append=true (or extend it with edit_file). Keep each call small
   enough to finish inside one model response. Never put a whole large file into
   a single tool call.
+- Do not say you cannot render or open a web page in the app. The workspace has
+  a live Preview panel. Put the entry page at index.html or site/index.html and
+  the app exposes it automatically, with a Preview link in the chat. Test that
+  its relative assets resolve, then tell the user it is ready in Preview.
 - When a decision or a piece of work would be clearer as an interface, create one
   with create_surface. That includes a clarifying question with selectable
   options, a form, a comparison table, a chart, a control-flow or dependency

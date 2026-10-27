@@ -56,6 +56,7 @@ class Job:
     hypotheses: list[dict[str, Any]] = field(default_factory=list)
     test_strength: dict[str, Any] = field(default_factory=dict)
     surfaces: list[dict[str, Any]] = field(default_factory=list)
+    preview: str = ""          # workspace-relative HTML entry point
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -86,6 +87,7 @@ class Job:
             "hypotheses": self.hypotheses,
             "test_strength": self.test_strength,
             "surfaces": self.surfaces,
+            "preview": self.preview,
             "evidence": self.evidence.to_list(),
             "evidence_summary": self.evidence.summary(),
             "audit": self.audit,

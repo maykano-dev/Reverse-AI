@@ -135,6 +135,19 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(r.status, 200)
             self.assertIn("Demo Mall", r.read().decode())
 
+    def test_preview_serves_generated_site_and_assets(self):
+        sid, cid, err = self.srv.runs.start({"goal": "x", "provider": "mock"})
+        self.assertIsNone(err)
+        conv = self.srv.runs.conversation(cid)
+        site = Path(conv.workspace) / "site"
+        site.mkdir(parents=True, exist_ok=True)
+        (site / "index.html").write_text('<link rel="stylesheet" href="style.css"><h1>Kente</h1>')
+        (site / "style.css").write_text("h1 { color: red; }")
+        with urllib.request.urlopen(f"{self.base}/preview/{cid}/index.html", timeout=5) as r:
+            self.assertIn("Kente", r.read().decode())
+        with urllib.request.urlopen(f"{self.base}/preview/{cid}/style.css", timeout=5) as r:
+            self.assertIn("color: red", r.read().decode())
+
     def test_preview_blocks_traversal(self):
         sid, cid, err = self.srv.runs.start({"goal": "x", "provider": "mock"})
         conv = self.srv.runs.conversation(cid)
@@ -172,6 +185,26 @@ class ServerTests(unittest.TestCase):
         status, rec = _get(f"{self.base}/jobs/{job.id}")
         self.assertEqual(status, 200)
         self.assertEqual(rec["goal"], "demo")
+
+    def test_jobs_group_turns_and_all_exposes_every_turn(self):
+        first = Job(goal="first turn", conversation_id="conv_group_test",
+                    created_at=100.0)
+        second = Job(goal="second turn", conversation_id="conv_group_test",
+                     created_at=200.0)
+        self.srv.store.save(first)
+        self.srv.store.save(second)
+        status, body = _get(f"{self.base}/jobs")
+        self.assertEqual(status, 200)
+        row = next(r for r in body["jobs"]
+                   if r.get("conversation_id") == "conv_group_test")
+        self.assertEqual(row["goal"], "first turn")
+        self.assertEqual(row["id"], second.id)
+        self.assertEqual(row["turns"], 2)
+        status, body = _get(f"{self.base}/jobs?all=1")
+        self.assertEqual(status, 200)
+        self.assertFalse(body["grouped"])
+        self.assertEqual(len([r for r in body["jobs"]
+                              if r.get("conversation_id") == "conv_group_test"]), 2)
 
     def test_job_not_found(self):
         status, body = _get(f"{self.base}/jobs/job_doesnotexist")

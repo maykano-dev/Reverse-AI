@@ -36,6 +36,7 @@ class JobContractTests(unittest.TestCase):
         job.test_strength = {"mutation_score": 0.75}
         job.surfaces = [{"id": "sf_demo", "kind": "question",
                          "title": "Pick a path"}]
+        job.preview = "site/index.html"
         report = build_report(job.to_dict())
         self.assertEqual(report["world_model"]["nodes"], 4)
         self.assertEqual(report["test_strength"]["mutation_score"], 0.75)
@@ -67,6 +68,24 @@ class JobContractTests(unittest.TestCase):
             rows = store.list_summaries()
             self.assertEqual(len(rows), 2)
             self.assertEqual({r["conversation_id"] for r in rows}, {"conv_one"})
+
+    def test_conversation_summary_collapses_turns(self):
+        with tempfile.TemporaryDirectory() as td:
+            store = JobStore(td)
+            first = Job(goal="hello", conversation_id="conv_one",
+                        created_at=100.0)
+            second = Job(goal="how are you", conversation_id="conv_one",
+                         created_at=200.0)
+            store.save(first)
+            store.save(second)
+            rows = store.list_conversations()
+            self.assertEqual(len(rows), 1)
+            row = rows[0]
+            self.assertEqual(row["goal"], "hello")
+            self.assertEqual(row["latest_goal"], "how are you")
+            self.assertEqual(row["id"], second.id)
+            self.assertEqual(row["turns"], 2)
+            self.assertEqual(row["ids"], [second.id, first.id])
 
 
 if __name__ == "__main__":

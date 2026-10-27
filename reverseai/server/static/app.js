@@ -89,6 +89,7 @@ const P = {
   refresh: '<path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/>',
   bookmark: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
   undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
+  browser: '<rect x="3" y="5" width="18" height="15" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
 };
 function ic(name, size) {
   const s = size || 18;
@@ -901,6 +902,28 @@ function renderAnswerActions(container, text, jobId) {
 }
 
 // ---------------------------------------------------------------------------
+// live site preview
+// ---------------------------------------------------------------------------
+function previewHref(cid, rel) {
+  const parts = String(rel || "").split("/").filter(Boolean).map(encodeURIComponent);
+  return `/preview/${encodeURIComponent(cid)}/${parts.join("/")}`;
+}
+function renderPreviewCard(container, cid, rel) {
+  if (!container || !cid || !rel) return;
+  const card = el("div", "preview-card");
+  const info = el("div", "pc-info");
+  info.innerHTML = `<span class="pc-ic">${ic("browser", 16)}</span>
+    <span><b>Live site ready</b><span>${esc(rel)}</span></span>`;
+  const open = el("button", "primary");
+  open.type = "button";
+  open.textContent = "Open preview";
+  open.addEventListener("click", () => showPreview(previewHref(cid, rel), { local: true }));
+  card.appendChild(info);
+  card.appendChild(open);
+  container.appendChild(card);
+}
+
+// ---------------------------------------------------------------------------
 // interactive surfaces
 // ---------------------------------------------------------------------------
 function surfaceError(card, message) {
@@ -1326,6 +1349,10 @@ function finishFinal(ui, ev, jobId) {
     renderArtifact(ui.body, ev.artifact_meta, ev.artifact, jobId);
   }
   renderAnswerActions(ui.body, ev.answer || "", jobId);
+  if (ev.preview && conversationId) {
+    renderPreviewCard(ui.body, conversationId, ev.preview);
+    if (ev.preview_fresh) showPreview(previewHref(conversationId, ev.preview), { local: true });
+  }
   renderSurfaces(ui.body, ev.surfaces || [], jobId, ui);
   renderFeedback(ui.body, jobId);
 
@@ -1708,7 +1735,7 @@ async function loadHistory() {
     it.type = "button";
     it.dataset.goal = title.toLowerCase();
     it.dataset.cid = g.cid || "";
-    it.title = `${title}\n${j.status || ""}${j.steps ? " · " + j.steps + " steps" : ""}`;
+    it.title = `${title}\n${j.status || ""}${j.steps ? " · " + j.steps + " steps" : ""}${j.turns ? " · " + j.turns + " turn(s)" : ""}`;
     if (g.cid && g.cid === conversationId) it.classList.add("active");
     const icon = el("span", "cv-ic");
     icon.innerHTML = ic(templateIcon(j.template), 9);
@@ -1719,7 +1746,9 @@ async function loadHistory() {
     del.title = "Delete chat";
     del.addEventListener("click", (e) => {
       e.stopPropagation();
-      deleteChat(g.jobs.map((x) => x.id), it, g.cid);
+      const ids = Array.from(new Set(g.jobs.flatMap(
+        (x) => (Array.isArray(x.ids) ? x.ids : [x.id]))));
+      deleteChat(ids, it, g.cid);
     });
     it.appendChild(del);
     it.addEventListener("click", () => {
@@ -1820,6 +1849,7 @@ async function openConversation(jobId) {
       renderArtifact(archivedUI.body, rec.artifact_meta, rec.artifact, jobId);
     }
     renderAnswerActions(archivedUI.body, answer, jobId);
+    renderPreviewCard(archivedUI.body, rec.conversation_id || conversationId, rec.preview);
     renderSurfaces(archivedUI.body, rec.surfaces || [], jobId, archivedUI);
     renderFeedback(archivedUI.body, jobId);
     if (rec.usage && rec.usage.total_tokens) {
@@ -1843,6 +1873,7 @@ async function openConversation(jobId) {
       renderArtifact(body, rec.artifact_meta, rec.artifact, jobId);
     }
     renderAnswerActions(body, answer, jobId);
+    renderPreviewCard(body, rec.conversation_id || conversationId, rec.preview);
     renderSurfaces(body, rec.surfaces || [], jobId, null);
     renderFeedback(body, jobId);
     t.appendChild(body);
@@ -2133,7 +2164,7 @@ async function showArtifacts() {
   const list = $("#artList");
   list.innerHTML = "";
   let jobs = [];
-  try { jobs = (await getJSON("/jobs")).jobs || []; } catch (_) {}
+  try { jobs = (await getJSON("/jobs?all=1")).jobs || []; } catch (_) {}
   const rows = [];
   const seen = new Set();
   sessionArtifacts.forEach((a) => {

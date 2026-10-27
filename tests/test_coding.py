@@ -75,6 +75,29 @@ class FileToolTests(unittest.TestCase):
         self.assertIn("sub", r.content)
 
 
+class PreviewTests(unittest.TestCase):
+    def test_generated_site_is_detected_as_a_preview(self):
+        with tempfile.TemporaryDirectory() as td:
+            agent = Agent(MockProvider([]), max_permission=Permission.WRITE)
+            conv = agent.open(project_dir=td, workspace=td)
+            site = Path(td) / "site"
+            site.mkdir()
+            (site / "index.html").write_text("<h1>preview me</h1>")
+            rel, _fresh = conv._preview_entry()
+            self.assertEqual(rel, "site/index.html")
+
+    def test_write_then_finish_records_the_preview(self):
+        with tempfile.TemporaryDirectory() as td:
+            script = [
+                call("write_file", {"path": "site/index.html",
+                                    "content": "<h1>built</h1>"}),
+                say("Built it."),
+            ]
+            agent = Agent(MockProvider(script), max_permission=Permission.WRITE)
+            job = agent.run("build a page", project_dir=td, workspace=td)
+            self.assertEqual(job.preview, "site/index.html")
+
+
 class OutputBudgetTests(unittest.TestCase):
     def test_output_budget_is_large_enough_and_configurable(self):
         agent = Agent(MockProvider([]), max_permission=Permission.READ)

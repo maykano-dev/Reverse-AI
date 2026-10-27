@@ -24,7 +24,7 @@ Endpoints (JSON in / JSON out):
   POST /modify            {target, patches}      -> patch result + download
   POST /verify            {original, modified}   -> behavioral comparison
   POST /clone             {url, rename_*}        -> clone result + download
-  GET  /jobs              -> [job summaries]
+  GET  /jobs              -> one summary per conversation (?all=1 for turns)
   GET  /jobs/<id>         -> full job record
   GET  /jobs/<id>/events?after=N -> SSE (durable, replayable)
   GET  /jobs/<id>/surfaces -> interactive surfaces
@@ -293,7 +293,12 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/feedback":
             return self._send(200, {"feedback": self.store.feedback()})
         if path == "/jobs":
-            return self._send(200, {"jobs": self.store.list_summaries()})
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            if qs.get("all", ["0"])[0] in ("1", "true", "yes"):
+                return self._send(200, {"jobs": self.store.list_summaries(),
+                                        "grouped": False})
+            return self._send(200, {"jobs": self.store.list_conversations(),
+                                    "grouped": True})
 
         em = _EVENTS_PATH.match(path)
         if em:
@@ -329,6 +334,10 @@ class _Handler(BaseHTTPRequestHandler):
             rec = self.store.get(m.group(1))
             if rec is None:
                 return self._send(404, {"error": "job not found"})
+            if not rec.get("preview"):
+                # Backfill for jobs recorded before preview metadata existed.
+                from ..preview import preview_entry
+                rec["preview"] = preview_entry(rec.get("workspace"))
             return self._send(200, rec)
         return self._send(404, {"error": "not found"})
 
@@ -886,18 +895,27 @@ class _Handler(BaseHTTPRequestHandler):
         conv = self.runs.conversation(cid)
         if conv is None:
             return self._send(404, {"error": "no such session"})
-        base = (Path(conv.workspace) / "clone").resolve()
-        if not base.is_dir():
+        root = Path(conv.workspace).resolve()
+        if not root.is_dir():
             return self._send(404, {"error": "nothing built to preview yet"})
-        rel = relpath or "index.html"
-        target = (base / rel).resolve()
-        try:
-            target.relative_to(base)
-        except ValueError:
-            return self._send(404, {"error": "not found"})
-        if target.is_dir():
-            target = target / "index.html"
-        if not target.is_file():
+        rel = (relpath or "index.html").lstrip("/")
+        # The generated site can live at the workspace root, under site/, or
+        # under clone/ (the website-clone layout). Keep the old clone URLs
+        # working while also exposing files written by the coding tools.
+        candidates = [root / rel, root / "site" / rel, root / "clone" / rel]
+        target = None
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve()
+                resolved.relative_to(root)
+            except (OSError, ValueError):
+                continue
+            if resolved.is_dir():
+                resolved = resolved / "index.html"
+            if resolved.is_file():
+                target = resolved
+                break
+        if target is None:
             return self._send(404, {"error": "not found"})
         try:
             data = target.read_bytes()
