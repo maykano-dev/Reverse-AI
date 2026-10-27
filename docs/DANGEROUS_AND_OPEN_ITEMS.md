@@ -91,4 +91,4 @@ python3 -m unittest tests.test_macho_extra -v
 ```
 
 The full suite and `python3 -m reverseai audit` must pass. Current baseline:
-558 tests passing, 4 environment-dependent skips, version 0.9.0.
+566 tests passing, 4 environment-dependent skips, version 0.9.0.

@@ -752,6 +752,68 @@ class WebReadTool(Tool):
         return ToolResult.success(body[:20000], page=page.to_dict(), sources=[source])
 
 
+class WebImagesTool(Tool):
+    name = "web_images"
+    description = (
+        "Find real images on the public web, or list the images on a specific "
+        "page. Returns the image URL, the page it came from, the title/alt text, "
+        "and license/creator when the source is Wikimedia Commons. Follow with "
+        "install_media to copy a chosen image into the project. Prefer licensed "
+        "results for publication and always keep the source page."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "what the image should show"},
+            "url": {"type": "string", "description": "optional page URL to extract images from"},
+            "source": {"type": "string", "enum": ["web", "licensed"],
+                       "default": "web",
+                       "description": "web search, or Wikimedia Commons licensed results"},
+            "max_results": {"type": "integer", "minimum": 1, "maximum": 16,
+                            "default": 8},
+        },
+    }
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        from .research import (
+            ResearchError, images_from_page, search_images, source_card,
+        )
+
+        limit = int(args.get("max_results", 8))
+        try:
+            if args.get("url"):
+                rows = images_from_page(str(args["url"]))[:max(1, min(limit, 16))]
+            else:
+                rows = search_images(str(args.get("query") or ""), limit,
+                                     source=str(args.get("source") or "web"))
+        except ResearchError as exc:
+            return ToolResult.failure(f"image search failed: {exc}")
+        if not rows:
+            return ToolResult.success("(no image results)")
+        lines = []
+        sources = []
+        for i, row in enumerate(rows):
+            bits = [f"{i + 1}. {row.title or '(untitled)'}",
+                    f"   image: {row.image_url}"]
+            if row.page_url:
+                bits.append(f"   page: {row.page_url}")
+            if row.license:
+                bits.append(f"   license: {row.license}")
+            if row.creator:
+                bits.append(f"   creator: {row.creator}")
+            if row.width or row.height:
+                bits.append(f"   size: {row.width}x{row.height}")
+            if row.snippet and row.snippet != row.title:
+                bits.append(f"   context: {row.snippet[:300]}")
+            lines.append("\n".join(bits))
+            if row.page_url:
+                sources.append(source_card(row.page_url, row.title, row.snippet))
+        return ToolResult.success("\n\n".join(lines),
+                                  images=[r.to_dict() for r in rows],
+                                  sources=sources[:8])
+
+
 class ListSkillsTool(Tool):
     name = "list_skills"
     description = "List reusable playbooks (skills) available on this host."
@@ -897,7 +959,7 @@ def default_tools() -> list[Tool]:
     from .corpus_tools import CaptureBehaviorCorpusTool
     from .intelligence_tools import intelligence_tools
     from .modify_engine import ChooseModificationStrategyTool, PlanAndModifyTool
-    from .coding_tools import InstallMediaTool
+    from .coding_tools import InstallMediaTool, InstallResourceTool
     from .surface_tools import surface_tools
     from .verify_tools import (
         AssessTestStrengthTool, DifferentialFuzzTool, DifferentialTestTool,
@@ -930,6 +992,7 @@ def default_tools() -> list[Tool]:
         ForgetTool(),
         WebSearchTool(),
         WebReadTool(),
+        WebImagesTool(),
         ListSkillsTool(),
         ReadSkillTool(),
         DelegateTool(),
@@ -947,6 +1010,7 @@ def default_tools() -> list[Tool]:
         ReviewWorkspaceChangesTool(),
         RestoreCheckpointTool(),
         InstallMediaTool(),
+        InstallResourceTool(),
     ]
     tools.extend(intelligence_tools())
     tools.extend(surface_tools())

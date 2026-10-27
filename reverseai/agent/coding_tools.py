@@ -31,6 +31,86 @@ _MIME_EXT = {
     "image/gif": ".gif", "image/svg+xml": ".svg", "image/avif": ".avif",
     "image/x-icon": ".ico", "image/vnd.microsoft.icon": ".ico",
 }
+_RESOURCE_EXTS = {".css", ".woff2", ".woff", ".ttf", ".otf", ".svg"}
+
+
+def _record_credit(root: Path, rel: str, source_page: str = "",
+                   credit: str = "", license: str = "",
+                   base: Path | None = None) -> None:
+    """Keep a small, inspectable credits file next to generated sites."""
+    if not any((source_page, credit, license)):
+        return
+    clean = lambda v: re.sub(r"\s+", " ", str(v or "")).strip()
+    line = f"- `{rel}`"
+    if clean(credit):
+        line += f" — {clean(credit)}"
+    if clean(license):
+        line += f" — {clean(license)}"
+    if clean(source_page):
+        line += f" — {clean(source_page)}"
+    path = (Path(base) if base else root) / "CREDITS.md"
+    try:
+        existing = path.read_text("utf-8") if path.exists() else ""
+        if line in existing:
+            return
+        with path.open("a", encoding="utf-8") as fh:
+            if not existing:
+                fh.write("# Asset credits\n\n")
+            fh.write(line + "\n")
+    except OSError:
+        pass
+
+
+def _asset_destination(root: Path, ctx: ToolContext, dest: str | None):
+    entry = preview_entry(root)
+    if dest:
+        target_dir = _resolve(ctx, dest)
+    elif entry and Path(entry).parent != Path("."):
+        target_dir = root / Path(entry).parent / "assets"
+    else:
+        target_dir = root / "assets"
+    target_dir = target_dir.resolve()
+    if target_dir != root and root not in target_dir.parents:
+        raise ValidationError("destination escapes the project")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    return target_dir, entry
+
+
+def _unique_target(target_dir: Path, safe: str) -> Path:
+    target = target_dir / safe
+    if not target.exists():
+        return target
+    stem, suffix = target.stem, target.suffix
+    n = 2
+    while (target_dir / f"{stem}-{n}{suffix}").exists():
+        n += 1
+    return target_dir / f"{stem}-{n}{suffix}"
+
+
+def _read_source(source: str, ctx: ToolContext, max_bytes: int,
+                 accept: str) -> tuple[bytes, str, str, str]:
+    """Return (data, mime, final_url_or_path, suggested_name)."""
+    root = _project_root(ctx).resolve()
+    source = source.strip()
+    if source.lower().startswith(("http://", "https://")):
+        data, mime, final = safe_fetch(source, max_bytes=max_bytes, timeout=20.0,
+                                       accept=accept)
+        return data, mime, final, Path(urllib.parse.urlparse(final).path).name
+    p = Path(source)
+    if not p.is_absolute():
+        p = root / p
+    p = p.resolve()
+    allowed = [root]
+    upload_root = ctx.extra.get("upload_root")
+    if upload_root:
+        allowed.append(Path(upload_root).resolve())
+    if not any(p == a or a in p.parents for a in allowed):
+        raise ValidationError("source must be an uploaded file or inside the project")
+    if not p.is_file():
+        raise ValidationError(f"no such file: {source}")
+    if p.stat().st_size > max_bytes:
+        raise ValidationError("source exceeds the size limit")
+    return p.read_bytes(), mimetypes.guess_type(p.name)[0] or "", str(p), p.name
 
 
 def _looks_like_image(data: bytes, ext: str) -> bool:
@@ -182,6 +262,9 @@ class InstallMediaTool(Tool):
                                "the site's assets folder)",
             },
             "alt": {"type": "string", "description": "optional alt text"},
+            "source_page": {"type": "string", "description": "page that credits the image"},
+            "credit": {"type": "string", "description": "creator or credit line"},
+            "license": {"type": "string", "description": "license name, e.g. CC BY-SA 4.0"},
         },
         "required": ["source"],
     }
@@ -194,6 +277,7 @@ class InstallMediaTool(Tool):
         root = _project_root(ctx).resolve()
         name = str(args.get("name") or "").strip()
         mime = ""
+        source_page = str(args.get("source_page") or "").strip()
         if source.lower().startswith(("http://", "https://")):
             try:
                 data, mime, final = safe_fetch(
@@ -201,6 +285,7 @@ class InstallMediaTool(Tool):
                     accept="image/avif,image/webp,image/png,image/jpeg,image/*")
             except NetworkError as exc:
                 return ToolResult.failure(f"could not fetch image: {exc}")
+            source_page = source_page or final
             if not name:
                 name = Path(urllib.parse.urlparse(final).path).name
         else:
@@ -241,24 +326,11 @@ class InstallMediaTool(Tool):
         if not _looks_like_image(data, Path(safe).suffix.lower()):
             return ToolResult.failure("file does not look like the claimed image type")
 
-        entry = preview_entry(root)
-        if args.get("dest"):
-            target_dir = _resolve(ctx, str(args["dest"]))
-        elif entry and Path(entry).parent != Path("."):
-            target_dir = root / Path(entry).parent / "assets"
-        else:
-            target_dir = root / "assets"
-        target_dir = target_dir.resolve()
-        if target_dir != root and root not in target_dir.parents:
-            return ToolResult.failure("destination escapes the project")
-        target_dir.mkdir(parents=True, exist_ok=True)
-        target = target_dir / safe
-        if target.exists():
-            stem, suffix = target.stem, target.suffix
-            n = 2
-            while (target_dir / f"{stem}-{n}{suffix}").exists():
-                n += 1
-            target = target_dir / f"{stem}-{n}{suffix}"
+        try:
+            target_dir, entry = _asset_destination(root, ctx, args.get("dest"))
+        except (ValidationError, OSError) as exc:
+            return ToolResult.failure(str(exc))
+        target = _unique_target(target_dir, safe)
         try:
             target.write_bytes(data)
         except OSError as exc:
@@ -270,10 +342,114 @@ class InstallMediaTool(Tool):
         except ValueError:
             src = rel
         alt = str(args.get("alt") or Path(safe).stem.replace("-", " ").replace("_", " "))
+        credit = str(args.get("credit") or "")
+        license_name = str(args.get("license") or "")
+        _record_credit(root, rel, source_page, credit, license_name,
+                       base=entry_parent)
+        sources = []
+        if source_page:
+            from .research import source_card
+            sources = [source_card(source_page, target.name,
+                                   license_name or credit)]
         return ToolResult.success(
             f"installed image at {rel}; use src=\"{src}\"",
             path=rel, src=src, filename=target.name,
-            bytes=len(data), alt=alt, mime=mime)
+            bytes=len(data), alt=alt, mime=mime,
+            source_page=source_page, credit=credit, license=license_name,
+            sources=sources)
+
+
+class InstallResourceTool(Tool):
+    name = "install_resource"
+    description = (
+        "Install a web resource into the project: a stylesheet, web font, or SVG "
+        "icon. Accepts a public http(s) URL or an uploaded file. Validates the "
+        "bytes and extension, stores it under the site's assets folder, records "
+        "attribution, and returns the relative src. JavaScript is refused."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "source": {"type": "string", "description": "public URL or uploaded file path"},
+            "name": {"type": "string", "description": "optional output filename"},
+            "dest": {"type": "string", "description": "optional workspace-relative directory"},
+            "source_page": {"type": "string", "description": "page that credits the resource"},
+            "credit": {"type": "string", "description": "creator or credit line"},
+            "license": {"type": "string", "description": "license name"},
+        },
+        "required": ["source"],
+    }
+    permission = Permission.WRITE
+
+    def run(self, args, ctx) -> ToolResult:
+        source = str(args.get("source") or "").strip()
+        if not source:
+            return ToolResult.failure("source is required")
+        root = _project_root(ctx).resolve()
+        name = str(args.get("name") or "").strip()
+        source_page = str(args.get("source_page") or "").strip()
+        try:
+            data, mime, final, suggested = _read_source(
+                source, ctx, 10 * 1024 * 1024,
+                "text/css,font/woff2,font/woff,font/ttf,font/otf,image/svg+xml,*/*")
+        except (NetworkError, ValidationError, OSError) as exc:
+            return ToolResult.failure(f"could not read resource: {exc}")
+        if source.lower().startswith(("http://", "https://")):
+            source_page = source_page or final
+        if not name:
+            name = suggested
+        if not data:
+            return ToolResult.failure("resource is empty")
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "-", Path(name).name).strip("-.") or "resource"
+        ext = Path(safe).suffix.lower()
+        if ext not in _RESOURCE_EXTS:
+            guessed = {".css": ".css", ".woff2": ".woff2", ".woff": ".woff",
+                       ".ttf": ".ttf", ".otf": ".otf", ".svg": ".svg"}.get(
+                ext, "")
+            if not guessed:
+                return ToolResult.failure("unsupported resource type")
+            ext = guessed
+        if ext == ".css":
+            if b"\x00" in data[:4096]:
+                return ToolResult.failure("stylesheet is not text")
+            mime = "text/css"
+        elif ext in (".woff2", ".woff", ".ttf", ".otf"):
+            if not (data.startswith(b"wOF2") or data.startswith(b"wOFF")
+                    or data.startswith(b"OTTO") or data.startswith(b"\x00\x01\x00\x00")
+                    or data.startswith(b"true")):
+                return ToolResult.failure("file does not look like a web font")
+        elif ext == ".svg":
+            head = data[:4096].lstrip().lower()
+            if b"<svg" not in head and not (head.startswith(b"<?xml") and b"<svg" in data[:8192].lower()):
+                return ToolResult.failure("file does not look like an SVG")
+            mime = "image/svg+xml"
+        try:
+            target_dir, entry = _asset_destination(root, ctx, args.get("dest"))
+        except (ValidationError, OSError) as exc:
+            return ToolResult.failure(str(exc))
+        target = _unique_target(target_dir, safe)
+        try:
+            target.write_bytes(data)
+        except OSError as exc:
+            return ToolResult.failure(f"could not write resource: {exc}")
+        rel = target.relative_to(root).as_posix()
+        entry_parent = (root / Path(entry).parent) if entry else root
+        try:
+            src = target.relative_to(entry_parent).as_posix()
+        except ValueError:
+            src = rel
+        _record_credit(root, rel, source_page,
+                       str(args.get("credit") or ""), str(args.get("license") or ""),
+                       base=entry_parent)
+        sources = []
+        if source_page:
+            from .research import source_card
+            sources = [source_card(source_page, target.name,
+                                   str(args.get("license") or ""))]
+        return ToolResult.success(
+            f"installed resource at {rel}; use src=\"{src}\"",
+            path=rel, src=src, filename=target.name, bytes=len(data),
+            mime=mime, source_page=source_page, sources=sources)
 
 
 class EditFileTool(Tool):

@@ -26,7 +26,7 @@ class ReleaseIntegrityTests(unittest.TestCase):
         self.assertEqual(truth.readme_version, "0.9.0")
         self.assertEqual(truth.audit_version, "0.9.0")
         self.assertEqual(truth.testing_version, "0.9.0")
-        self.assertEqual(truth.tests, 558)
+        self.assertEqual(truth.tests, 566)
         self.assertGreaterEqual(truth.tools, 50)
 
     def test_every_feature_claim_has_source_and_test(self):

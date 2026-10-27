@@ -123,9 +123,14 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   as site files change during a turn. Fresh sites open automatically and every
   preview gets an in-chat card. Archived jobs are backfilled, and `/jobs`
   returns one summary per conversation.
-- **Media input:** `install_media` copies an uploaded image or fetches a public
-  image URL, validates the bytes and type, and places it under the site's
-  `assets/` folder. Image attachments are passed to the agent as paths.
+- **Media input:** `web_images` searches the public web or Wikimedia Commons
+  and returns image URLs with source page, creator, license, and dimensions; it
+  can also extract images from a page. `install_media` copies an uploaded image
+  or fetches a public image URL, validates the bytes and type, places it under
+  the site's `assets/` folder, and records source/credit/license in
+  `CREDITS.md`. Image attachments are passed to the agent as paths.
+- **Web assets:** `install_resource` installs stylesheets, web fonts, and SVG
+  icons from URLs or uploads with type/byte validation; JavaScript is refused.
 - **Input boundaries:** question, form, and approval surfaces stop the turn with
   `status=awaiting_input`; the user's surface response starts the next turn. A
   dashboard or review surface does not pause.

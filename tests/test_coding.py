@@ -15,7 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from reverseai.agent import (  # noqa: E402
     Agent, Permission, ToolContext, ToolMediator, ToolRegistry,
 )
-from reverseai.agent.coding_tools import InstallMediaTool, coding_tools  # noqa: E402
+from reverseai.agent.coding_tools import (  # noqa: E402
+    InstallMediaTool, InstallResourceTool, coding_tools,
+)
 from reverseai.agent.providers.mock import MockProvider, call, say  # noqa: E402
 from reverseai.sandbox import SandboxPolicy  # noqa: E402
 
@@ -115,6 +117,23 @@ class MediaToolTests(unittest.TestCase):
         self.assertFalse(r.ok)
         self.assertIn("does not look like", r.content)
 
+    def test_media_credit_is_written_beside_the_site(self):
+        site = self.root / "site"
+        site.mkdir()
+        (site / "index.html").write_text("<h1>x</h1>")
+        (self.root / "photo.png").write_bytes(PNG)
+        r = InstallMediaTool().run({
+            "source": "photo.png", "credit": "Jane Doe",
+            "license": "CC BY 4.0", "source_page": "https://example.com/photo",
+        }, self.ctx)
+        self.assertTrue(r.ok, r.content)
+        credits = (site / "CREDITS.md").read_text()
+        self.assertIn("Jane Doe", credits)
+        self.assertIn("CC BY 4.0", credits)
+        self.assertIn("https://example.com/photo", credits)
+        self.assertEqual(r.data["sources"][0]["url"],
+                         "https://example.com/photo")
+
     def test_refuses_a_path_outside_the_project_and_uploads(self):
         outside = Path(tempfile.mkdtemp()) / "secret.png"
         outside.write_bytes(PNG)
@@ -135,6 +154,39 @@ class MediaToolTests(unittest.TestCase):
                 {"source": "https://example.com/photo.png"}, self.ctx)
         self.assertTrue(r.ok, r.content)
         self.assertTrue((self.root / "assets" / "photo.png").is_file())
+
+
+class ResourceToolTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.ctx = ToolContext(job_id="t", workspace=self.tmp.name,
+                               extra={"project_dir": self.tmp.name})
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_installs_a_stylesheet(self):
+        (self.root / "site").mkdir()
+        (self.root / "site" / "index.html").write_text("<h1>x</h1>")
+        (self.root / "theme.css").write_text("body { color: teal; }")
+        r = InstallResourceTool().run({"source": "theme.css"}, self.ctx)
+        self.assertTrue(r.ok, r.content)
+        self.assertEqual(r.data["path"], "site/assets/theme.css")
+        self.assertEqual(r.data["src"], "assets/theme.css")
+
+    def test_installs_a_font(self):
+        font = self.root / "site-font.woff2"
+        font.write_bytes(b"wOF2" + b"\x00" * 40)
+        r = InstallResourceTool().run({"source": "site-font.woff2"}, self.ctx)
+        self.assertTrue(r.ok, r.content)
+        self.assertTrue((self.root / "assets" / "site-font.woff2").is_file())
+
+    def test_refuses_javascript(self):
+        (self.root / "app.js").write_text("alert(1)")
+        r = InstallResourceTool().run({"source": "app.js"}, self.ctx)
+        self.assertFalse(r.ok)
+        self.assertIn("unsupported resource type", r.content)
 
 
 class PreviewTests(unittest.TestCase):

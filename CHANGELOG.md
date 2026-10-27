@@ -16,7 +16,7 @@
   header, suggestion cards, calmer composer, surface cards, mobile adjustments.
 - The system prompt now tells the agent to use surfaces for decisions, forms,
   comparisons, graphs, diffs, approvals, and other task-native interactions.
-- 39 new tests; total 558; 58 tools covered by contract tests.
+- 47 new tests; total 566; 60 tools covered by contract tests.
 - A larger default output budget and chunked `write_file` appends fix truncated
   large-file writes. Invalid/truncated tool arguments now return a clear,
   actionable message instead of retrying blindly.
@@ -31,6 +31,12 @@
 - Real image input: image attachments and public image URLs can be installed with
   `install_media`, validated, and copied into the site's assets. The previous
   "cannot fetch images" limitation is gone.
+- `web_images` finds real images across the web and from Wikimedia Commons,
+  returns the image URL, source page, creator, license, and dimensions, and can
+  extract images from a specific page. `install_media` records source, credit,
+  and license in `CREDITS.md`.
+- `install_resource` installs remote stylesheets, web fonts, and SVG icons with
+  type and byte validation. JavaScript is refused.
 - Generated websites are exposed in the live Preview panel. The entry page is
   detected at `index.html`, `site/index.html`, `public/index.html`,
   `dist/index.html`, `build/index.html`, `app/index.html`, or

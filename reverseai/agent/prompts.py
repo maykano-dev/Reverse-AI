@@ -64,12 +64,16 @@ clone, rebuild, verify), switch into engineer mode and use your tools:
 - A question, form, or approval surface pauses the turn. Create it, then stop.
   Do not answer for the user and do not continue with guessed preferences. The
   next turn will contain their structured response.
-- You can add real images. If the user attached an image, its path is in the
-  user message; call install_media with that path. If they gave a public image
-  URL, call install_media with the URL. Use the returned src in the page. Do not
-  claim the sandbox has no internet for this, and do not fabricate photos when
-  the user asked for real ones. If they want photos but supplied none, ask for
-  uploads or direct URLs and stop.
+- You can add real images and web assets. If the user attached an image, its
+  path is in the user message; call install_media with that path. To find a
+  relevant image, call web_images (use source=licensed for Wikimedia Commons,
+  or source=web for general web results). Read the titles and source pages,
+  pick one that is actually relevant, then call install_media with its image
+  URL, alt text, source_page, credit, and license. Never invent a photo, never
+  call a random image accurate without checking its page, and keep the credit
+  file. For fonts, stylesheets, or SVG icons, use install_resource. Do not claim
+  the sandbox has no internet for this. If no reliable image is found, say so
+  and ask for an upload rather than substituting a misleading one.
 
 Cloning and rebuilding (important):
 - You may reproduce how something works: a site's layout and behavior, an app's

@@ -47,6 +47,23 @@ class SearchResult:
 
 
 @dataclass
+class ImageResult:
+    title: str
+    image_url: str
+    page_url: str = ""
+    thumbnail: str = ""
+    snippet: str = ""
+    source: str = "web"
+    creator: str = ""
+    license: str = ""
+    width: int = 0
+    height: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class Page:
     url: str
     title: str = ""
@@ -158,6 +175,209 @@ def parse_page(data: bytes | str, url: str = "") -> Page:
             links.append(absolute)
     return Page(url=url, title=title, description=description,
                 text=parser.text(), links=links[:80])
+
+
+class _ImageParser(HTMLParser):
+    """Collect images and their useful metadata from a page."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.images: list[dict[str, str]] = []
+        self._base = ""
+
+    def handle_starttag(self, tag, attrs):
+        d = dict(attrs)
+        if tag == "base" and d.get("href"):
+            self._base = d["href"]
+            return
+        if tag == "meta":
+            prop = (d.get("property") or d.get("name") or "").lower()
+            if prop in ("og:image", "og:image:url", "twitter:image", "twitter:image:src"):
+                if d.get("content"):
+                    self.images.append({"src": d["content"], "alt": ""})
+            return
+        if tag == "link" and "image_src" in (d.get("rel") or "").lower():
+            if d.get("href"):
+                self.images.append({"src": d["href"], "alt": ""})
+            return
+        if tag == "img":
+            src = d.get("src") or d.get("data-src") or ""
+            srcset = d.get("srcset") or d.get("data-srcset") or ""
+            if srcset:
+                parts = []
+                for piece in srcset.split(","):
+                    bits = piece.strip().split()
+                    if not bits:
+                        continue
+                    try:
+                        width = int(bits[1].rstrip("w")) if len(bits) > 1 and bits[1].endswith("w") else 0
+                    except ValueError:
+                        width = 0
+                    parts.append((width, bits[0]))
+                if parts:
+                    src = max(parts, key=lambda x: x[0])[1]
+            if src:
+                self.images.append({"src": src, "alt": d.get("alt") or ""})
+
+
+def images_from_html(data: bytes | str, url: str = "") -> list[ImageResult]:
+    text = data.decode("utf-8", "replace") if isinstance(data, bytes) else data
+    parser = _ImageParser()
+    try:
+        parser.feed(text)
+    except Exception:
+        pass
+    page = parse_page(data, url)
+    base = parser._base or url
+    out: list[ImageResult] = []
+    seen: set[str] = set()
+    for row in parser.images:
+        raw = (row.get("src") or "").strip()
+        if not raw or raw.startswith(("data:", "javascript:", "blob:")):
+            continue
+        absolute = urllib.parse.urljoin(base, raw)
+        if not absolute.startswith(("http://", "https://")) or absolute in seen:
+            continue
+        seen.add(absolute)
+        out.append(ImageResult(
+            title=row.get("alt") or page.title or urllib.parse.urlparse(absolute).path,
+            image_url=absolute, page_url=url, snippet=row.get("alt") or "",
+            source="page"))
+        if len(out) >= 40:
+            break
+    return out
+
+
+def _strip_html(value: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", value or "")
+    return re.sub(r"\s+", " ", html.unescape(text)).strip()
+
+
+def _clean_web_text(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").replace("\ue000", "").replace("\ue001", "")).strip()
+
+
+def parse_bing_images(data: bytes | str, max_results: int = 8) -> list[ImageResult]:
+    text = data.decode("utf-8", "replace") if isinstance(data, bytes) else data
+    out: list[ImageResult] = []
+    seen: set[str] = set()
+    for raw in re.findall(r'm="([^"]+)"', text):
+        try:
+            item = json.loads(html.unescape(raw))
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(item, dict):
+            continue
+        image = str(item.get("murl") or "").strip()
+        if not image.startswith(("http://", "https://")) or image in seen:
+            continue
+        seen.add(image)
+        out.append(ImageResult(
+            title=_clean_web_text(str(item.get("t") or item.get("desc") or "")),
+            image_url=image,
+            page_url=str(item.get("purl") or ""),
+            thumbnail=str(item.get("turl") or ""),
+            snippet=_clean_web_text(str(item.get("desc") or "")),
+            source="bing"))
+        if len(out) >= max_results:
+            break
+    return out
+
+
+def parse_commons_images(payload: dict[str, Any], max_results: int = 8) -> list[ImageResult]:
+    pages = (payload.get("query") or {}).get("pages") or {}
+    rows = sorted(pages.values(), key=lambda p: p.get("index", 0))
+    out: list[ImageResult] = []
+    for page in rows:
+        info = (page.get("imageinfo") or [{}])[0]
+        image = info.get("thumburl") or info.get("url") or ""
+        if not image:
+            continue
+        meta = info.get("extmetadata") or {}
+        def val(key):
+            return _strip_html(str((meta.get(key) or {}).get("value") or ""))
+        title = str(page.get("title") or "Image").removeprefix("File:")
+        out.append(ImageResult(
+            title=title, image_url=image,
+            page_url=info.get("descriptionurl") or "",
+            thumbnail=info.get("thumburl") or image,
+            snippet=val("ImageDescription") or title,
+            source="wikimedia",
+            creator=val("Artist") or val("Credit"),
+            license=val("LicenseShortName") or val("License"),
+            width=int(info.get("thumbwidth") or info.get("width") or 0),
+            height=int(info.get("thumbheight") or info.get("height") or 0)))
+        if len(out) >= max_results:
+            break
+    return out
+
+
+def search_commons_images(query: str, max_results: int = 8) -> list[ImageResult]:
+    params = urllib.parse.urlencode({
+        "action": "query", "generator": "search", "gsrsearch": query,
+        "gsrnamespace": "6", "gsrlimit": str(max_results),
+        "prop": "imageinfo", "iiprop": "url|extmetadata",
+        "iiurlwidth": "1600", "format": "json",
+    })
+    data, _ctype, _final = fetch_bytes(
+        "https://commons.wikimedia.org/w/api.php?" + params,
+        max_bytes=2_000_000)
+    try:
+        payload = json.loads(data.decode("utf-8", "replace"))
+    except json.JSONDecodeError as exc:
+        raise ResearchError("Wikimedia Commons did not return JSON") from exc
+    return parse_commons_images(payload, max_results)
+
+
+def search_images(query: str, max_results: int = 8,
+                  source: str = "web") -> list[ImageResult]:
+    query = (query or "").strip()
+    if not query:
+        raise ResearchError("empty image query")
+    max_results = max(1, min(int(max_results or 8), 16))
+    if source == "licensed":
+        return search_commons_images(query, max_results)
+    import os
+
+    searx = os.environ.get("REVERSEAI_SEARCH_URL")
+    if searx:
+        sep = "&" if "?" in searx else "?"
+        url = (f"{searx}{sep}q={urllib.parse.quote(query)}"
+               "&categories=images&format=json")
+        try:
+            data, _ctype, _final = fetch_bytes(url, max_bytes=1_500_000)
+            payload = json.loads(data.decode("utf-8", "replace"))
+            rows = []
+            for r in (payload.get("results") or [])[:max_results]:
+                image = str(r.get("img_src") or r.get("thumbnail_src") or "")
+                if not image.startswith(("http://", "https://")):
+                    continue
+                rows.append(ImageResult(
+                    title=_clean_web_text(str(r.get("title") or "")),
+                    image_url=image,
+                    page_url=str(r.get("url") or ""),
+                    thumbnail=str(r.get("thumbnail_src") or ""),
+                    snippet=_clean_web_text(str(r.get("content") or "")),
+                    source="searx"))
+            if rows:
+                return rows
+        except (ResearchError, json.JSONDecodeError):
+            pass
+    url = "https://www.bing.com/images/search?" + urllib.parse.urlencode(
+        {"q": query, "form": "HDRSC2"})
+    data, _ctype, _final = fetch_bytes(url, max_bytes=3_000_000)
+    rows = parse_bing_images(data, max_results)
+    if not rows:
+        raise ResearchError("no image results")
+    return rows
+
+
+def images_from_page(url: str) -> list[ImageResult]:
+    data, _ctype, final = fetch_bytes(url, max_bytes=4_000_000)
+    rows = images_from_html(data, final)
+    if not rows:
+        raise ResearchError("no images found on that page")
+    return rows[:40]
 
 
 class _SearchParser(HTMLParser):
