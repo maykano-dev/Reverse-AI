@@ -336,7 +336,12 @@ class InstallMediaTool(Tool):
         except OSError as exc:
             return ToolResult.failure(f"could not write image: {exc}")
         rel = target.relative_to(root).as_posix()
-        entry_parent = (root / Path(entry).parent) if entry else root
+        if entry:
+            entry_parent = (root / Path(entry).parent).resolve()
+        elif target_dir.parent != root:
+            entry_parent = target_dir.parent
+        else:
+            entry_parent = root
         try:
             src = target.relative_to(entry_parent).as_posix()
         except ValueError:
@@ -433,7 +438,12 @@ class InstallResourceTool(Tool):
         except OSError as exc:
             return ToolResult.failure(f"could not write resource: {exc}")
         rel = target.relative_to(root).as_posix()
-        entry_parent = (root / Path(entry).parent) if entry else root
+        if entry:
+            entry_parent = (root / Path(entry).parent).resolve()
+        elif target_dir.parent != root:
+            entry_parent = target_dir.parent
+        else:
+            entry_parent = root
         try:
             src = target.relative_to(entry_parent).as_posix()
         except ValueError:

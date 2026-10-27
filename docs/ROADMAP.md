@@ -17,7 +17,7 @@ A living map of what exists and what comes next. Updated with v0.9.0.
   shown as a Preview card, and opened automatically when fresh.
 - **Web media**: image search (web + Wikimedia Commons), attributed image
   installation, and validated stylesheet/font/SVG installation.
-- **Tests**: 566; 60 tools contract-tested.
+- **Tests**: 567; 60 tools contract-tested.
 
 ### v0.8.0: gated dangerous surfaces and open-item closure
 

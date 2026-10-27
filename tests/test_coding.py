@@ -101,6 +101,17 @@ class MediaToolTests(unittest.TestCase):
         self.assertEqual(r.data["src"], "assets/photo.png")
         self.assertTrue((site / "assets" / "photo.png").is_file())
 
+    def test_explicit_site_assets_returns_a_page_relative_src(self):
+        (self.root / "photo.png").write_bytes(PNG)
+        r = InstallMediaTool().run(
+            {"source": "photo.png", "dest": "site/assets",
+             "credit": "Jane", "license": "CC BY 4.0",
+             "source_page": "https://example.com/photo"}, self.ctx)
+        self.assertTrue(r.ok, r.content)
+        self.assertEqual(r.data["path"], "site/assets/photo.png")
+        self.assertEqual(r.data["src"], "assets/photo.png")
+        self.assertTrue((self.root / "site" / "CREDITS.md").is_file())
+
     def test_accepts_an_image_in_the_store_upload_root(self):
         uploads = self.root / "uploads" / "u1"
         uploads.mkdir(parents=True)
