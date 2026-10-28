@@ -2305,25 +2305,91 @@ function openCanvas(pane) {
     if (tab) tab.click();
   }
 }
-let previewUrl = "";
-let previewLocal = false;
-let previewHistory = [];
-let previewIndex = -1;
+function newPreviewTab() {
+  return { url: "", local: false, history: [], index: -1,
+           title: "New tab", shown: "" };
+}
+let previewTabs = [newPreviewTab()];
+let previewActive = 0;
+function activeTab() {
+  return previewTabs[previewActive] || previewTabs[0];
+}
+function renderPreviewTabs() {
+  const list = $("#pvTabList");
+  list.innerHTML = "";
+  previewTabs.forEach((tab, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "pv-tab" + (i === previewActive ? " active" : "");
+    b.title = tab.shown || tab.url || "New tab";
+    b.appendChild(el("span", "pv-tab-dot"));
+    b.appendChild(el("span", "pv-tab-title", tab.title || "New tab"));
+    if (previewTabs.length > 1) {
+      const x = el("span", "pv-tab-x", "×");
+      x.title = "Close tab";
+      x.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closePreviewTab(i);
+      });
+      b.appendChild(x);
+    }
+    b.addEventListener("click", () => switchPreviewTab(i));
+    list.appendChild(b);
+  });
+}
+function setPreviewNav() {
+  const tab = activeTab();
+  $("#pvBack").disabled = !tab || tab.index <= 0;
+  $("#pvForward").disabled = !tab || tab.index < 0 || tab.index >= tab.history.length - 1;
+}
+function applyPreviewTab() {
+  const tab = activeTab();
+  const f = $("#pvFrame");
+  f.sandbox = "allow-scripts allow-forms allow-popups";
+  if (tab.url) {
+    f.src = tab.local ? withToken(tab.url) : tab.url;
+    f.style.display = "block";
+    $("#pvEmpty").style.display = "none";
+    $("#pvLaunch").style.display = "none";
+    $("#pvUrl").value = tab.shown || previewAddress(tab.url);
+  } else {
+    f.style.display = "none";
+    f.src = "about:blank";
+    $("#pvEmpty").style.display = "flex";
+    $("#pvUrl").value = "";
+    if ($("#pvLaunch").dataset.url) $("#pvLaunch").style.display = "flex";
+  }
+  $("#pvLive").classList.toggle("on", !!tab.local && !!tab.url);
+  setPreviewNav();
+  renderPreviewTabs();
+  openCanvas("preview");
+}
+function switchPreviewTab(i) {
+  if (i < 0 || i >= previewTabs.length) return;
+  previewActive = i;
+  applyPreviewTab();
+}
+function closePreviewTab(i) {
+  if (i < 0 || i >= previewTabs.length) return;
+  previewTabs.splice(i, 1);
+  if (!previewTabs.length) previewTabs = [newPreviewTab()];
+  if (i < previewActive) previewActive--;
+  if (previewActive >= previewTabs.length) previewActive = previewTabs.length - 1;
+  applyPreviewTab();
+}
 function resetPreview() {
-  previewUrl = "";
-  previewLocal = false;
-  previewHistory = [];
-  previewIndex = -1;
+  previewTabs = [newPreviewTab()];
+  previewActive = 0;
   $("#previewPane").classList.remove("pv-full");
   $("#pvFrame").style.display = "none";
   $("#pvFrame").src = "about:blank";
   $("#pvEmpty").style.display = "flex";
   $("#pvLaunch").style.display = "none";
   $("#pvUrl").value = "";
-  $("#pvTabTitle").textContent = "New tab";
   $("#pvLive").classList.remove("on");
   $("#pvBack").disabled = true;
   $("#pvForward").disabled = true;
+  renderPreviewTabs();
 }
 function resetCanvas() {
   views = {};
@@ -2373,37 +2439,33 @@ function previewAddress(url) {
   if (url.startsWith("/")) return url;
   return url;
 }
-function setPreviewNav() {
-  $("#pvBack").disabled = previewIndex <= 0;
-  $("#pvForward").disabled = previewIndex < 0 || previewIndex >= previewHistory.length - 1;
-}
 function showPreview(url, opts) {
   if (!url) return;
   const o = opts || {};
-  const f = $("#pvFrame");
-  // Never give untrusted/cloned pages the app's origin. No allow-same-origin.
-  f.sandbox = "allow-scripts allow-forms allow-popups";
-  if (o.history !== false) {
-    previewHistory = previewHistory.slice(0, previewIndex + 1);
-    if (previewHistory[previewHistory.length - 1] !== url) previewHistory.push(url);
-    previewIndex = previewHistory.length - 1;
+  if (o.newTab) {
+    previewTabs.push(newPreviewTab());
+    previewActive = previewTabs.length - 1;
   }
-  previewUrl = url;
-  previewLocal = !!o.local;
-  f.src = o.local ? withToken(url) : url;
-  f.style.display = "block";
-  $("#pvEmpty").style.display = "none";
-  $("#pvLaunch").style.display = "none";
-  $("#pvUrl").value = previewAddress(o.shown || url);
-  $("#pvTabTitle").textContent = o.local ? "Live preview" : (o.title || hostOf(url) || "Preview");
-  $("#pvLive").classList.toggle("on", !!o.local);
-  setPreviewNav();
-  openCanvas("preview");
+  const tab = activeTab();
+  if (o.history !== false) {
+    tab.history = tab.history.slice(0, tab.index + 1);
+    if (tab.history[tab.history.length - 1] !== url) tab.history.push(url);
+    tab.index = tab.history.length - 1;
+  }
+  tab.url = url;
+  tab.local = !!o.local;
+  tab.shown = o.shown || "";
+  const leaf = String(url).split("?")[0].split("/").filter(Boolean).pop();
+  tab.title = o.local
+    ? (o.title || (leaf && leaf.includes(".") ? leaf : "Live preview"))
+    : (o.title || hostOf(url) || "Preview");
+  applyPreviewTab();
 }
 function reloadPreview() {
-  if (!previewUrl) return;
+  const tab = activeTab();
+  if (!tab.url) return;
   const f = $("#pvFrame");
-  const base = previewLocal ? withToken(previewUrl) : previewUrl;
+  const base = tab.local ? withToken(tab.url) : tab.url;
   const sep = base.includes("?") ? "&" : "?";
   f.src = `${base}${sep}__live=${Date.now()}`;
 }
@@ -2419,10 +2481,11 @@ function showLaunchCard(cid, rel) {
   $("#pvLaunch").dataset.url = url;
   $("#pvLaunchName").textContent = previewName(rel);
   $("#pvLaunchMeta").textContent = rel;
-  if (!previewUrl) {
+  if (!activeTab().url) {
     $("#pvLaunch").style.display = "flex";
     $("#pvEmpty").style.display = "flex";
-    $("#pvTabTitle").textContent = "New tab";
+    activeTab().title = "New tab";
+    renderPreviewTabs();
   }
 }
 function previewName(p) {
@@ -2441,27 +2504,32 @@ $("#pvGo").addEventListener("click", () => {
 $("#pvUrl").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#pvGo").click(); });
 $("#pvReload").addEventListener("click", reloadPreview);
 $("#pvBack").addEventListener("click", () => {
-  if (previewIndex <= 0) return;
-  previewIndex--;
-  showPreview(previewHistory[previewIndex], { history: false,
-    local: previewHistory[previewIndex].startsWith("/preview/") });
+  const tab = activeTab();
+  if (tab.index <= 0) return;
+  tab.index--;
+  const url = tab.history[tab.index];
+  showPreview(url, { history: false, local: url.startsWith("/preview/") });
 });
 $("#pvForward").addEventListener("click", () => {
-  if (previewIndex < 0 || previewIndex >= previewHistory.length - 1) return;
-  previewIndex++;
-  showPreview(previewHistory[previewIndex], { history: false,
-    local: previewHistory[previewIndex].startsWith("/preview/") });
+  const tab = activeTab();
+  if (tab.index < 0 || tab.index >= tab.history.length - 1) return;
+  tab.index++;
+  const url = tab.history[tab.index];
+  showPreview(url, { history: false, local: url.startsWith("/preview/") });
 });
 $("#pvNewTab").addEventListener("click", () => {
-  resetPreview();
+  previewTabs.push(newPreviewTab());
+  previewActive = previewTabs.length - 1;
+  applyPreviewTab();
   $("#pvUrl").focus();
 });
 $("#pvLaunchGo").addEventListener("click", startBuiltPreview);
 $("#pvExternal").addEventListener("click", () => {
-  const u = previewUrl || $("#pvUrl").value.trim();
+  const tab = activeTab();
+  const u = tab.url || $("#pvUrl").value.trim();
   if (!u) return;
   let abs = u.startsWith("/") ? location.origin + u : u;
-  if (previewLocal && u.startsWith("/")) abs = withToken(abs);
+  if (tab.local && u.startsWith("/")) abs = withToken(abs);
   window.open(abs, "_blank", "noopener,noreferrer");
 });
 $("#pvFull").addEventListener("click", () => {

@@ -20,9 +20,9 @@
 - A larger default output budget and chunked `write_file` appends fix truncated
   large-file writes. Invalid/truncated tool arguments now return a clear,
   actionable message instead of retrying blindly.
-- The preview pane is now a browser-like live server: back/forward, reload,
-  URL bar, new tab, open externally, fullscreen, and automatic reload as site
-  files change during a turn.
+- The preview pane is now a browser-like live server: real multiple tabs,
+  back/forward, reload, URL bar, open externally, fullscreen, and automatic
+  reload as workspace files change, including external editor edits.
 - The sidebar groups all turns by conversation, so a follow-up message no longer
   appears as a separate chat. `GET /jobs` now returns one summary per
   conversation by default; `GET /jobs?all=1` returns every turn.

@@ -657,6 +657,9 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
         self.send_header("X-Accel-Buffering", "no")
+        # The preview iframe is sandboxed without allow-same-origin, so its
+        # EventSource request has origin "null". The stream only says "reload".
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         try:
             for chunk in self.runs.stream(job_id, after=after_n):
@@ -959,7 +962,10 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _preview_reload_js(self, cid: str) -> None:
         body = (
-            "const es = new EventSource('/preview/" + cid + "/__events');\n"
+            "const u = new URL('/preview/" + cid + "/__events', location.href);\n"
+            "const token = new URL(location.href).searchParams.get('token');\n"
+            "if (token) u.searchParams.set('token', token);\n"
+            "const es = new EventSource(u.toString());\n"
             "let t;\n"
             "es.addEventListener('reload', () => {\n"
             "  clearTimeout(t); t = setTimeout(() => location.reload(), 300);\n"
@@ -970,6 +976,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/javascript; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
@@ -984,6 +991,9 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "keep-alive")
         self.send_header("X-Accel-Buffering", "no")
+        # The preview iframe is sandboxed without allow-same-origin, so its
+        # EventSource request has origin "null". The stream only says "reload".
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         last = preview_snapshot(conv.workspace)
         deadline = time.monotonic() + 1800

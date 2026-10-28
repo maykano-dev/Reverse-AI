@@ -168,6 +168,7 @@ class ServerTests(unittest.TestCase):
         threading.Timer(0.8, touch).start()
         with urllib.request.urlopen(
                 f"{self.base}/preview/{cid}/__events", timeout=8) as r:
+            self.assertEqual(r.headers.get("Access-Control-Allow-Origin"), "*")
             end = _time.time() + 6
             while _time.time() < end:
                 line = r.readline().decode("utf-8", "replace").strip()

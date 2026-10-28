@@ -1327,18 +1327,26 @@ svg.icon { display: block; flex: none; }
   display: flex; align-items: center; gap: 2px; padding: 5px 8px 0;
   border-bottom: 1px solid var(--border); background: var(--side); min-height: 39px;
 }
+.pv-tab-list { display: flex; align-items: center; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.pv-tab-list::-webkit-scrollbar { display: none; }
 .pv-tab {
-  display: flex; align-items: center; gap: 7px; min-width: 0; max-width: 58%;
-  padding: 7px 11px; border: 1px solid transparent; border-bottom: 0;
+  display: flex; align-items: center; gap: 7px; min-width: 80px; max-width: 170px;
+  padding: 7px 8px 7px 11px; border: 1px solid transparent; border-bottom: 0;
   border-radius: 9px 9px 0 0; font-size: 11.5px; color: var(--dim);
-  background: transparent;
+  background: transparent; cursor: pointer; font-family: inherit; white-space: nowrap;
 }
+.pv-tab:hover { color: var(--text); background: color-mix(in srgb, var(--elev) 45%, transparent); }
 .pv-tab.active {
   background: var(--bg); color: var(--text); border-color: var(--border);
   margin-bottom: -1px;
 }
-.pv-tab #pvTabTitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: left; }
 .pv-tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+.pv-tab-x {
+  width: 15px; height: 15px; border-radius: 4px; display: grid; place-items: center;
+  color: var(--faint); font-size: 13px; line-height: 1; flex: none;
+}
+.pv-tab-x:hover { background: var(--border); color: var(--text); }
 .pv-grow { flex: 1; }
 .pv-ic {
   display: grid; place-items: center; width: 28px; height: 28px; flex: none;
