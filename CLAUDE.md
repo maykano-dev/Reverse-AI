@@ -120,7 +120,11 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   is detected and served from the conversation workspace through
   `/preview/<conversation>/<path>`. The Preview pane is browser-like: multiple
   tabs, back/forward, reload, URL entry, fullscreen, open externally, and live
-  reload through a per-conversation workspace watcher, including external edits. Fresh sites open automatically and every
+  reload through a per-conversation workspace watcher, including external edits.
+  A gated dev-server runner starts a project command inside bubblewrap and opens
+  its loopback URL; it requires `REVERSEAI_ALLOW_PREVIEW_SERVER=1`, refuses when
+  bubblewrap is unavailable, uses argv (no shell), and shares network only for
+  the loopback-bound server. Fresh sites open automatically and every
   preview gets an in-chat card. Archived jobs are backfilled, and `/jobs`
   returns one summary per conversation.
 - **Media input:** `web_images` searches the public web or Wikimedia Commons

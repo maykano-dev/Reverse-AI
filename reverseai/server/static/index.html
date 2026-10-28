@@ -143,6 +143,7 @@
           <button class="pv-ic" id="pvNewTab" title="New tab" aria-label="New tab" data-icon="plus"></button>
           <span class="pv-grow"></span>
           <span class="pv-live" id="pvLive"><i></i> Live</span>
+          <button class="pv-ic" id="pvDevToggle" title="Run a dev server" aria-label="Run a dev server" data-icon="server"></button>
           <button class="pv-ic" id="pvExternal" title="Open in a new tab" aria-label="Open in a new tab" data-icon="external"></button>
           <button class="pv-ic" id="pvFull" title="Fullscreen" aria-label="Fullscreen" data-icon="maximize"></button>
           <button class="pv-ic" id="pvClosePreview" title="Close preview" aria-label="Close preview" data-icon="x"></button>
@@ -153,6 +154,14 @@
           <button class="pv-ic" id="pvReload" title="Reload" aria-label="Reload" data-icon="refresh"></button>
           <input type="text" id="pvUrl" placeholder="Type a URL" aria-label="Preview URL" />
           <button class="pv-go" id="pvGo">Open</button>
+        </div>
+        <div class="pv-devbar" id="pvDevbar">
+          <span class="pv-dev-ic" data-icon="server" data-size="15"></span>
+          <input id="pvDevCmd" type="text" placeholder="npm run dev" aria-label="Dev server command" />
+          <input id="pvDevPort" type="number" min="1024" max="65535" value="3001" aria-label="Dev server port" />
+          <button class="pv-dev-run" id="pvDevRun">Run</button>
+          <button class="pv-dev-stop" id="pvDevStop" title="Stop server">Stop</button>
+          <span class="pv-dev-status" id="pvDevStatus"></span>
         </div>
         <div class="pv-body">
           <div id="pvEmpty" class="pv-empty">

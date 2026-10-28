@@ -303,6 +303,37 @@ class ServerTests(unittest.TestCase):
         if os.name == "posix":
             self.assertTrue(os.stat(body["path"]).st_mode & 0o100)
 
+    @unittest.skipUnless(__import__("reverseai.sandbox.backends.bubblewrap",
+                                     fromlist=["BubblewrapSandbox"]).BubblewrapSandbox.is_available(),
+                         "bubblewrap/user namespaces unavailable")
+    def test_preview_dev_server_api_start_and_stop(self):
+        import socket
+        import time
+        from unittest.mock import patch
+
+        sid, cid, err = self.srv.runs.start({"goal": "dev", "provider": "mock"})
+        self.assertIsNone(err)
+        conv = self.srv.runs.conversation(cid)
+        (Path(conv.workspace) / "index.html").write_text("<h1>dev route</h1>")
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        try:
+            with patch.dict("os.environ",
+                            {"REVERSEAI_ALLOW_PREVIEW_SERVER": "1"}):
+                status, body = _post(
+                    f"{self.base}/preview/{cid}/server/start",
+                    {"command": f"{__import__('sys').executable} -m http.server "
+                                "{port} --bind 127.0.0.1",
+                     "port": port})
+            self.assertEqual(status, 200, body)
+            with urllib.request.urlopen(body["url"], timeout=5) as r:
+                self.assertIn("dev route", r.read().decode())
+        finally:
+            _post(f"{self.base}/preview/{cid}/server/stop", {})
+        status, body = _get(f"{self.base}/preview/{cid}/server")
+        self.assertFalse(body["running"])
+
     def test_artifact_404_without_one(self):
         status, body = _get(f"{self.base}/conversations/conv_none/artifact")
         self.assertEqual(status, 404)

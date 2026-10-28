@@ -69,6 +69,7 @@ from ..surface import (
 )
 from ..security.validate import ValidationError, read_target
 from ..util.logging import get_logger
+from .preview_server import PreviewServerError, PreviewServerManager
 from .runs import RunManager
 
 _log = get_logger("reverseai.server")
@@ -87,6 +88,9 @@ _ARTIFACT_PATH = re.compile(r"^/conversations/(conv_[A-Za-z0-9]+)/artifact$")
 _FILES_PATH = re.compile(r"^/files/([a-f0-9]{12})/([A-Za-z0-9._-]+)$")
 _PREVIEW_PATH = re.compile(r"^/preview/(conv_[A-Za-z0-9]+)/(.*)$")
 _PREVIEW_EVENTS_PATH = re.compile(r"^/preview/(conv_[A-Za-z0-9]+)/__events$")
+_PREVIEW_SERVER_PATH = re.compile(r"^/preview/(conv_[A-Za-z0-9]+)/server$")
+_PREVIEW_SERVER_START = re.compile(r"^/preview/(conv_[A-Za-z0-9]+)/server/start$")
+_PREVIEW_SERVER_STOP = re.compile(r"^/preview/(conv_[A-Za-z0-9]+)/server/stop$")
 _PREVIEW_RELOAD_PATH = re.compile(r"^/preview/(conv_[A-Za-z0-9]+)/__reload\.js$")
 _MEMORY_PATH = re.compile(r"^/memory/(mem_[A-Za-z0-9]+)$")
 _ROUTINE_PATH = re.compile(r"^/routines/(rt_[A-Za-z0-9]+)$")
@@ -108,7 +112,7 @@ _CSP = (
     "img-src 'self' data: https:; "
     "font-src 'self' data:; "
     "connect-src 'self'; "
-    "frame-src 'self'; "
+    "frame-src 'self' http://127.0.0.1:* http://localhost:*; "
     "base-uri 'self'; "
     "form-action 'self'"
 )
@@ -327,6 +331,9 @@ class _Handler(BaseHTTPRequestHandler):
         fm = _FILES_PATH.match(path)
         if fm:
             return self._download_output(fm.group(1), fm.group(2))
+        svm = _PREVIEW_SERVER_PATH.match(path)
+        if svm:
+            return self._send(200, self.preview_servers.status(svm.group(1)))
         em = _PREVIEW_EVENTS_PATH.match(path)
         if em:
             return self._preview_events(em.group(1))
@@ -385,6 +392,12 @@ class _Handler(BaseHTTPRequestHandler):
             ok = self.runs.cancel(cm.group(1))
             return self._send(200 if ok else 404,
                               {"cancelled": ok, "id": cm.group(1)})
+        svs = _PREVIEW_SERVER_START.match(self.path)
+        if svs:
+            return self._preview_server_start(svs.group(1), body)
+        svp = _PREVIEW_SERVER_STOP.match(self.path)
+        if svp:
+            return self._preview_server_stop(svp.group(1))
         sm = _SURFACE_EVENT_PATH.match(self.path)
         if sm:
             return self._surface_event(sm.group(1), sm.group(2), body)
@@ -681,6 +694,28 @@ class _Handler(BaseHTTPRequestHandler):
         except (ValidationError, OSError) as exc:
             return self._send(400, {"error": str(exc)})
         return self._send(200, report.to_dict())
+
+    def _preview_server_start(self, cid: str, body: dict) -> None:
+        conv = self.runs.conversation(cid)
+        if conv is None:
+            return self._send(404, {"error": "no such session"})
+        command = body.get("command") or body.get("argv")
+        if not command:
+            return self._send(400, {"error": "missing 'command' or 'argv'"})
+        try:
+            port = int(body.get("port", 3001))
+        except (TypeError, ValueError):
+            return self._send(400, {"error": "port must be an integer"})
+        try:
+            result = self.preview_servers.start(cid, conv.workspace, command, port)
+        except PreviewServerError as exc:
+            code = 403 if "disabled" in str(exc) else 400
+            return self._send(code, {"error": str(exc)})
+        return self._send(200, result)
+
+    def _preview_server_stop(self, cid: str) -> None:
+        stopped = self.preview_servers.stop(cid)
+        return self._send(200, {"stopped": stopped, "conversation_id": cid})
 
     def _record_surface_event(self, job_id: str, rec: dict, surface: dict,
                               event) -> None:
@@ -1131,6 +1166,7 @@ class ReverseAIServer:
         skills_dir = os.environ.get("REVERSEAI_SKILLS") or (Path(store_dir) / "skills")
         skills = load_skills(skills_dir)
         routines = RoutineStore(Path(store_dir) / "routines.json")
+        preview_servers = PreviewServerManager()
         runs = RunManager(store, memory=memory, skills=skills, routines=routines)
         self.scheduler = RoutineScheduler(routines, runs)
         surface_events = SurfaceEventStore(Path(store_dir) / "surface_events")
@@ -1138,6 +1174,7 @@ class ReverseAIServer:
             "store": store, "runs": runs, "memory": memory,
             "routines": routines, "skills": skills,
             "surface_events": surface_events,
+            "preview_servers": preview_servers,
         })
         self.httpd = ThreadingHTTPServer((host, port), handler)
         self.store = store
@@ -1145,6 +1182,7 @@ class ReverseAIServer:
         self.routines = routines
         self.runs = runs
         self.skills = skills
+        self.preview_servers = preview_servers
         self.scheduler.start()
 
     @property
@@ -1156,6 +1194,7 @@ class ReverseAIServer:
 
     def shutdown(self) -> None:
         self.scheduler.stop()
+        self.preview_servers.stop_all()
         self.httpd.shutdown()
         self.httpd.server_close()
 

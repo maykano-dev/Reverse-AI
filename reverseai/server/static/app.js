@@ -2311,6 +2311,7 @@ function newPreviewTab() {
 }
 let previewTabs = [newPreviewTab()];
 let previewActive = 0;
+let previewCid = null;
 function activeTab() {
   return previewTabs[previewActive] || previewTabs[0];
 }
@@ -2380,6 +2381,7 @@ function closePreviewTab(i) {
 function resetPreview() {
   previewTabs = [newPreviewTab()];
   previewActive = 0;
+  previewCid = null;
   $("#previewPane").classList.remove("pv-full");
   $("#pvFrame").style.display = "none";
   $("#pvFrame").src = "about:blank";
@@ -2439,9 +2441,14 @@ function previewAddress(url) {
   if (url.startsWith("/")) return url;
   return url;
 }
+function previewCidFromUrl(url) {
+  const m = String(url || "").match(/^\/preview\/(conv_[A-Za-z0-9]+)\//);
+  return m ? m[1] : null;
+}
 function showPreview(url, opts) {
   if (!url) return;
   const o = opts || {};
+  if (o.local) previewCid = previewCidFromUrl(url) || previewCid;
   if (o.newTab) {
     previewTabs.push(newPreviewTab());
     previewActive = previewTabs.length - 1;
@@ -2478,6 +2485,7 @@ function browse(u) {
 }
 function showLaunchCard(cid, rel) {
   const url = previewHref(cid, rel);
+  previewCid = cid || previewCid;
   $("#pvLaunch").dataset.url = url;
   $("#pvLaunchName").textContent = previewName(rel);
   $("#pvLaunchMeta").textContent = rel;
@@ -2540,6 +2548,45 @@ $("#pvFull").addEventListener("click", () => {
 $("#pvClosePreview").addEventListener("click", () => {
   $("#previewPane").classList.remove("pv-full");
   $("#canvas").classList.remove("open");
+});
+$("#pvDevToggle").addEventListener("click", () => {
+  $("#pvDevbar").classList.toggle("show");
+  if ($("#pvDevbar").classList.contains("show")) $("#pvDevCmd").focus();
+});
+async function runDevServer() {
+  const cid = conversationId || previewCid;
+  const status = $("#pvDevStatus");
+  if (!cid) { status.textContent = "Open a conversation first."; return; }
+  const command = $("#pvDevCmd").value.trim();
+  const port = parseInt($("#pvDevPort").value, 10) || 3001;
+  if (!command) { status.textContent = "Enter a command."; $("#pvDevCmd").focus(); return; }
+  status.textContent = "Starting...";
+  try {
+    const { status: code, body } = await postJSON(
+      `/preview/${cid}/server/start`, { command, port });
+    if (code !== 200) throw new Error(body.error || "Could not start the server.");
+    previewCid = cid;
+    status.textContent = `Running on :${body.port}`;
+    showPreview(body.url, { title: "Dev server" });
+  } catch (err) {
+    status.textContent = err.message || "Could not start the server.";
+  }
+}
+async function stopDevServer() {
+  const cid = conversationId || previewCid;
+  if (!cid) return;
+  const status = $("#pvDevStatus");
+  try {
+    await postJSON(`/preview/${cid}/server/stop`, {});
+    status.textContent = "Stopped.";
+  } catch (err) {
+    status.textContent = err.message || "Could not stop the server.";
+  }
+}
+$("#pvDevRun").addEventListener("click", runDevServer);
+$("#pvDevStop").addEventListener("click", stopDevServer);
+$("#pvDevCmd").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") runDevServer();
 });
 
 // ---------------------------------------------------------------------------

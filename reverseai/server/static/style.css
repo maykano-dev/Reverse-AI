@@ -1944,3 +1944,31 @@ body {
 @media (max-width: 620px) {
   .surface-images { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Dev-server bar in the preview browser */
+.pv-devbar {
+  display: none; align-items: center; gap: 6px; padding: 6px 8px;
+  border-bottom: 1px solid var(--border); background: var(--sunken);
+}
+.pv-devbar.show { display: flex; }
+.pv-devbar .pv-dev-ic { color: var(--accent); flex: none; }
+.pv-devbar input {
+  border: 1px solid var(--border); border-radius: 7px; background: var(--bg);
+  color: var(--text); font-family: var(--font-mono); font-size: 11.5px;
+  padding: 6px 8px; min-width: 0; outline: 0;
+}
+.pv-devbar #pvDevCmd { flex: 1; }
+.pv-devbar #pvDevPort { width: 72px; flex: none; }
+.pv-devbar .pv-dev-run, .pv-devbar .pv-dev-stop {
+  border: 0; border-radius: 7px; padding: 6px 10px; font-size: 11px;
+  font-weight: 650; cursor: pointer; flex: none;
+}
+.pv-devbar .pv-dev-run { background: var(--accent); color: #fff; }
+.pv-devbar .pv-dev-stop { background: var(--elev); color: var(--dim); border: 1px solid var(--border); }
+.pv-devbar .pv-dev-stop:hover { color: var(--danger); border-color: var(--danger); }
+.pv-dev-status { font-size: 10px; color: var(--faint); max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 720px) {
+  .pv-devbar { flex-wrap: wrap; }
+  .pv-devbar #pvDevCmd { flex: 1 1 100%; }
+  .pv-dev-status { max-width: 100%; }
+}

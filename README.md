@@ -16,7 +16,7 @@
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
-  <img alt="tests" src="https://img.shields.io/badge/tests-571%2B%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-575%2B%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
   <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
@@ -62,7 +62,7 @@ Most "AI + reverse engineering" demos stop at describing a binary. ReverseAI clo
 | **Live preview** | Generated sites open in the Preview panel automatically, with a Preview card in the chat. The agent no longer says it cannot render a page. |
 | **Images and decisions** | `web_images` finds real images across the web or Wikimedia Commons; `install_media` validates, installs, and records credit/license. Attachments and public URLs work too. Question, form, and approval surfaces pause until answered. |
 | **Web resources** | `install_resource` installs remote stylesheets, web fonts, and SVG icons with validation. JavaScript is refused. |
-| **Live browser preview** | The Preview pane is a multi-tab browser with back/forward, reload, URL entry, fullscreen, external open, and automatic reload when the agent or an external editor changes workspace files. Surface cards survive later turns. |
+| **Live browser preview** | Multi-tab browser with back/forward, reload, fullscreen, external open, and automatic reload for static sites. A gated bubblewrap-backed dev-server runner can start `npm run dev` or another command and open its loopback URL. |
 | **Practical interaction** | Live progress, explicit risk on approvals, recommended options, evidence tables, and a real sandboxed escape hatch for custom views. |
 
 ## What's new in 0.8.0

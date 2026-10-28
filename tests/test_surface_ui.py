@@ -57,7 +57,8 @@ class SurfaceUIContractTests(unittest.TestCase):
         js = APP.read_text(encoding="utf-8")
         html = (ROOT / "reverseai/server/static/index.html").read_text(encoding="utf-8")
         for token in ("pvReload", "pvBack", "pvForward", "pvFull", "pvNewTab",
-                      "pvExternal", "pvLaunch", "pvTabList"):
+                      "pvExternal", "pvLaunch", "pvTabList", "pvDevbar",
+                      "pvDevRun", "pvDevToggle"):
             self.assertIn(token, js, token)
             self.assertIn(token, html, token)
         for token in ("previewTabs", "switchPreviewTab", "closePreviewTab"):
@@ -71,7 +72,7 @@ class SurfaceUIContractTests(unittest.TestCase):
         js = APP.read_text(encoding="utf-8")
         sw = (ROOT / "reverseai/server/static/sw.js").read_text(encoding="utf-8")
         self.assertIn("controllerchange", js)
-        self.assertIn("rvai-v19", sw)
+        self.assertIn("rvai-v20", sw)
 
     def test_custom_view_is_sandboxed(self):
         js = APP.read_text(encoding="utf-8")

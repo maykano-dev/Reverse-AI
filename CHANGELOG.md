@@ -16,13 +16,17 @@
   header, suggestion cards, calmer composer, surface cards, mobile adjustments.
 - The system prompt now tells the agent to use surfaces for decisions, forms,
   comparisons, graphs, diffs, approvals, and other task-native interactions.
-- 52 new tests; total 571; 60 tools covered by contract tests.
+- 56 new tests; total 575; 60 tools covered by contract tests.
 - A larger default output budget and chunked `write_file` appends fix truncated
   large-file writes. Invalid/truncated tool arguments now return a clear,
   actionable message instead of retrying blindly.
 - The preview pane is now a browser-like live server: real multiple tabs,
   back/forward, reload, URL bar, open externally, fullscreen, and automatic
   reload as workspace files change, including external editor edits.
+- Persistent dev-server preview: a gated, bubblewrap-confined command runner can
+  start `npm run dev`, Vite, or another local server and open it in a preview
+  tab. It refuses without bubblewrap, binds loopback, uses no shell, and stops
+  when the app shuts down.
 - The sidebar groups all turns by conversation, so a follow-up message no longer
   appears as a separate chat. `GET /jobs` now returns one summary per
   conversation by default; `GET /jobs?all=1` returns every turn.

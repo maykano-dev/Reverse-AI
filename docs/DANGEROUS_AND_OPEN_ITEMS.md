@@ -27,6 +27,8 @@ Status key: **built**, **foundation**, **deferred**.
 - [x] **Self-training**: verified-trace dataset extraction, redaction,
       deduplication, train/holdout split, benchmark-gated improvement plan.
       No model weights are trained automatically.
+- [x] **Dev-server preview**: gated bubblewrap runner for project commands,
+      argv-only, loopback URL, stop-on-shutdown. Disabled by default.
 - [x] **Self-deployment**: deployment plan, dry-run, approval gate, rollback
       plan, injected HTTPS/loopback webhook transport. No automatic production
       deployment and no cloud credentials.
@@ -91,4 +93,4 @@ python3 -m unittest tests.test_macho_extra -v
 ```
 
 The full suite and `python3 -m reverseai audit` must pass. Current baseline:
-571 tests passing, 4 environment-dependent skips, version 0.9.0.
+575 tests passing, 4 environment-dependent skips, version 0.9.0.

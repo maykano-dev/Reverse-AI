@@ -274,3 +274,18 @@ The v0.9 surfaces are deliberately narrow:
 
 Security issues in ReverseAI itself: open a private advisory on the repository.
 Do not file public issues with working exploit details.
+
+## Dev-server preview boundary
+
+The preview browser can start a project dev server only when the operator sets
+`REVERSEAI_ALLOW_PREVIEW_SERVER=1`. The command runs inside bubblewrap with the
+workspace read-write, the host system read-only, capabilities dropped, a new
+session, and a process group. The command is parsed as argv, never through a
+shell. The app stops preview servers on shutdown.
+
+Network is shared because a dev server must bind a loopback port and framework
+HMR needs it. The server is expected to bind `127.0.0.1` (`HOST` and `PORT` are
+provided). If a project command binds `0.0.0.0`, it can expose that port beyond
+loopback; enable this feature only for projects you trust. When bubblewrap or
+unprivileged user namespaces are unavailable, the runner refuses instead of
+falling back to the host.
