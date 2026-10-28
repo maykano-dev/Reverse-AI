@@ -67,6 +67,7 @@ from ..sandbox import detect_capabilities
 from ..surface import (
     SurfaceError, SurfaceEventStore, event_from_body, find_surface,
 )
+from ..security.quota import QuotaError, QuotaPolicy, QuotaTracker
 from ..security.validate import ValidationError, read_target
 from ..util.logging import get_logger
 from .preview_server import PreviewServerError, PreviewServerManager
@@ -165,6 +166,23 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header(
                 "Set-Cookie",
                 f"rvai_auth={self._token_hash()}; Path=/; HttpOnly; SameSite=Lax")
+
+    def _quota_key(self) -> str:
+        # The server currently supports one bearer token. Quota buckets are
+        # derived from it without storing the token in plaintext.
+        return self._token() or ""
+
+    def _quota_check(self, runs: int = 1) -> bool:
+        tracker = getattr(self, "quota", None)
+        key = self._quota_key()
+        if tracker is None or not key or not tracker.policy.enabled():
+            return True
+        result = tracker.check(key, runs=runs)
+        if result["allowed"]:
+            return True
+        self._send(429, {"error": "quota exceeded: " + "; ".join(result["problems"]),
+                         "quota": result})
+        return False
 
     def _require_auth(self) -> bool:
         if self._authorized():
@@ -297,6 +315,13 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send(200, {"routines": [_routine_json(r) for r in self.routines.all()]})
         if path == "/usage":
             return self._send(200, self.store.usage_summary())
+        if path == "/quota":
+            tracker = getattr(self, "quota", None)
+            key = self._quota_key()
+            if tracker is None or not key:
+                return self._send(200, {"enabled": False})
+            return self._send(200, {"enabled": tracker.policy.enabled(),
+                                    **tracker.check(key, runs=0)})
         if path == "/feedback":
             return self._send(200, {"feedback": self.store.feedback()})
         if path == "/jobs":
@@ -540,6 +565,11 @@ class _Handler(BaseHTTPRequestHandler):
         }
 
     def _start_run(self, body) -> None:
+        if not self._quota_check():
+            return
+        if self._quota_key():
+            body = dict(body)
+            body["_quota_token"] = self._quota_key()
         stream_id, conversation_id, error = self.runs.start(body)
         if error:
             code = 402 if error.startswith("monthly budget") else (
@@ -745,6 +775,8 @@ class _Handler(BaseHTTPRequestHandler):
         return self._send(200, {"accepted": True, "event": event.to_dict()})
 
     def _surface_respond(self, job_id: str, surface_id: str, body: dict) -> None:
+        if not self._quota_check():
+            return
         rec = self.store.get(job_id)
         if rec is None:
             return self._send(404, {"error": "job not found"})
@@ -774,6 +806,7 @@ class _Handler(BaseHTTPRequestHandler):
             "permission": rec.get("permission") or body.get("permission") or "read",
             "max_steps": max(1, min(int(body.get("max_steps", 24) or 24), 64)),
             "client": body.get("client", 1),
+            "_quota_token": self._quota_key(),
         }
         stream_id, cid, error = self.runs.start(run_body)
         if error:
@@ -1063,6 +1096,8 @@ class _Handler(BaseHTTPRequestHandler):
         self._serve_file(str(target) if target.is_file() else None, "not found")
 
     def _run_job(self, body):
+        if not self._quota_check():
+            return
         goal = body.get("goal")
         if not goal:
             return self._send(400, {"error": "missing 'goal'"})
@@ -1093,6 +1128,15 @@ class _Handler(BaseHTTPRequestHandler):
         if job.artifact_meta.get("path"):
             self.store.save_artifact(job.id, job.artifact_meta["path"])
         self.store.save(job)
+        quota = getattr(self, "quota", None)
+        key = self._quota_key()
+        if quota is not None and key and quota.policy.enabled():
+            try:
+                quota.consume(key, runs=1,
+                              tokens=int((job.usage or {}).get("total_tokens", 0) or 0),
+                              cost_usd=float((job.usage or {}).get("cost_usd", 0) or 0))
+            except QuotaError:
+                pass
         return self._send(200, job.to_dict())
 
     # --- memory / routines / feedback ----------------------------------
@@ -1167,7 +1211,11 @@ class ReverseAIServer:
         skills = load_skills(skills_dir)
         routines = RoutineStore(Path(store_dir) / "routines.json")
         preview_servers = PreviewServerManager()
-        runs = RunManager(store, memory=memory, skills=skills, routines=routines)
+        quota = QuotaTracker(
+            os.environ.get("REVERSEAI_QUOTA_FILE") or Path(store_dir) / "quotas.json",
+            QuotaPolicy.from_env())
+        runs = RunManager(store, memory=memory, skills=skills, routines=routines,
+                          quota=quota)
         self.scheduler = RoutineScheduler(routines, runs)
         surface_events = SurfaceEventStore(Path(store_dir) / "surface_events")
         handler = type("BoundHandler", (_Handler,), {
@@ -1175,6 +1223,7 @@ class ReverseAIServer:
             "routines": routines, "skills": skills,
             "surface_events": surface_events,
             "preview_servers": preview_servers,
+            "quota": quota,
         })
         self.httpd = ThreadingHTTPServer((host, port), handler)
         self.store = store
@@ -1183,6 +1232,7 @@ class ReverseAIServer:
         self.runs = runs
         self.skills = skills
         self.preview_servers = preview_servers
+        self.quota = quota
         self.scheduler.start()
 
     @property

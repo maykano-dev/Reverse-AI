@@ -16,7 +16,7 @@
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
-  <img alt="tests" src="https://img.shields.io/badge/tests-575%2B%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-576%2B%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
   <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
@@ -441,6 +441,11 @@ has no regression inputs.
 | `REVERSEAI_QILING_ROOTFS` | Rootfs for emulated foreign-platform execution (optional) |
 | `REVERSEAI_SECCOMP` | Set `0` to disable the seccomp denylist (default on) |
 | `REVERSEAI_UPLOAD_MAX_MB` | Upload ceiling (default 512 MiB) |
+| `REVERSEAI_ALLOW_PREVIEW_SERVER` | Set `1` to allow the bubblewrap dev-server preview |
+| `REVERSEAI_QUOTA_RUNS_PER_MONTH` | Per-token monthly run ceiling (0 = off) |
+| `REVERSEAI_QUOTA_TOKENS_PER_MONTH` | Per-token monthly token ceiling (0 = off) |
+| `REVERSEAI_QUOTA_COST_USD_PER_MONTH` | Per-token monthly cost ceiling (0 = off) |
+| `REVERSEAI_QUOTA_FILE` | Quota ledger path (defaults to `<store>/quotas.json`) |
 | `REVERSEAI_STORE` | Job/event/conversation/artifact storage |
 | `REVERSEAI_SEARCH_URL` | SearXNG-compatible research endpoint |
 | `REVERSEAI_OCR_URL`, `REVERSEAI_OCR_MODEL` | Unlimited-OCR endpoint |

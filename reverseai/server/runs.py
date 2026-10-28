@@ -71,8 +71,9 @@ class Run:
 
 class RunManager:
     def __init__(self, store: JobStore, memory=None, skills: list | None = None,
-                 routines=None) -> None:
+                 routines=None, quota=None) -> None:
         self.store = store
+        self.quota = quota
         self.memory = memory
         self.skills = skills or []
         self.routines = routines
@@ -161,6 +162,7 @@ class RunManager:
                         self.store.save_artifact(job.id, mp)
                 self.store.save(job)
                 self._save_conversation(cid, conv, body)
+                self._consume_quota(job, body)
                 run.record = job.to_dict()
             except Exception as exc:  # pragma: no cover - defensive
                 err = {"type": "error", "error": f"run crashed: {exc}"}
@@ -247,6 +249,19 @@ class RunManager:
             state["provider"] = getattr(conv, "_provider_name",
                                         os.environ.get("REVERSEAI_PROVIDER", "deepseek"))
             self.store.save_conversation(cid, state)
+        except Exception:
+            pass
+
+    def _consume_quota(self, job, body: dict[str, Any]) -> None:
+        quota = self.quota
+        token = str(body.get("_quota_token") or "")
+        if quota is None or not token or not quota.policy.enabled():
+            return
+        try:
+            usage = job.usage or {}
+            quota.consume(token, runs=1,
+                          tokens=int(usage.get("total_tokens", 0) or 0),
+                          cost_usd=float(usage.get("cost_usd", 0) or 0))
         except Exception:
             pass
 

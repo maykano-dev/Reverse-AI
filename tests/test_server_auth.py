@@ -121,5 +121,57 @@ class AuthTests(unittest.TestCase):
         self.assertIn("error", body)
 
 
+class QuotaServerTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.root = Path(cls.tmp.name)
+        cls.saved = {k: os.environ.get(k) for k in (
+            "REVERSEAI_AUTH_TOKEN", "REVERSEAI_ALLOWED_ROOTS",
+            "REVERSEAI_QUOTA_RUNS_PER_MONTH", "REVERSEAI_QUOTA_FILE")}
+        os.environ["REVERSEAI_AUTH_TOKEN"] = TOKEN
+        os.environ["REVERSEAI_ALLOWED_ROOTS"] = str(cls.root)
+        os.environ["REVERSEAI_QUOTA_RUNS_PER_MONTH"] = "2"
+        os.environ["REVERSEAI_QUOTA_FILE"] = str(cls.root / "quota.json")
+        cls.srv = ReverseAIServer(host="127.0.0.1", port=0,
+                                  store_dir=str(cls.root / "store"))
+        cls.host, cls.port = cls.srv.address
+        cls.base = f"http://{cls.host}:{cls.port}"
+        cls.thread = threading.Thread(target=cls.srv.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        cls.thread.join(timeout=3)
+        for key, value in cls.saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        cls.tmp.cleanup()
+
+    def test_monthly_run_quota_is_enforced_and_reported(self):
+        for _ in range(2):
+            status, body = _request(
+                self.base + "/jobs/start",
+                payload={"goal": "quota smoke", "provider": "mock"},
+                token=TOKEN)
+            self.assertEqual(status, 200, body)
+            run = self.srv.runs.get(body["job_id"])
+            self.assertIsNotNone(run)
+            run.done.wait(5)
+        status, body = _request(self.base + "/quota", token=TOKEN)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["usage"]["runs"], 2)
+        self.assertTrue(body["policy"]["runs_per_month"] == 2)
+        status, body = _request(
+            self.base + "/jobs/start",
+            payload={"goal": "one too many", "provider": "mock"},
+            token=TOKEN)
+        self.assertEqual(status, 429, body)
+        self.assertIn("quota", body["error"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

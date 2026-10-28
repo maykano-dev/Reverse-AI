@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -24,6 +25,23 @@ class QuotaPolicy:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_env(cls, prefix: str = "REVERSEAI_QUOTA_") -> "QuotaPolicy":
+        def _num(name: str, cast, default):
+            try:
+                return cast(os.environ.get(prefix + name, default) or default)
+            except (TypeError, ValueError):
+                return default
+        return cls(
+            runs_per_month=_num("RUNS_PER_MONTH", int, 0),
+            tokens_per_month=_num("TOKENS_PER_MONTH", int, 0),
+            cost_usd_per_month=_num("COST_USD_PER_MONTH", float, 0.0),
+        )
+
+    def enabled(self) -> bool:
+        return bool(self.runs_per_month or self.tokens_per_month
+                    or self.cost_usd_per_month)
 
 
 @dataclass
@@ -56,6 +74,7 @@ class QuotaTracker:
         self.path = Path(path or Path.home() / ".reverseai" / "quotas.json")
         self.policy = policy or QuotaPolicy()
         self.tokens: dict[str, QuotaUsage] = {}
+        self._lock = threading.RLock()
         self._load()
 
     def _load(self) -> None:
@@ -96,29 +115,31 @@ class QuotaTracker:
 
     def check(self, token: str, *, runs: int = 1, tokens: int = 0,
               cost_usd: float = 0.0) -> dict[str, Any]:
-        usage = self._usage(token)
-        p = self.policy
-        problems = []
-        if p.runs_per_month and usage.runs + runs > p.runs_per_month:
-            problems.append("monthly run quota exceeded")
-        if p.tokens_per_month and usage.tokens + tokens > p.tokens_per_month:
-            problems.append("monthly token quota exceeded")
-        if p.cost_usd_per_month and usage.cost_usd + cost_usd > p.cost_usd_per_month:
-            problems.append("monthly cost quota exceeded")
-        return {
-            "allowed": not problems, "problems": problems,
-            "usage": usage.to_dict(), "policy": p.to_dict(),
-        }
+        with self._lock:
+            usage = self._usage(token)
+            p = self.policy
+            problems = []
+            if p.runs_per_month and usage.runs + runs > p.runs_per_month:
+                problems.append("monthly run quota exceeded")
+            if p.tokens_per_month and usage.tokens + tokens > p.tokens_per_month:
+                problems.append("monthly token quota exceeded")
+            if p.cost_usd_per_month and usage.cost_usd + cost_usd > p.cost_usd_per_month:
+                problems.append("monthly cost quota exceeded")
+            return {
+                "allowed": not problems, "problems": problems,
+                "usage": usage.to_dict(), "policy": p.to_dict(),
+            }
 
     def consume(self, token: str, *, runs: int = 1, tokens: int = 0,
                 cost_usd: float = 0.0) -> dict[str, Any]:
-        check = self.check(token, runs=runs, tokens=tokens, cost_usd=cost_usd)
-        if not check["allowed"]:
-            raise QuotaError("; ".join(check["problems"]))
-        usage = self._usage(token)
-        usage.runs += max(0, int(runs))
-        usage.tokens += max(0, int(tokens))
-        usage.cost_usd = round(usage.cost_usd + max(0.0, float(cost_usd)), 6)
-        usage.last_at = time.time()
-        self._save()
-        return {"allowed": True, "usage": usage.to_dict()}
+        with self._lock:
+            check = self.check(token, runs=runs, tokens=tokens, cost_usd=cost_usd)
+            if not check["allowed"]:
+                raise QuotaError("; ".join(check["problems"]))
+            usage = self._usage(token)
+            usage.runs += max(0, int(runs))
+            usage.tokens += max(0, int(tokens))
+            usage.cost_usd = round(usage.cost_usd + max(0.0, float(cost_usd)), 6)
+            usage.last_at = time.time()
+            self._save()
+            return {"allowed": True, "usage": usage.to_dict()}

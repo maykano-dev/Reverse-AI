@@ -177,6 +177,9 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   rest" with regression cases, and then runs the Batch 1 verify+repair loop.
   Modes: Direct, Reconstruction, Modernisation. The engine recommends a mode; the
   user may override it, and the chosen mode is recorded on the Job.
+- **Per-token quotas:** optional monthly run/token/cost ceilings are enforced
+  for the single configured bearer token, with a persistent hashed ledger and
+  `GET /quota`. This is abuse control, not multi-tenant identity.
 - **High-risk capability policy:** remote control, vault, payments, live
   workstation, persistent squads, MCP, and hooks are denied by default. A future
   implementation must pass `security/capabilities.py` (master opt-in + specific

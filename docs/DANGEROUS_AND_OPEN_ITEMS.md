@@ -47,8 +47,9 @@ Status key: **built**, **foundation**, **deferred**.
       contract is not implemented, so execution is refused.
 - [~] **Long-running mission recovery**: persisted mission state and resume
       contract. A worker restart is not wired.
-- [~] **Per-token quota**: policy/tracker module and tests. HTTP route
-      integration is not enabled by default.
+- [x] **Per-token quota**: policy/tracker module and tests, plus HTTP
+      enforcement on starts, synchronous runs, surface continuations, and
+      `GET /quota`. Disabled unless the quota env vars are set.
 - [x] **Cross-platform readiness**: a single preflight that says native,
       emulated, VM, or analysis-only.
 
@@ -93,4 +94,4 @@ python3 -m unittest tests.test_macho_extra -v
 ```
 
 The full suite and `python3 -m reverseai audit` must pass. Current baseline:
-575 tests passing, 4 environment-dependent skips, version 0.9.0.
+576 tests passing, 4 environment-dependent skips, version 0.9.0.
