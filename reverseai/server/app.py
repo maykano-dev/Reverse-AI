@@ -47,6 +47,7 @@ import hmac
 import json
 import os
 import re
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -85,6 +86,8 @@ _JOB_REPORT_HTML_PATH = re.compile(r"^/jobs/(job_[A-Za-z0-9]+)/report\.html$")
 _ARTIFACT_PATH = re.compile(r"^/conversations/(conv_[A-Za-z0-9]+)/artifact$")
 _FILES_PATH = re.compile(r"^/files/([a-f0-9]{12})/([A-Za-z0-9._-]+)$")
 _PREVIEW_PATH = re.compile(r"^/preview/(conv_[A-Za-z0-9]+)/(.*)$")
+_PREVIEW_EVENTS_PATH = re.compile(r"^/preview/(conv_[A-Za-z0-9]+)/__events$")
+_PREVIEW_RELOAD_PATH = re.compile(r"^/preview/(conv_[A-Za-z0-9]+)/__reload\.js$")
 _MEMORY_PATH = re.compile(r"^/memory/(mem_[A-Za-z0-9]+)$")
 _ROUTINE_PATH = re.compile(r"^/routines/(rt_[A-Za-z0-9]+)$")
 _ROUTINE_RUN_PATH = re.compile(r"^/routines/(rt_[A-Za-z0-9]+)/run$")
@@ -324,6 +327,12 @@ class _Handler(BaseHTTPRequestHandler):
         fm = _FILES_PATH.match(path)
         if fm:
             return self._download_output(fm.group(1), fm.group(2))
+        em = _PREVIEW_EVENTS_PATH.match(path)
+        if em:
+            return self._preview_events(em.group(1))
+        rm = _PREVIEW_RELOAD_PATH.match(path)
+        if rm:
+            return self._preview_reload_js(rm.group(1))
         pm = _PREVIEW_PATH.match(path)
         if pm:
             return self._serve_preview(pm.group(1), pm.group(2))
@@ -338,6 +347,12 @@ class _Handler(BaseHTTPRequestHandler):
                 # Backfill for jobs recorded before preview metadata existed.
                 from ..preview import preview_entry
                 rec["preview"] = preview_entry(rec.get("workspace"))
+            if rec.get("conversation_id"):
+                # A surface belongs to the conversation, not just the turn that
+                # created it. The sidebar opens the latest job, so aggregate the
+                # history here to keep decisions and approvals visible.
+                rec["surfaces"] = self.store.surfaces_for_conversation(
+                    rec["conversation_id"])
             return self._send(200, rec)
         return self._send(404, {"error": "not found"})
 
@@ -925,6 +940,15 @@ class _Handler(BaseHTTPRequestHandler):
         except OSError:
             return self._send(404, {"error": "not found"})
         ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+        if "text/html" in ctype.lower():
+            text = data.decode("utf-8", "replace")
+            tag = f'<script src="/preview/{cid}/__reload.js"></script>'
+            if "</body>" in text.lower():
+                idx = text.lower().rfind("</body>")
+                text = text[:idx] + tag + text[idx:]
+            else:
+                text += tag
+            data = text.encode("utf-8")
         self.send_response(200)
         self._auth_headers()
         self.send_header("Content-Type", ctype)
@@ -932,6 +956,57 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
+
+    def _preview_reload_js(self, cid: str) -> None:
+        body = (
+            "const es = new EventSource('/preview/" + cid + "/__events');\n"
+            "let t;\n"
+            "es.addEventListener('reload', () => {\n"
+            "  clearTimeout(t); t = setTimeout(() => location.reload(), 300);\n"
+            "});\n"
+        ).encode()
+        self.send_response(200)
+        self._auth_headers()
+        self.send_header("Content-Type", "application/javascript; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _preview_events(self, cid: str) -> None:
+        from ..preview import preview_snapshot
+        conv = self.runs.conversation(cid)
+        if conv is None:
+            return self._send(404, {"error": "no such session"})
+        self.send_response(200)
+        self._auth_headers()
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        last = preview_snapshot(conv.workspace)
+        deadline = time.monotonic() + 1800
+        beat = time.monotonic() + 12
+        try:
+            self.wfile.write(b"retry: 800\n\n")
+            self.wfile.flush()
+            while time.monotonic() < deadline:
+                time.sleep(0.6)
+                now = preview_snapshot(conv.workspace)
+                if now != last:
+                    last = now
+                    self.wfile.write(b"event: reload\ndata: reload\n\n")
+                    self.wfile.flush()
+                    beat = time.monotonic() + 12
+                elif time.monotonic() >= beat:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    beat = time.monotonic() + 12
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            self.close_connection = True
 
     def _download_output(self, token: str, name: str) -> None:
         base = (Path(self.store.dir) / "api_outputs" / token).resolve()

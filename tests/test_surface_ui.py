@@ -18,7 +18,8 @@ class SurfaceUIContractTests(unittest.TestCase):
         js = APP.read_text(encoding="utf-8")
         for token in ("renderSurface", "renderSurfaces", "surface-card",
                       "data-surface-other", "surface-approval",
-                      "surface-chart", "surface-graph", "surface-custom"):
+                      "surface-chart", "surface-graph", "surface-custom",
+                      "image_choice", "surface-images", "imageMeta"):
             self.assertIn(token, js, token)
 
     def test_other_escape_hatch_is_default(self):
@@ -59,15 +60,16 @@ class SurfaceUIContractTests(unittest.TestCase):
                       "pvExternal", "pvLaunch"):
             self.assertIn(token, js, token)
             self.assertIn(token, html, token)
-        self.assertIn("preview_changed", js)
-        self.assertIn("schedulePreviewReload", js)
+        server = (ROOT / "reverseai/server/app.py").read_text(encoding="utf-8")
+        self.assertIn("__reload.js", server)
+        self.assertIn("__events", server)
         self.assertIn("pv-live", CSS.read_text(encoding="utf-8"))
 
     def test_service_worker_updates_do_not_leave_a_stale_shell(self):
         js = APP.read_text(encoding="utf-8")
         sw = (ROOT / "reverseai/server/static/sw.js").read_text(encoding="utf-8")
         self.assertIn("controllerchange", js)
-        self.assertIn("rvai-v16", sw)
+        self.assertIn("rvai-v17", sw)
 
     def test_custom_view_is_sandboxed(self):
         js = APP.read_text(encoding="utf-8")

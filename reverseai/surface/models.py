@@ -19,9 +19,9 @@ from typing import Any
 
 ID_RE = re.compile(r"^sf_[A-Za-z0-9]{6,40}$")
 ACTION_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
-BLOCK_KINDS = {"text", "markdown", "choice", "form", "table", "chart",
-               "graph", "diff", "code", "progress", "approval", "file_drop",
-               "custom"}
+BLOCK_KINDS = {"text", "markdown", "choice", "image_choice", "form", "table",
+               "chart", "graph", "diff", "code", "progress", "approval",
+               "file_drop", "custom"}
 SURFACE_KINDS = {"question", "form", "dashboard", "review", "approval",
                  "progress", "custom", "workspace"}
 FIELD_TYPES = {"text", "textarea", "number", "select", "checkbox", "file"}
@@ -110,6 +110,34 @@ def validate_block(raw: Any) -> dict[str, Any]:
             "multiple": bool(raw.get("multiple")),
             "allow_other": bool(raw.get("allow_other", True)),
             "other_label": _clip(raw.get("other_label") or "Other — type your own", 200),
+        })
+    elif kind == "image_choice":
+        options = []
+        for opt in _list(raw.get("options"), 12):
+            if not isinstance(opt, dict):
+                continue
+            image = _clip(opt.get("image") or opt.get("value"), 2048)
+            if not image.startswith(("http://", "https://")):
+                continue
+            options.append({
+                "value": image,
+                "image": image,
+                "label": _clip(opt.get("label") or opt.get("title") or "Image", 200),
+                "description": _clip(opt.get("description") or opt.get("snippet"), 600),
+                "source_page": _clip(opt.get("source_page") or opt.get("page"), 2048),
+                "credit": _clip(opt.get("credit") or opt.get("creator"), 300),
+                "license": _clip(opt.get("license"), 120),
+                "recommended": bool(opt.get("recommended")),
+            })
+        if not options:
+            raise SurfaceError("image_choice needs at least one public image URL")
+        out.update({
+            "id": _clip(raw.get("id") or "image", 80),
+            "label": _clip(raw.get("label") or "Choose an image", 300),
+            "options": options,
+            "multiple": bool(raw.get("multiple")),
+            "allow_other": bool(raw.get("allow_other", True)),
+            "other_label": _clip(raw.get("other_label") or "Or paste an image URL", 200),
         })
     elif kind == "form":
         out.update({

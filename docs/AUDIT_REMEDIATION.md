@@ -66,8 +66,8 @@ exist; `~` is a foundation, not a complete product.
 
 - [x] PE/ELF/Mach-O/APK metadata, sections, imports, exports, strings, entropy.
 - [x] Bounded CFG and call graph.
-- [ ] PE resources, version info, TLS callbacks, rich header. Not yet implemented.
-- [ ] Mach-O dyld export trie and full dylib dependency map. Not yet implemented.
+- [x] PE resources, version info, TLS callbacks, rich header.
+- [x] Mach-O dylib dependencies and export/import metadata.
 - [x] Direct call/jump cross-reference recovery (`core/xrefs.py`).
 - [ ] Data-structure recovery and indirect/data xrefs.
 - [ ] Packed/obfuscated binary unpacking pipeline. Not yet implemented.
@@ -91,7 +91,7 @@ exist; `~` is a foundation, not a complete product.
 
 - Date: 2026-10-25
 - Version: 0.9.0
-- Tests: 567 passing, 4 environment-dependent skips
+- Tests: 571 passing, 4 environment-dependent skips
 - Tools: 60 (every one covered by the contract suite)
 - Known skips: no-sandbox refusal path (because a sandbox exists), LIEF absence
   (because LIEF is installed), missing-provider-key paths (because a key is

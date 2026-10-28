@@ -54,6 +54,31 @@ class SurfaceModelTests(unittest.TestCase):
         self.assertEqual(s["blocks"][0]["options"][1]["risk"], "high")
         self.assertTrue(s["blocks"][0]["allow_other"])
 
+    def test_image_choice_requires_public_image_urls(self):
+        spec = {
+            "kind": "question",
+            "title": "Pick a photo",
+            "blocks": [{"kind": "image_choice", "id": "photo",
+                        "label": "Pick a photo",
+                        "options": [
+                            {"image": "https://example.com/a.jpg",
+                             "label": "Port at night", "license": "CC BY-SA"},
+                            {"image": "javascript:alert(1)", "label": "bad"},
+                        ]}],
+        }
+        surface = validate_surface(spec)
+        block = surface["blocks"][0]
+        self.assertEqual(block["id"], "photo")
+        self.assertEqual(block["label"], "Pick a photo")
+        self.assertEqual(len(block["options"]), 1)
+        self.assertEqual(block["options"][0]["image"],
+                         "https://example.com/a.jpg")
+        bad = dict(spec)
+        bad["blocks"] = [{"kind": "image_choice",
+                          "options": [{"image": "javascript:alert(1)"}]}]
+        with self.assertRaises(SurfaceError):
+            validate_surface(bad)
+
     def test_invalid_block_is_refused(self):
         spec = question_spec()
         spec["blocks"] = [{"kind": "not-a-block"}]
@@ -235,6 +260,20 @@ class SurfaceHTTPTests(unittest.TestCase):
         self.assertEqual(compat[0]["title"], "Opening the live preview")
         final = next(e for e in events if e.get("type") == "final")
         self.assertEqual(final["preview"], "site/index.html")
+
+    def test_surfaces_survive_later_turns(self):
+        sid, surface = self._make_job_with_surface()
+        rec = self.srv.store.get(sid)
+        cid = rec.get("conversation_id")
+        self.assertTrue(cid)
+        sid2, cid2, err = self.srv.runs.start(
+            {"goal": "next turn", "conversation_id": cid})
+        self.assertIsNone(err)
+        self.assertEqual(cid2, cid)
+        self.srv.runs.get(sid2).done.wait(5)
+        status, latest = _get(f"{self.base}/jobs/{sid2}")
+        self.assertEqual(status, 200)
+        self.assertEqual([s["id"] for s in latest["surfaces"]], [surface["id"]])
 
     def test_respond_continues_the_conversation(self):
         sid, surface = self._make_job_with_surface()

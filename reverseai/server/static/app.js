@@ -994,6 +994,74 @@ function surfaceBlock(container, block) {
       other.appendChild(input);
       wrap.appendChild(other);
     }
+  } else if (kind === "image_choice") {
+    wrap.dataset.blockKind = "image_choice";
+    wrap.dataset.blockId = block.id || "image";
+    wrap.dataset.multiple = block.multiple ? "1" : "0";
+    if (block.label) wrap.appendChild(el("div", "sb-label", block.label));
+    const grid = el("div", "surface-images");
+    const name = "sfimg_" + Math.random().toString(36).slice(2);
+    (block.options || []).forEach((o) => {
+      const lab = el("label", "surface-image");
+      lab.dataset.value = o.value || o.image || "";
+      const input = document.createElement("input");
+      input.type = block.multiple ? "checkbox" : "radio";
+      input.name = name;
+      input.value = o.value || o.image || "";
+      input.dataset.imageMeta = JSON.stringify({
+        image: o.image || o.value || "",
+        label: o.label || "",
+        page: o.source_page || "",
+        credit: o.credit || "",
+        license: o.license || "",
+      });
+      const img = document.createElement("img");
+      img.src = o.image || o.value || "";
+      img.alt = o.label || "Image option";
+      img.loading = "lazy";
+      img.referrerPolicy = "no-referrer";
+      img.addEventListener("error", () => {
+        lab.classList.add("broken");
+        img.style.visibility = "hidden";
+      });
+      const meta = el("span", "si-meta");
+      const title = el("b", null, o.label || "Image");
+      meta.appendChild(title);
+      const bits = [o.license, o.credit].filter(Boolean).join(" · ");
+      if (bits) meta.appendChild(el("span", "si-credit", bits));
+      if (o.recommended) lab.classList.add("recommended");
+      lab.appendChild(input);
+      lab.appendChild(img);
+      lab.appendChild(meta);
+      input.addEventListener("change", () => {
+        if (!block.multiple) $$(".surface-image", grid).forEach((x) => x.classList.remove("selected"));
+        lab.classList.toggle("selected", input.checked);
+        const other = wrap.querySelector(".surface-other");
+        if (other) {
+          other.classList.remove("show");
+          const oi = other.querySelector("[data-surface-other]");
+          if (oi) oi.value = "";
+        }
+        input.closest(".surface-card").dataset.dirty = "1";
+      });
+      grid.appendChild(lab);
+    });
+    wrap.appendChild(grid);
+    if (block.allow_other) {
+      const other = el("div", "surface-other");
+      const input = document.createElement("input");
+      input.type = "text";
+      input.placeholder = block.other_label || "Or paste an image URL";
+      input.dataset.surfaceOther = "1";
+      input.addEventListener("focus", () => {
+        $$(".surface-image", grid).forEach((x) => x.classList.remove("selected"));
+        $$("input[type=radio], input[type=checkbox]", grid).forEach((x) => { x.checked = false; });
+        other.classList.add("show");
+      });
+      input.addEventListener("input", () => { if (input.value.trim()) other.classList.add("show"); });
+      other.appendChild(input);
+      wrap.appendChild(other);
+    }
   } else if (kind === "form") {
     if (block.label) wrap.appendChild(el("div", "sb-label", block.label));
     const fields = el("div", "surface-fields");
@@ -1185,10 +1253,15 @@ function surfaceValues(card, surface) {
     value[name] = inp.type === "checkbox" ? !!inp.checked : inp.value;
   });
   const others = [];
-  $$(".surface-block[data-block-kind='choice']", card).forEach((block) => {
+  $$(".surface-block[data-block-kind='choice'], .surface-block[data-block-kind='image_choice']", card).forEach((block) => {
     const key = block.dataset.blockId || "choice";
-    const checked = Array.from(block.querySelectorAll("input:checked")).map((x) => x.value);
-    value[key] = block.dataset.multiple === "1" ? checked : (checked[0] || "");
+    const imageKind = block.dataset.blockKind === "image_choice";
+    const checked = Array.from(block.querySelectorAll("input:checked")).map((x) => (
+      imageKind && x.dataset.imageMeta
+        ? (() => { try { return JSON.parse(x.dataset.imageMeta); } catch (_) { return { image: x.value }; } })()
+        : x.value
+    ));
+    value[key] = block.dataset.multiple === "1" ? checked : (checked[0] || (imageKind ? null : ""));
     const otherInput = block.querySelector("[data-surface-other]");
     const otherText = otherInput ? otherInput.value.trim() : "";
     if (otherText) {
@@ -1513,9 +1586,6 @@ function handleEvent(ui, ev, jobId) {
       break;
     case "surface":
       if (ev.surface) renderSurface(ui.body, ev.surface, jobId, ui);
-      break;
-    case "preview_changed":
-      if (previewLocal) schedulePreviewReload();
       break;
     case "finding":
       addFinding(ui, ev);
@@ -2239,14 +2309,11 @@ let previewUrl = "";
 let previewLocal = false;
 let previewHistory = [];
 let previewIndex = -1;
-let previewTimer = null;
-
 function resetPreview() {
   previewUrl = "";
   previewLocal = false;
   previewHistory = [];
   previewIndex = -1;
-  clearTimeout(previewTimer);
   $("#previewPane").classList.remove("pv-full");
   $("#pvFrame").style.display = "none";
   $("#pvFrame").src = "about:blank";
@@ -2323,7 +2390,7 @@ function showPreview(url, opts) {
   }
   previewUrl = url;
   previewLocal = !!o.local;
-  f.src = url;
+  f.src = o.local ? withToken(url) : url;
   f.style.display = "block";
   $("#pvEmpty").style.display = "none";
   $("#pvLaunch").style.display = "none";
@@ -2336,13 +2403,9 @@ function showPreview(url, opts) {
 function reloadPreview() {
   if (!previewUrl) return;
   const f = $("#pvFrame");
-  const sep = previewUrl.includes("?") ? "&" : "?";
-  f.src = `${previewUrl}${sep}__live=${Date.now()}`;
-}
-function schedulePreviewReload() {
-  if (!previewUrl || !previewLocal) return;
-  clearTimeout(previewTimer);
-  previewTimer = setTimeout(reloadPreview, 260);
+  const base = previewLocal ? withToken(previewUrl) : previewUrl;
+  const sep = base.includes("?") ? "&" : "?";
+  f.src = `${base}${sep}__live=${Date.now()}`;
 }
 function browse(u) {
   if (!u) return;
@@ -2397,7 +2460,8 @@ $("#pvLaunchGo").addEventListener("click", startBuiltPreview);
 $("#pvExternal").addEventListener("click", () => {
   const u = previewUrl || $("#pvUrl").value.trim();
   if (!u) return;
-  const abs = u.startsWith("/") ? location.origin + u : u;
+  let abs = u.startsWith("/") ? location.origin + u : u;
+  if (previewLocal && u.startsWith("/")) abs = withToken(abs);
   window.open(abs, "_blank", "noopener,noreferrer");
 });
 $("#pvFull").addEventListener("click", () => {

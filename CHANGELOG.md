@@ -16,7 +16,7 @@
   header, suggestion cards, calmer composer, surface cards, mobile adjustments.
 - The system prompt now tells the agent to use surfaces for decisions, forms,
   comparisons, graphs, diffs, approvals, and other task-native interactions.
-- 48 new tests; total 567; 60 tools covered by contract tests.
+- 52 new tests; total 571; 60 tools covered by contract tests.
 - A larger default output budget and chunked `write_file` appends fix truncated
   large-file writes. Invalid/truncated tool arguments now return a clear,
   actionable message instead of retrying blindly.
@@ -31,6 +31,12 @@
 - Real image input: image attachments and public image URLs can be installed with
   `install_media`, validated, and copied into the site's assets. The previous
   "cannot fetch images" limitation is gone.
+- The preview now live-reloads on external workspace edits too, via a
+  per-conversation file watcher and an injected reload client.
+- Question/approval cards are aggregated across the conversation, so they stay
+  visible after later turns and a reload.
+- Image choices can be presented as an `image_choice` surface with real
+  thumbnails, source, credit, license, and a free-form URL fallback.
 - `web_images` finds real images across the web and from Wikimedia Commons,
   returns the image URL, source page, creator, license, and dimensions, and can
   extract images from a specific page. `install_media` records source, credit,

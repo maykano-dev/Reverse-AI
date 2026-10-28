@@ -8,6 +8,8 @@ previews for jobs recorded before the field existed).
 
 from __future__ import annotations
 
+import hashlib
+import os
 from pathlib import Path
 
 ENTRYPOINTS = (
@@ -47,3 +49,41 @@ def preview_is_fresh(workspace: str | Path | None, rel: str,
         return path.is_file() and path.stat().st_mtime >= since - 1.0
     except (OSError, ValueError):
         return False
+
+
+def preview_watch_root(workspace: str | Path | None) -> Path | None:
+    """The directory whose files should trigger a live reload."""
+    if not workspace:
+        return None
+    root = Path(workspace).resolve()
+    entry = preview_entry(root)
+    if entry:
+        return (root / Path(entry).parent).resolve()
+    return root
+
+
+def preview_snapshot(workspace: str | Path | None, limit: int = 3000) -> str:
+    """A cheap fingerprint of preview files (path, mtime, size)."""
+    root = preview_watch_root(workspace)
+    if root is None or not root.is_dir():
+        return ""
+    digest = hashlib.sha1()
+    count = 0
+    skip = {"node_modules", ".git", "__pycache__", ".venv", "venv"}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in skip)
+        for name in sorted(filenames):
+            count += 1
+            if count > limit:
+                return digest.hexdigest() + ":truncated"
+            path = Path(dirpath) / name
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            try:
+                rel = path.relative_to(root).as_posix()
+            except ValueError:
+                rel = name
+            digest.update(f"{rel}\0{stat.st_mtime_ns}\0{stat.st_size}\n".encode())
+    return digest.hexdigest()

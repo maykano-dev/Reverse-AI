@@ -120,7 +120,7 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   is detected and served from the conversation workspace through
   `/preview/<conversation>/<path>`. The Preview pane is browser-like: tabs,
   back/forward, reload, URL entry, fullscreen, open externally, and live reload
-  as site files change during a turn. Fresh sites open automatically and every
+  through a per-conversation workspace watcher, including external edits. Fresh sites open automatically and every
   preview gets an in-chat card. Archived jobs are backfilled, and `/jobs`
   returns one summary per conversation.
 - **Media input:** `web_images` searches the public web or Wikimedia Commons

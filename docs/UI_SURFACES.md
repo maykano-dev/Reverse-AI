@@ -42,6 +42,10 @@ Question, form, and approval surfaces wait by default: the turn ends with
 `awaiting_input` and the next turn is the user's structured response. Set
 `"wait": false` for a dashboard or review surface that should not pause.
 
+An `image_choice` block shows real image thumbnails with source, creator,
+license, and a free-form URL fallback. It is useful after `web_images` when the
+user should pick the accurate image instead of trusting a text snippet.
+
 Every choice block has an **Other - type your own** path by default. A form can
 collect free text, numbers, selects, checkboxes, and files. The surface can also
 include a table, bar/line/pie chart, node/edge graph, before/after diff, code,

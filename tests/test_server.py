@@ -144,9 +144,37 @@ class ServerTests(unittest.TestCase):
         (site / "index.html").write_text('<link rel="stylesheet" href="style.css"><h1>Kente</h1>')
         (site / "style.css").write_text("h1 { color: red; }")
         with urllib.request.urlopen(f"{self.base}/preview/{cid}/index.html", timeout=5) as r:
-            self.assertIn("Kente", r.read().decode())
+            html = r.read().decode()
+            self.assertIn("Kente", html)
+            self.assertIn("__reload.js", html)
         with urllib.request.urlopen(f"{self.base}/preview/{cid}/style.css", timeout=5) as r:
             self.assertIn("color: red", r.read().decode())
+        with urllib.request.urlopen(f"{self.base}/preview/{cid}/__reload.js", timeout=5) as r:
+            self.assertIn("EventSource", r.read().decode())
+
+    def test_preview_live_reload_stream_reports_external_changes(self):
+        import threading
+        import time as _time
+
+        sid, cid, err = self.srv.runs.start({"goal": "live", "provider": "mock"})
+        self.assertIsNone(err)
+        conv = self.srv.runs.conversation(cid)
+        site = Path(conv.workspace) / "site"
+        site.mkdir(parents=True, exist_ok=True)
+        (site / "index.html").write_text("<h1>live</h1>")
+        seen = []
+        def touch():
+            (site / "index.html").write_text("<h1>live changed</h1>")
+        threading.Timer(0.8, touch).start()
+        with urllib.request.urlopen(
+                f"{self.base}/preview/{cid}/__events", timeout=8) as r:
+            end = _time.time() + 6
+            while _time.time() < end:
+                line = r.readline().decode("utf-8", "replace").strip()
+                seen.append(line)
+                if line == "event: reload":
+                    break
+        self.assertIn("event: reload", seen)
 
     def test_preview_blocks_traversal(self):
         sid, cid, err = self.srv.runs.start({"goal": "x", "provider": "mock"})

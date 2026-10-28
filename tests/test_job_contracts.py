@@ -69,6 +69,22 @@ class JobContractTests(unittest.TestCase):
             self.assertEqual(len(rows), 2)
             self.assertEqual({r["conversation_id"] for r in rows}, {"conv_one"})
 
+    def test_surface_history_prefers_the_answered_state(self):
+        with tempfile.TemporaryDirectory() as td:
+            store = JobStore(td)
+            first = Job(goal="hello", conversation_id="conv_surfaces")
+            first.surfaces = [{"id": "sf_one", "created_at": 2.0,
+                               "title": "Pick", "status": "pending"}]
+            second = Job(goal="next", conversation_id="conv_surfaces")
+            answered = dict(first.surfaces[0])
+            answered["status"] = "submitted"
+            second.surfaces = [answered]
+            store.save(first)
+            store.save(second)
+            rows = store.surfaces_for_conversation("conv_surfaces")
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["status"], "submitted")
+
     def test_conversation_summary_collapses_turns(self):
         with tempfile.TemporaryDirectory() as td:
             store = JobStore(td)

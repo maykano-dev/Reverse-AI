@@ -17,7 +17,7 @@ A living map of what exists and what comes next. Updated with v0.9.0.
   shown as a Preview card, and opened automatically when fresh.
 - **Web media**: image search (web + Wikimedia Commons), attributed image
   installation, and validated stylesheet/font/SVG installation.
-- **Tests**: 567; 60 tools contract-tested.
+- **Tests**: 571; 60 tools contract-tested.
 
 ### v0.8.0: gated dangerous surfaces and open-item closure
 
@@ -182,11 +182,11 @@ The full ledger is [`docs/INTELLIGENCE_ROADMAP.md`](INTELLIGENCE_ROADMAP.md).
 - [x] bounded control-flow and call graphs.
 - [x] action approvals and an audit gate.
 - [ ] landlock profile and cgroup v2 enforcement.
-- [ ] mutation/fuzz testing and a curated per-target corpus.
+- [x] mutation/fuzz testing and a curated per-target corpus.
 - [ ] structured failure diagnosis between repair attempts.
-- [ ] MCP client with mediator permissions.
-- [ ] pre/post tool hooks with an operator policy.
-- [ ] more PE/Mach-O structure (resources, TLS, dyld export trie).
+- [x] MCP client with mediator permissions.
+- [x] pre/post tool hooks with an operator policy.
+- [x] more PE/Mach-O structure (resources, TLS, dylib dependencies, exports).
 - [ ] foreign-platform execution via Qiling rootfs or a QEMU VM, end to end.
 - [ ] a GitHub Action that runs `reverseai verify` on a pull request.
 

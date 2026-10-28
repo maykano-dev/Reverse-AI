@@ -151,6 +151,38 @@ class JobStore:
         out.sort(key=lambda r: r.get("created_at") or 0, reverse=True)
         return out[:limit]
 
+    def surfaces_for_conversation(self, conversation_id: str | None,
+                                   limit: int = 200) -> list[dict[str, Any]]:
+        """Every interactive surface in a conversation, in creation order.
+
+        Surfaces are created inside one turn's Job, but the sidebar opens the
+        latest job. Aggregating them here keeps question/approval cards durable
+        after the user answers and a new turn becomes the latest record.
+        """
+        if not conversation_id:
+            return []
+        files = sorted(self.dir.glob("job_*.json"),
+                       key=lambda p: p.stat().st_mtime, reverse=True)
+        by_id: dict[str, dict[str, Any]] = {}
+        for path in files[:limit]:
+            try:
+                rec = json.loads(path.read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+            if rec.get("conversation_id") != conversation_id:
+                continue
+            for surface in rec.get("surfaces") or []:
+                if not isinstance(surface, dict) or not surface.get("id"):
+                    continue
+                sid = surface["id"]
+                existing = by_id.get(sid)
+                if existing is None or (
+                        existing.get("status") != "submitted"
+                        and surface.get("status") == "submitted"):
+                    by_id[sid] = surface
+        return sorted(by_id.values(),
+                      key=lambda s: float(s.get("created_at") or 0))
+
     # -- durable conversation state ---------------------------------------
     def save_conversation(self, cid: str, state: dict[str, Any]) -> Path | None:
         if not _safe_conv_id(cid):
