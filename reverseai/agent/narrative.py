@@ -78,6 +78,7 @@ _TOOL_ICON = {
     "web_read": "globe",
     "web_images": "search",
     "install_resource": "file",
+    "inspect_image": "search",
     "remember": "box",
     "recall": "search",
     "forget": "x",
@@ -193,6 +194,9 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "install_resource":
         title = "Adding a web resource"
         detail = "Copying a font or stylesheet into the project."
+    elif name == "inspect_image":
+        title = "Checking the image"
+        detail = "Looking at the candidate image before placing it in the page."
     elif name == "remember":
         title = "Saving a durable note"
         detail = "Keeping a decision or preference for a later conversation."

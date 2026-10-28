@@ -135,6 +135,8 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   `CREDITS.md`. Image attachments are passed to the agent as paths.
 - **Web assets:** `install_resource` installs stylesheets, web fonts, and SVG
   icons from URLs or uploads with type/byte validation; JavaScript is refused.
+  `inspect_image` can visually check a candidate through an optional
+  OpenAI-compatible multimodal endpoint; without configuration it refuses.
 - **Input boundaries:** question, form, and approval surfaces stop the turn with
   `status=awaiting_input`; the user's surface response starts the next turn. A
   dashboard or review surface does not pause.

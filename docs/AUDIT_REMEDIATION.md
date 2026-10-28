@@ -90,8 +90,8 @@ exist; `~` is a foundation, not a complete product.
 
 - Date: 2026-10-25
 - Version: 0.9.0
-- Tests: 577 passing, 4 environment-dependent skips
-- Tools: 60 (every one covered by the contract suite)
+- Tests: 580 passing, 4 environment-dependent skips
+- Tools: 61 (every one covered by the contract suite)
 - Known skips: no-sandbox refusal path (because a sandbox exists), LIEF absence
   (because LIEF is installed), missing-provider-key paths (because a key is
   present), and foreign-platform execution (no configured VM/rootfs).

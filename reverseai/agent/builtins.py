@@ -814,6 +814,58 @@ class WebImagesTool(Tool):
                                   sources=sources[:8])
 
 
+class InspectImageTool(Tool):
+    name = "inspect_image"
+    description = (
+        "Visually inspect an uploaded image or a public image URL with the "
+        "operator-configured multimodal backend. Use it to check whether a "
+        "candidate image actually shows the requested subject before installing "
+        "it. If no vision backend is configured, this fails honestly."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "source": {"type": "string",
+                       "description": "uploaded image path or public image URL"},
+            "question": {"type": "string",
+                         "description": "what to verify in the image"},
+        },
+        "required": ["source"],
+    }
+    permission = Permission.READ
+
+    def run(self, args, ctx) -> ToolResult:
+        from .coding_tools import _IMAGE_EXTS, _MIME_EXT, _looks_like_image, _read_source
+        from ..vision import VisionError, describe_image
+
+        source = str(args.get("source") or "").strip()
+        if not source:
+            return ToolResult.failure("source is required")
+        try:
+            data, mime, final, name = _read_source(
+                source, ctx, 8 * 1024 * 1024,
+                "image/avif,image/webp,image/png,image/jpeg,image/*")
+        except Exception as exc:
+            return ToolResult.failure(f"could not read image: {exc}")
+        import mimetypes
+        from pathlib import Path
+        mime = (mime or mimetypes.guess_type(name)[0] or "").split(";", 1)[0]
+        ext = Path(name).suffix.lower()
+        if ext not in _IMAGE_EXTS:
+            ext = _MIME_EXT.get(mime, "")
+        if not ext or not _looks_like_image(data, ext):
+            return ToolResult.failure("source does not look like a supported image")
+        try:
+            result = describe_image(data, mime or f"image/{ext.lstrip('.')}",
+                                    str(args.get("question") or "") or None)
+        except VisionError as exc:
+            return ToolResult.failure(str(exc))
+        return ToolResult.success(
+            f"image inspection: {result['text']}",
+            description=result["text"], source=final, mime=result["mime"],
+            model=result["model"])
+
+
 class ListSkillsTool(Tool):
     name = "list_skills"
     description = "List reusable playbooks (skills) available on this host."
@@ -993,6 +1045,7 @@ def default_tools() -> list[Tool]:
         WebSearchTool(),
         WebReadTool(),
         WebImagesTool(),
+        InspectImageTool(),
         ListSkillsTool(),
         ReadSkillTool(),
         DelegateTool(),

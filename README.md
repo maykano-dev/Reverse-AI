@@ -16,7 +16,7 @@
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
-  <img alt="tests" src="https://img.shields.io/badge/tests-577%2B%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-580%2B%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
   <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
@@ -62,6 +62,7 @@ Most "AI + reverse engineering" demos stop at describing a binary. ReverseAI clo
 | **Live preview** | Generated sites open in the Preview panel automatically, with a Preview card in the chat. The agent no longer says it cannot render a page. |
 | **Images and decisions** | `web_images` finds real images across the web or Wikimedia Commons; `install_media` validates, installs, and records credit/license. Attachments and public URLs work too. Question, form, and approval surfaces pause until answered. |
 | **Web resources** | `install_resource` installs remote stylesheets, web fonts, and SVG icons with validation. JavaScript is refused. |
+| **Optional image inspection** | `inspect_image` can send a candidate image to an operator-configured multimodal endpoint to check the visible subject. Without configuration it fails honestly. |
 | **Live browser preview** | Multi-tab browser with back/forward, reload, fullscreen, external open, and automatic reload for static sites. A gated bubblewrap-backed dev-server runner can start `npm run dev` or another command and open its loopback URL. |
 | **Practical interaction** | Live progress, explicit risk on approvals, recommended options, evidence tables, and a real sandboxed escape hatch for custom views. |
 
@@ -446,6 +447,8 @@ has no regression inputs.
 | `REVERSEAI_QUOTA_TOKENS_PER_MONTH` | Per-token monthly token ceiling (0 = off) |
 | `REVERSEAI_QUOTA_COST_USD_PER_MONTH` | Per-token monthly cost ceiling (0 = off) |
 | `REVERSEAI_QUOTA_FILE` | Quota ledger path (defaults to `<store>/quotas.json`) |
+| `REVERSEAI_VISION_URL`, `REVERSEAI_VISION_MODEL` | Optional OpenAI-compatible multimodal endpoint for `inspect_image` |
+| `REVERSEAI_VISION_API_KEY` | Optional vision endpoint key (falls back to `OPENAI_API_KEY`) |
 | `REVERSEAI_STORE` | Job/event/conversation/artifact storage |
 | `REVERSEAI_SEARCH_URL` | SearXNG-compatible research endpoint |
 | `REVERSEAI_OCR_URL`, `REVERSEAI_OCR_MODEL` | Unlimited-OCR endpoint |

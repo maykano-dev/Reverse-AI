@@ -16,10 +16,11 @@ A living map of what exists and what comes next. Updated with v0.9.0.
 - **Live site preview**: generated entry pages are served from the workspace,
   shown as a Preview card, and opened automatically when fresh.
 - **Web media**: image search (web + Wikimedia Commons), attributed image
-  installation, and validated stylesheet/font/SVG installation.
+  installation, validated stylesheet/font/SVG installation, and optional visual
+  image inspection.
 - **Dev-server preview**: gated bubblewrap-backed `npm run dev`/local server
   launcher with a multi-tab preview browser.
-- **Tests**: 577; 60 tools contract-tested.
+- **Tests**: 580; 61 tools contract-tested.
 
 ### v0.8.0: gated dangerous surfaces and open-item closure
 

@@ -16,7 +16,7 @@
   header, suggestion cards, calmer composer, surface cards, mobile adjustments.
 - The system prompt now tells the agent to use surfaces for decisions, forms,
   comparisons, graphs, diffs, approvals, and other task-native interactions.
-- 58 new tests; total 577; 60 tools covered by contract tests.
+- 61 new tests; total 580; 61 tools covered by contract tests.
 - A larger default output budget and chunked `write_file` appends fix truncated
   large-file writes. Invalid/truncated tool arguments now return a clear,
   actionable message instead of retrying blindly.
@@ -54,6 +54,9 @@
   and license in `CREDITS.md`.
 - `install_resource` installs remote stylesheets, web fonts, and SVG icons with
   type and byte validation. JavaScript is refused.
+- `inspect_image` optionally verifies an image visually through an
+  operator-configured OpenAI-compatible multimodal endpoint. It is
+  feature-detected and fails honestly when no backend is configured.
 - Generated websites are exposed in the live Preview panel. The entry page is
   detected at `index.html`, `site/index.html`, `public/index.html`,
   `dist/index.html`, `build/index.html`, `app/index.html`, or
