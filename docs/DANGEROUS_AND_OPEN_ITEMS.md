@@ -45,8 +45,9 @@ Status key: **built**, **foundation**, **deferred**.
       delegation is required; enforcement is not automatic.
 - [~] **QEMU surface**: command builder and preflight; the guest-runner
       contract is not implemented, so execution is refused.
-- [~] **Long-running mission recovery**: persisted mission state and resume
-      contract. A worker restart is not wired.
+- [x] **Long-running mission recovery**: persisted mission state, explicit
+      `reverseai mission resume`, normal-agent execution, and post-run
+      checkpoints. This is an explicit worker, not an automatic daemon.
 - [x] **Per-token quota**: policy/tracker module and tests, plus HTTP
       enforcement on starts, synchronous runs, surface continuations, and
       `GET /quota`. Disabled unless the quota env vars are set.
@@ -94,4 +95,4 @@ python3 -m unittest tests.test_macho_extra -v
 ```
 
 The full suite and `python3 -m reverseai audit` must pass. Current baseline:
-576 tests passing, 4 environment-dependent skips, version 0.9.0.
+577 tests passing, 4 environment-dependent skips, version 0.9.0.

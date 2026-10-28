@@ -51,7 +51,8 @@ class CliContractTests(unittest.TestCase):
         for name in ("analyze", "diff", "world", "discover", "repo", "cfg", "caps",
                      "surfaces", "capabilities", "mcp", "hooks",
                      "readiness", "sandbox", "verify", "corpus",
-                     "report", "approvals", "agent", "bench", "serve"):
+                     "report", "approvals", "agent", "bench", "serve",
+                     "mission"):
             self.assertIn(name, names)
 
     def test_every_command_help_exits_zero(self):
@@ -72,6 +73,28 @@ class CliContractTests(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
                 build_parser().parse_args(["not-a-command"])
+
+    def test_mission_list_and_explicit_resume(self):
+        from reverseai.missions import MissionStore
+
+        with tempfile.TemporaryDirectory() as td:
+            store = MissionStore(td)
+            store.save({"id": "mission_cli", "objective": "finish the job",
+                        "status": "planned", "phases": [
+                            {"id": "scope", "title": "Scope", "exit": "clear"},
+                        ]})
+            code, out, err = _run(["mission", "list", "--store", td, "--json"])
+            self.assertEqual(code, 0, err)
+            self.assertIn("mission_cli", out)
+            code, out, err = _run([
+                "mission", "resume", "mission_cli", "--store", td,
+                "--project-dir", td, "--provider", "mock", "--max-steps", "1",
+            ])
+            self.assertEqual(code, 0, err)
+            self.assertIn("status=done", out)
+            loaded = MissionStore(td).load("mission_cli")
+            self.assertEqual(loaded["status"], "done")
+            self.assertTrue(loaded.get("last_job"))
 
     def test_capabilities_and_caps_are_json(self):
         code, out, _ = _run(["capabilities", "--json"])

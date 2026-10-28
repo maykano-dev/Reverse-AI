@@ -47,9 +47,8 @@ exist; `~` is a foundation, not a complete product.
 - [x] Link requirements, experiments, modifications, tests, and decisions in the
       engineering graph.
 - [x] Add verified-skill records with a holdout and staleness.
-- [~] Add long-running mission recovery across process restarts: persisted
-      state, checkpoints, and resume contract are built; a worker restart is not
-      wired.
+- [x] Add long-running mission recovery across process restarts: persisted
+      state, checkpoints, and an explicit `reverseai mission resume` worker.
 
 ## Phase 5 — safety and sandbox
 
@@ -91,7 +90,7 @@ exist; `~` is a foundation, not a complete product.
 
 - Date: 2026-10-25
 - Version: 0.9.0
-- Tests: 576 passing, 4 environment-dependent skips
+- Tests: 577 passing, 4 environment-dependent skips
 - Tools: 60 (every one covered by the contract suite)
 - Known skips: no-sandbox refusal path (because a sandbox exists), LIEF absence
   (because LIEF is installed), missing-provider-key paths (because a key is

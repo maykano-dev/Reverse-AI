@@ -16,7 +16,7 @@
   header, suggestion cards, calmer composer, surface cards, mobile adjustments.
 - The system prompt now tells the agent to use surfaces for decisions, forms,
   comparisons, graphs, diffs, approvals, and other task-native interactions.
-- 57 new tests; total 576; 60 tools covered by contract tests.
+- 58 new tests; total 577; 60 tools covered by contract tests.
 - A larger default output budget and chunked `write_file` appends fix truncated
   large-file writes. Invalid/truncated tool arguments now return a clear,
   actionable message instead of retrying blindly.
@@ -27,6 +27,9 @@
   start `npm run dev`, Vite, or another local server and open it in a preview
   tab. It refuses without bubblewrap, binds loopback, uses no shell, and stops
   when the app shuts down.
+- Missions now have an explicit resume worker: `reverseai mission list` and
+  `reverseai mission resume <id>`. It reloads persisted phases/checkpoints,
+  runs the normal agent, and checkpoints the outcome for the next process.
 - Per-token monthly quotas for runs, tokens, and cost are now enforced on
   `/jobs/start`, `/jobs`, and surface continuations, with `GET /quota` and a
   thread-safe ledger. Auth remains single-token; this is abuse control, not

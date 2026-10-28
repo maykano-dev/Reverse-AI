@@ -19,6 +19,7 @@ Commands:
   corpus                    capture/list/replay durable behavioral corpora
   report                    verify or render a signed report
   agent run --goal ...      run an autonomous investigation
+  mission list|resume       inspect or explicitly resume persisted missions
 """
 
 from __future__ import annotations
@@ -671,6 +672,56 @@ def _cmd_agent_run(args: argparse.Namespace) -> int:
     return 0 if job.status == "completed" else 1
 
 
+def _cmd_mission(args: argparse.Namespace) -> int:
+    from .missions import MissionStore, MissionStoreError
+
+    store = MissionStore(args.store)
+    if args.mission_cmd == "list":
+        rows = store.list()
+        if args.json:
+            print(json.dumps(rows, indent=2))
+        else:
+            if not rows:
+                print("(no missions)")
+            for m in rows:
+                print(f"{m.get('id')}  {m.get('status', '?'):8}  "
+                      f"{str(m.get('objective') or '')[:90]}")
+        return 0
+    try:
+        mission = store.load(args.id)
+        if mission is None:
+            raise MissionStoreError("mission not found")
+        from .agent import Agent, Permission, get_provider
+        from .mission_runner import resume_mission
+
+        perm = {"read": Permission.READ, "execute": Permission.EXECUTE,
+                "write": Permission.WRITE}[args.permission]
+        provider = get_provider(args.provider)
+        agent = Agent(provider, max_permission=perm, max_steps=args.max_steps)
+        job_box = []
+
+        def run(goal: str):
+            job = agent.run(goal, target_path=args.target,
+                            project_dir=args.project_dir)
+            job_box.append(job)
+            return job
+
+        result = resume_mission(store, args.id, run)
+    except (MissionStoreError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if job_box:
+        print(job_box[-1].report())
+        print(f"\n[usage] {job_box[-1].usage}  steps={job_box[-1].steps}  "
+              f"status={job_box[-1].status}")
+    print(f"[mission] {result.get('id')} status={result.get('status')} "
+          f"last_job={result.get('last_job')}")
+    return 0 if result.get("status") == "done" else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="reverseai", description="ReverseAI toolkit")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -889,6 +940,23 @@ def build_parser() -> argparse.ArgumentParser:
     agent_run.add_argument("--max-steps", type=int, default=24, dest="max_steps")
     agent_run.add_argument("--save", metavar="DIR", help="save the job record JSON here")
     agent_run.set_defaults(func=_cmd_agent_run)
+
+    mission = sub.add_parser("mission", help="persisted mission state and resume")
+    mission_sub = mission.add_subparsers(dest="mission_cmd", required=True)
+    m_list = mission_sub.add_parser("list", help="list persisted missions")
+    m_list.add_argument("--store", default="./missions")
+    m_list.add_argument("--json", action="store_true")
+    m_list.set_defaults(func=_cmd_mission)
+    m_resume = mission_sub.add_parser("resume", help="explicitly resume a mission")
+    m_resume.add_argument("id")
+    m_resume.add_argument("--store", default="./missions")
+    m_resume.add_argument("--project-dir")
+    m_resume.add_argument("--target")
+    m_resume.add_argument("--provider", default="deepseek")
+    m_resume.add_argument("--permission", choices=["read", "execute", "write"],
+                          default="write")
+    m_resume.add_argument("--max-steps", type=int, default=24)
+    m_resume.set_defaults(func=_cmd_mission)
 
     return parser
 

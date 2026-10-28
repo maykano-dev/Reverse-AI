@@ -177,6 +177,9 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   rest" with regression cases, and then runs the Batch 1 verify+repair loop.
   Modes: Direct, Reconstruction, Modernisation. The engine recommends a mode; the
   user may override it, and the chosen mode is recorded on the Job.
+- **Mission resume:** `reverseai mission list` and `reverseai mission resume`
+  reload persisted phases and checkpoints, run the normal agent, and checkpoint
+  the outcome. Resuming is explicit, not an automatic daemon.
 - **Per-token quotas:** optional monthly run/token/cost ceilings are enforced
   for the single configured bearer token, with a persistent hashed ledger and
   `GET /quota`. This is abuse control, not multi-tenant identity.

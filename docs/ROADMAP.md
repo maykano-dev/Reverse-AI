@@ -19,7 +19,7 @@ A living map of what exists and what comes next. Updated with v0.9.0.
   installation, and validated stylesheet/font/SVG installation.
 - **Dev-server preview**: gated bubblewrap-backed `npm run dev`/local server
   launcher with a multi-tab preview browser.
-- **Tests**: 576; 60 tools contract-tested.
+- **Tests**: 577; 60 tools contract-tested.
 
 ### v0.8.0: gated dangerous surfaces and open-item closure
 
