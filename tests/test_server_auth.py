@@ -98,6 +98,22 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("jobs", body)
 
+    def test_auth_cookie_is_accepted_and_forgery_refused(self):
+        import hashlib
+        good = hashlib.sha256(TOKEN.encode()).hexdigest()
+        req = urllib.request.Request(self.base + "/jobs")
+        req.add_header("Cookie", f"rvai_auth={good}")
+        with urllib.request.urlopen(req, timeout=10) as r:
+            self.assertEqual(r.status, 200)
+        bad = urllib.request.Request(self.base + "/jobs")
+        bad.add_header("Cookie", "rvai_auth=" + "0" * 64)
+        try:
+            with urllib.request.urlopen(bad, timeout=10):
+                self.fail("forged cookie should be refused")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 401)
+            e.close()
+
     def test_world_and_discover_path_guard(self):
         inside = self.root / "sample"
         inside.write_bytes(b"MZ" + b"\x00" * 100)

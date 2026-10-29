@@ -153,10 +153,19 @@ class _Handler(BaseHTTPRequestHandler):
         if supplied and hmac.compare_digest(supplied, token):
             self._auth_ok = True
             return True
-        cookie = self.headers.get("Cookie", "")
-        if f"rvai_auth={self._token_hash()}" in cookie:
+        supplied_cookie = self._cookie_value("rvai_auth")
+        if supplied_cookie and hmac.compare_digest(supplied_cookie, self._token_hash()):
             return True
         return False
+
+    def _cookie_value(self, name: str) -> str:
+        """Parse one cookie value from the request. Returns '' when absent."""
+        raw = self.headers.get("Cookie", "")
+        for part in raw.split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == name:
+                return v.strip()
+        return ""
 
     def _auth_headers(self) -> None:
         token = self._token()
