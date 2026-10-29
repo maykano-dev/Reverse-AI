@@ -77,16 +77,36 @@ def _slug(name: str) -> str:
 
 
 def _pdf(spec):
-    d = PdfDoc(title=str(spec.get("title") or ""))
+    d = PdfDoc(title=str(spec.get("title") or ""),
+               subtitle=str(spec.get("subtitle") or ""))
     for b in _blocks(spec):
-        {"heading": d.heading, "bullet": d.bullet}.get(b["type"], d.paragraph)(b["text"])
+        if b["type"] == "subtitle":
+            d.subtitle = b["text"]
+        else:
+            {"heading": d.heading, "bullet": d.bullet}.get(b["type"], d.paragraph)(b["text"])
     return render_pdf(d)
 
 
 def _docx(spec):
-    d = DocxDoc(title=str(spec.get("title") or ""))
-    for b in _blocks(spec):
-        {"heading": d.heading, "bullet": d.bullet}.get(b["type"], d.paragraph)(b["text"])
+    d = DocxDoc(title=str(spec.get("title") or ""),
+                subtitle=str(spec.get("subtitle") or ""))
+    for b in spec.get("blocks") or []:
+        if isinstance(b, str):
+            d.paragraph(b)
+            continue
+        if not isinstance(b, dict):
+            continue
+        t = str(b.get("type") or "paragraph")
+        if t == "table" and isinstance(b.get("rows"), list):
+            d.table(b["rows"])
+        elif t == "subtitle":
+            d.subtitle = str(b.get("text") or "")
+        elif t == "heading":
+            d.heading(str(b.get("text") or ""), int(b.get("level") or 1))
+        elif t == "bullet":
+            d.bullet(str(b.get("text") or ""))
+        else:
+            d.paragraph(str(b.get("text") or ""))
     return render_docx(d)
 
 

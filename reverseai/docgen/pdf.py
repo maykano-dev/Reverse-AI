@@ -1,40 +1,51 @@
-"""Minimal, dependency-free PDF writer.
+"""Dependency-free, *designed* PDF writer.
 
-Generates a valid multi-page PDF with a title and wrapped body text using the
-built-in Helvetica font, so ReverseAI can hand back a real .pdf (a verification
-report, an analysis write-up) with zero third-party packages. It is deliberately
-small: headings, paragraphs, and bullet lines. For rich layout a later backend
-can use reportlab when installed, but this always works.
-
-The output is a correct PDF 1.4 file with a proper xref table and byte offsets,
-which is what makes it actually open in viewers.
+Generates a valid multi-page PDF with real typographic hierarchy using the
+built-in Helvetica family: a bold accent title with a rule under it, an optional
+subtitle, bold section headings, body paragraphs, and bullet lines, all with
+sensible spacing and color. No third-party packages; the xref/offsets are
+written correctly so it opens in any viewer.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# US Letter, 72dpi points.
 _PAGE_W = 612
 _PAGE_H = 792
 _MARGIN = 72
-_LEADING = 16          # body line height
-_TITLE_SIZE = 20
+_LEADING = 15
+_TITLE_SIZE = 22
+_SUBTITLE_SIZE = 13
 _HEADING_SIZE = 14
 _BODY_SIZE = 11
-# Helvetica is ~0.5em average advance; good enough for wrapping at this size.
 _CHARS_PER_LINE = 92
+
+_ACCENT = (0.039, 0.518, 1.0)     # #0A84FF
+_INK = (0.114, 0.114, 0.122)      # #1D1D1F
+_DIM = (0.43, 0.43, 0.45)
+
+
+@dataclass
+class _Line:
+    text: str
+    size: int
+    gap: float = 0.0
+    bold: bool = False
+    color: tuple = _INK
+    rule: bool = False            # draw a thin accent rule under this line
 
 
 @dataclass
 class _Block:
-    kind: str          # "title" | "heading" | "body" | "bullet" | "space"
+    kind: str
     text: str = ""
 
 
 @dataclass
 class PdfDoc:
     title: str = ""
+    subtitle: str = ""
     blocks: list[_Block] = field(default_factory=list)
 
     def heading(self, text: str) -> "PdfDoc":
@@ -55,15 +66,14 @@ class PdfDoc:
 
 
 def _esc(text: str) -> str:
-    return (text.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)"))
+    return text.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
 
 
 def _wrap(text: str, width: int) -> list[str]:
     words = text.split()
     if not words:
         return [""]
-    lines: list[str] = []
-    cur = words[0]
+    lines, cur = [], words[0]
     for w in words[1:]:
         if len(cur) + 1 + len(w) <= width:
             cur += " " + w
@@ -74,81 +84,90 @@ def _wrap(text: str, width: int) -> list[str]:
     return lines
 
 
-def _content_lines(doc: PdfDoc) -> list[tuple[str, int, float]]:
-    """Flatten blocks into (text, font_size, extra_gap_before) draw lines."""
-    out: list[tuple[str, int, float]] = []
+def _lines(doc: PdfDoc) -> list[_Line]:
+    out: list[_Line] = []
     if doc.title:
-        for ln in _wrap(doc.title, _CHARS_PER_LINE):
-            out.append((ln, _TITLE_SIZE, 0))
-        out.append(("", _BODY_SIZE, 6))
+        wrapped = _wrap(doc.title, _CHARS_PER_LINE)
+        for i, ln in enumerate(wrapped):
+            out.append(_Line(ln, _TITLE_SIZE, 0, bold=True, color=_INK,
+                             rule=(i == len(wrapped) - 1)))
+    if doc.subtitle:
+        for ln in _wrap(doc.subtitle, _CHARS_PER_LINE):
+            out.append(_Line(ln, _SUBTITLE_SIZE, 2, color=_DIM))
+    out.append(_Line("", _BODY_SIZE, 6))
     for b in doc.blocks:
         if b.kind == "space":
-            out.append(("", _BODY_SIZE, 6))
+            out.append(_Line("", _BODY_SIZE, 6))
         elif b.kind == "heading":
-            out.append(("", _BODY_SIZE, 8))
+            out.append(_Line("", _BODY_SIZE, 8))
             for ln in _wrap(b.text, _CHARS_PER_LINE):
-                out.append((ln, _HEADING_SIZE, 0))
+                out.append(_Line(ln, _HEADING_SIZE, 0, bold=True, color=_ACCENT))
         elif b.kind == "bullet":
             wrapped = _wrap(b.text, _CHARS_PER_LINE - 2)
             for i, ln in enumerate(wrapped):
-                out.append((("- " if i == 0 else "  ") + ln, _BODY_SIZE, 0))
-        else:  # body
+                out.append(_Line(("•  " if i == 0 else "   ") + ln, _BODY_SIZE))
+        else:
             for ln in _wrap(b.text, _CHARS_PER_LINE):
-                out.append((ln, _BODY_SIZE, 0))
-            out.append(("", _BODY_SIZE, 2))
+                out.append(_Line(ln, _BODY_SIZE))
+            out.append(_Line("", _BODY_SIZE, 2))
     return out
 
 
-def _paginate(lines: list[tuple[str, int, float]]) -> list[list[tuple[str, int, float]]]:
-    pages: list[list[tuple[str, int, float]]] = []
-    page: list[tuple[str, int, float]] = []
+def _paginate(lines: list[_Line]) -> list[list[_Line]]:
+    pages, page = [], []
     y = _PAGE_H - _MARGIN
-    for text, size, gap in lines:
-        step = _LEADING + gap + (size - _BODY_SIZE) * 0.6
+    for ln in lines:
+        step = _LEADING + ln.gap + (ln.size - _BODY_SIZE) * 0.6
         if y - step < _MARGIN:
             pages.append(page)
-            page = []
-            y = _PAGE_H - _MARGIN
-        page.append((text, size, gap))
+            page, y = [], _PAGE_H - _MARGIN
+        page.append(ln)
         y -= step
     if page:
         pages.append(page)
     return pages or [[]]
 
 
-def _page_stream(lines: list[tuple[str, int, float]]) -> bytes:
-    parts = ["BT"]
+def _page_stream(lines: list[_Line]) -> bytes:
+    parts, rules = ["BT"], []
     y = _PAGE_H - _MARGIN
+    last = _INK
+    parts.append(f"{last[0]} {last[1]} {last[2]} rg")
     first = True
-    for text, size, gap in lines:
-        y -= gap
+    for ln in lines:
+        y -= ln.gap
+        if ln.color != last:
+            parts.append(f"{ln.color[0]} {ln.color[1]} {ln.color[2]} rg")
+            last = ln.color
+        font = "F2" if ln.bold else "F1"
         if first:
-            parts.append(f"/F1 {size} Tf")
+            parts.append(f"/{font} {ln.size} Tf")
             parts.append(f"{_MARGIN} {y:.1f} Td")
             first = False
         else:
-            parts.append(f"/F1 {size} Tf")
-            parts.append(f"0 {-(_LEADING + gap):.1f} Td")
-        parts.append(f"({_esc(text)}) Tj")
+            parts.append(f"/{font} {ln.size} Tf")
+            parts.append(f"0 {-(_LEADING + ln.gap):.1f} Td")
+        parts.append(f"({_esc(ln.text)}) Tj")
         y -= _LEADING
+        if ln.rule:
+            rules.append(y + 6)
     parts.append("ET")
+    for ry in rules:
+        parts.append(f"{_ACCENT[0]} {_ACCENT[1]} {_ACCENT[2]} RG 1.2 w "
+                     f"{_MARGIN} {ry:.1f} m {_PAGE_W - _MARGIN} {ry:.1f} l S")
     return ("\n".join(parts)).encode("latin-1", "replace")
 
 
 def render_pdf(doc: PdfDoc) -> bytes:
-    """Render a PdfDoc to valid PDF bytes."""
-    pages = _paginate(_content_lines(doc))
-    objects: list[bytes] = []
+    pages = _paginate(_lines(doc))
+    objects: list[bytes] = [b"", b"", b"", b""]  # catalog, pages, F1, F2
+    catalog_num, pages_num, f1_num, f2_num = 1, 2, 3, 4
 
     def add(obj: bytes) -> int:
         objects.append(obj)
-        return len(objects)   # 1-based object number
+        return len(objects)
 
-    # Reserve: catalog(1), pages(2), font(3), then per page: page + content.
-    catalog_num, pages_num, font_num = 1, 2, 3
-    objects.extend([b"", b"", b""])  # placeholders for 1..3
-
-    page_obj_nums: list[int] = []
+    page_nums = []
     for pg in pages:
         content = _page_stream(pg)
         stream = (b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n"
@@ -156,17 +175,15 @@ def render_pdf(doc: PdfDoc) -> bytes:
         content_num = add(stream)
         page_obj = (f"<< /Type /Page /Parent {pages_num} 0 R "
                     f"/MediaBox [0 0 {_PAGE_W} {_PAGE_H}] "
-                    f"/Resources << /Font << /F1 {font_num} 0 R >> >> "
+                    f"/Resources << /Font << /F1 {f1_num} 0 R /F2 {f2_num} 0 R >> >> "
                     f"/Contents {content_num} 0 R >>").encode()
-        page_num = add(page_obj)
-        page_obj_nums.append(page_num)
+        page_nums.append(add(page_obj))
 
-    kids = " ".join(f"{n} 0 R" for n in page_obj_nums)
-    objects[catalog_num - 1] = (f"<< /Type /Catalog /Pages {pages_num} 0 R >>").encode()
-    objects[pages_num - 1] = (f"<< /Type /Pages /Kids [{kids}] "
-                              f"/Count {len(page_obj_nums)} >>").encode()
-    objects[font_num - 1] = (b"<< /Type /Font /Subtype /Type1 "
-                             b"/BaseFont /Helvetica >>")
+    kids = " ".join(f"{n} 0 R" for n in page_nums)
+    objects[0] = f"<< /Type /Catalog /Pages {pages_num} 0 R >>".encode()
+    objects[1] = (f"<< /Type /Pages /Kids [{kids}] /Count {len(page_nums)} >>").encode()
+    objects[2] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+    objects[3] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"
 
     out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
     offsets = [0] * (len(objects) + 1)
