@@ -95,6 +95,16 @@ class CliContractTests(unittest.TestCase):
             loaded = MissionStore(td).load("mission_cli")
             self.assertEqual(loaded["status"], "done")
             self.assertTrue(loaded.get("last_job"))
+            store.save({"id": "mission_worker", "objective": "worker test",
+                        "status": "paused", "phases": []})
+            code, out, err = _run([
+                "mission", "worker", "--store", td, "--project-dir", td,
+                "--provider", "mock", "--once", "--max-steps", "1",
+            ])
+            self.assertEqual(code, 0, err)
+            self.assertIn("handled=1", out)
+            self.assertEqual(MissionStore(td).load("mission_worker")["status"],
+                             "done")
 
     def test_capabilities_and_caps_are_json(self):
         code, out, _ = _run(["capabilities", "--json"])

@@ -255,13 +255,17 @@ class RunManager:
     def _consume_quota(self, job, body: dict[str, Any]) -> None:
         quota = self.quota
         token = str(body.get("_quota_token") or "")
+        reservation = str(body.get("_quota_reservation") or "")
         if quota is None or not token or not quota.policy.enabled():
             return
+        usage = job.usage or {}
+        tokens = int(usage.get("total_tokens", 0) or 0)
+        cost = float(usage.get("cost_usd", 0) or 0)
         try:
-            usage = job.usage or {}
-            quota.consume(token, runs=1,
-                          tokens=int(usage.get("total_tokens", 0) or 0),
-                          cost_usd=float(usage.get("cost_usd", 0) or 0))
+            if reservation:
+                quota.settle(reservation, runs=1, tokens=tokens, cost_usd=cost)
+            else:
+                quota.consume(token, runs=1, tokens=tokens, cost_usd=cost)
         except Exception:
             pass
 

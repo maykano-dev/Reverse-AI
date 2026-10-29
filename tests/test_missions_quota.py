@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from reverseai.mission_worker import run_once  # noqa: E402
 from reverseai.missions import MissionStore, MissionStoreError  # noqa: E402
 from reverseai.security.quota import (  # noqa: E402
     QuotaError, QuotaPolicy, QuotaTracker,
@@ -45,6 +46,31 @@ class MissionTests(unittest.TestCase):
                              "analysis complete")
             self.assertEqual(second.resume("mission_restart")["resume_count"], 1)
 
+    def test_worker_lease_blocks_a_second_worker_until_expiry(self):
+        with tempfile.TemporaryDirectory() as td:
+            store = MissionStore(td)
+            store.save({"id": "mission_lease", "status": "planned"})
+            store.claim("mission_lease", "worker-a", lease_s=60, now=1000)
+            with self.assertRaises(MissionStoreError):
+                store.claim("mission_lease", "worker-b", lease_s=60, now=1001)
+            store.claim("mission_lease", "worker-a", lease_s=60, now=1001)
+            store.claim("mission_lease", "worker-a", lease_s=60, now=1061)
+            store.release("mission_lease", "worker-a", status="paused")
+            self.assertEqual(store.load("mission_lease")["status"], "paused")
+
+    def test_worker_runs_a_due_mission_once(self):
+        class Result:
+            id = "job_worker"
+            status = "completed"
+        with tempfile.TemporaryDirectory() as td:
+            store = MissionStore(td)
+            store.save({"id": "mission_due", "status": "planned",
+                        "objective": "finish", "phases": []})
+            results = run_once(store, lambda goal: Result(), owner="worker-a")
+            self.assertEqual(results[0]["status"], "done")
+            self.assertEqual(store.load("mission_due")["last_job"], "job_worker")
+            self.assertIsNone(store.load("mission_due").get("lease_owner"))
+
     def test_invalid_id_is_refused(self):
         with tempfile.TemporaryDirectory() as td:
             self.assertIsNone(MissionStore(td).load("../../etc/passwd"))
@@ -73,6 +99,20 @@ class QuotaTests(unittest.TestCase):
             self.assertFalse(check["allowed"])
             with self.assertRaises(QuotaError):
                 tracker.consume(token, runs=1)
+
+    def test_reservations_prevent_concurrent_overrun(self):
+        with tempfile.TemporaryDirectory() as td:
+            tracker = QuotaTracker(Path(td) / "q.json",
+                                   QuotaPolicy(runs_per_month=1))
+            rid = tracker.reserve("token", runs=1)
+            self.assertFalse(tracker.check("token", runs=1)["allowed"])
+            tracker.release(rid)
+            self.assertTrue(tracker.check("token", runs=1)["allowed"])
+            rid = tracker.reserve("token", runs=1)
+            tracker.settle(rid, runs=1, tokens=10, cost_usd=0.01)
+            usage = tracker.check("token", runs=0)["usage"]
+            self.assertEqual(usage["runs"], 1)
+            self.assertEqual(usage["tokens"], 10)
 
     def test_tokens_are_not_stored_in_plaintext(self):
         with tempfile.TemporaryDirectory() as td:

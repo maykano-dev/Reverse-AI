@@ -151,6 +151,31 @@ class JobStore:
         out.sort(key=lambda r: r.get("created_at") or 0, reverse=True)
         return out[:limit]
 
+    def mark_surface(self, conversation_id: str | None, surface_id: str,
+                     event: dict[str, Any]) -> bool:
+        """Persist a surface event on the job that owns the surface."""
+        if not conversation_id or not surface_id:
+            return False
+        files = sorted(self.dir.glob("job_*.json"),
+                       key=lambda p: p.stat().st_mtime, reverse=True)
+        for path in files[:200]:
+            try:
+                rec = json.loads(path.read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+            if rec.get("conversation_id") != conversation_id:
+                continue
+            for surface in rec.get("surfaces") or []:
+                if isinstance(surface, dict) and surface.get("id") == surface_id:
+                    surface["status"] = "submitted"
+                    surface["last_event"] = event
+                    try:
+                        path.write_text(json.dumps(rec, indent=2), encoding="utf-8")
+                    except OSError:
+                        return False
+                    return True
+        return False
+
     def surfaces_for_conversation(self, conversation_id: str | None,
                                    limit: int = 200) -> list[dict[str, Any]]:
         """Every interactive surface in a conversation, in creation order.

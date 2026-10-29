@@ -1916,6 +1916,13 @@ async function openConversation(jobId) {
           addReason(archivedUI, { title: toolLabel(name), detail: "" });
           const out = toolResults.get(call.id) || "";
           addToolResult(archivedUI, { name, ok: true, title: toolLabel(name), content: out });
+          if (name === "create_surface") {
+            const hit = /created surface (sf_[A-Za-z0-9]+)/.exec(out);
+            if (hit) {
+              const sf = (rec.surfaces || []).find((x) => x.id === hit[1]);
+              if (sf) renderSurface(archivedUI.body, sf, jobId, archivedUI);
+            }
+          }
         });
         if (m.content) addThought(archivedUI, m.content);
       } else if (m.content) {

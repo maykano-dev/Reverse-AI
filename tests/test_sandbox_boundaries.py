@@ -76,6 +76,24 @@ class SandboxBoundaryTests(unittest.TestCase):
         self.assertEqual(res.exit_code, 7)
         self.assertFalse(res.ok)
 
+    def test_landlock_is_applied_when_supported(self):
+        from reverseai.sandbox import landlock
+        if not landlock.available():
+            self.skipTest("Landlock unavailable")
+        import platform
+        if platform.machine().lower() not in ("x86_64", "amd64"):
+            self.skipTest("Landlock helper is x86_64-only")
+        with tempfile.TemporaryDirectory() as td:
+            policy = SandboxPolicy(
+                allow_untrusted_execution=True, timeout_seconds=3,
+                workdir=td, rw_binds=[td], landlock=True)
+            res = self.sb.run([sys.executable, "-c", "print('LANDLOCK')"],
+                              policy, cwd=td)
+        self.assertEqual(res.exit_code, 0, res.stderr_text())
+        self.assertIn("LANDLOCK", res.stdout_text())
+        self.assertTrue(res.isolation.landlock)
+        self.assertIn("landlock", res.isolation.filesystem)
+
     def test_workspace_is_writable_and_temporary(self):
         with tempfile.TemporaryDirectory() as td:
             p = SandboxPolicy(allow_untrusted_execution=True, timeout_seconds=2,

@@ -17,10 +17,14 @@ tooling. It requires unprivileged user namespaces to be enabled on the host.
 from __future__ import annotations
 
 import os
+import platform
 import shutil
+import sys
 import tempfile
+from dataclasses import replace
+from pathlib import Path
 
-from .. import seccomp
+from .. import landlock, seccomp
 from .._run import run_process
 from ..base import Sandbox, SandboxUnavailable
 from ..policy import SandboxPolicy
@@ -60,16 +64,50 @@ class BubblewrapSandbox(Sandbox):
         try:
             if policy.seccomp and seccomp.available():
                 bpf_path, bpf_fd = seccomp.write_bpf()
+            active_landlock = (
+                policy.landlock and landlock.available()
+                and platform.machine().lower() in ("x86_64", "amd64"))
             bw_args = self._build_args(bwrap, policy, workdir, bpf_fd)
-            full = bw_args + ["--"] + list(argv)
+            full = bw_args
+            filesystem = "namespaced"
+            if active_landlock:
+                read_paths = [p for p in _SYSTEM_ROBINDS if os.path.exists(p)]
+                read_paths += [p for p in _SYSTEM_ROBIND_FILES if os.path.exists(p)]
+                read_paths += [p for p in policy.ro_binds if os.path.isabs(p)]
+                read_paths += ["/proc", "/dev", "/tmp"]
+                write_paths = ["/tmp", "/dev"]
+                if policy.workdir and os.path.isdir(policy.workdir):
+                    write_paths.append(str(Path(policy.workdir).resolve()))
+                else:
+                    write_paths.append("/work")
+                write_paths += [p for p in policy.rw_binds if os.path.isabs(p)]
+                rp = landlock.plan(read_paths, write_paths)
+                helper = Path(__file__).resolve().parent.parent / "_landlock_exec.py"
+                env = dict(policy.env)
+                env.update({
+                    "REVERSEAI_LANDLOCK_READ": os.pathsep.join(read_paths),
+                    "REVERSEAI_LANDLOCK_WRITE": os.pathsep.join(write_paths),
+                    "REVERSEAI_LANDLOCK_HANDLED": str(rp.handled_access),
+                    "REVERSEAI_LANDLOCK_ACTIVE": "1",
+                })
+                bw_args = self._build_args(
+                    bwrap, replace(policy, env=env), workdir, bpf_fd)
+                full = bw_args + [
+                    "--ro-bind", str(helper), "/tmp/reverseai-landlock-exec.py",
+                    "--", sys.executable, "/tmp/reverseai-landlock-exec.py",
+                ] + list(argv)
+                filesystem = "namespaced+landlock"
+            else:
+                full = bw_args + ["--"] + list(argv)
             isolation = Isolation(
                 backend=self.name,
                 network_blocked=not policy.allow_network,
-                filesystem="namespaced",
+                filesystem=filesystem,
                 pid_namespace=True,
                 capabilities_dropped=policy.drop_capabilities,
                 resource_limited=True,
                 seccomp=bpf_fd is not None,
+                landlock=active_landlock,
                 level=self.isolation_level(),
             )
             result = run_process(

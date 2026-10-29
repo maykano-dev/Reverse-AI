@@ -289,3 +289,11 @@ provided). If a project command binds `0.0.0.0`, it can expose that port beyond
 loopback; enable this feature only for projects you trust. When bubblewrap or
 unprivileged user namespaces are unavailable, the runner refuses instead of
 falling back to the host.
+
+## Landlock
+
+Landlock enforcement is opt-in with `REVERSEAI_LANDLOCK=1` on Linux x86_64. A
+small pre-exec helper applies a ruleset inside bubblewrap: system libraries are
+readable, the workspace and `/tmp` are writable, and other paths are denied.
+The execution report sets `isolation.landlock=true` only when the ruleset was
+actually applied. cgroup enforcement remains dependent on a delegated cgroup.

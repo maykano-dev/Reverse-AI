@@ -55,7 +55,7 @@ exist; `~` is a foundation, not a complete product.
 - [x] seccomp denylist on x86_64 with an honest report.
 - [x] Network, filesystem, environment, process-group, and timeout boundary
       tests.
-- [ ] Landlock filesystem enforcement (kernel/backend dependent). Detection is reported; enforcement is not applied.
+- [x] Landlock filesystem enforcement (opt-in, x86_64, kernel/backend dependent).
 - [ ] cgroup v2 enforcement (requires a delegated cgroup). Detection is reported; enforcement is not applied.
 - [x] Never run a target on the host when the sandbox is unavailable.
 - [x] Keep high-risk capabilities denied by default and approval-gated.
@@ -90,8 +90,8 @@ exist; `~` is a foundation, not a complete product.
 
 - Date: 2026-10-25
 - Version: 0.9.0
-- Tests: 580 passing, 4 environment-dependent skips
-- Tools: 61 (every one covered by the contract suite)
+- Tests: 590 passing, 4 environment-dependent skips
+- Tools: 62 (every one covered by the contract suite)
 - Known skips: no-sandbox refusal path (because a sandbox exists), LIEF absence
   (because LIEF is installed), missing-provider-key paths (because a key is
   present), and foreign-platform execution (no configured VM/rootfs).

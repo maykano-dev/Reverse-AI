@@ -20,7 +20,7 @@ A living map of what exists and what comes next. Updated with v0.9.0.
   image inspection.
 - **Dev-server preview**: gated bubblewrap-backed `npm run dev`/local server
   launcher with a multi-tab preview browser.
-- **Tests**: 580; 61 tools contract-tested.
+- **Tests**: 590; 62 tools contract-tested.
 
 ### v0.8.0: gated dangerous surfaces and open-item closure
 
@@ -184,7 +184,8 @@ The full ledger is [`docs/INTELLIGENCE_ROADMAP.md`](INTELLIGENCE_ROADMAP.md).
 - [x] inline diff review and a restore surface.
 - [x] bounded control-flow and call graphs.
 - [x] action approvals and an audit gate.
-- [ ] landlock profile and cgroup v2 enforcement.
+- [x] landlock profile enforcement (opt-in).
+- [ ] cgroup v2 enforcement.
 - [x] mutation/fuzz testing and a curated per-target corpus.
 - [ ] structured failure diagnosis between repair attempts.
 - [x] MCP client with mediator permissions.

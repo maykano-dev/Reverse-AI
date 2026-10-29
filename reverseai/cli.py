@@ -687,6 +687,32 @@ def _cmd_mission(args: argparse.Namespace) -> int:
                 print(f"{m.get('id')}  {m.get('status', '?'):8}  "
                       f"{str(m.get('objective') or '')[:90]}")
         return 0
+    if args.mission_cmd == "worker":
+        from .agent import Agent, Permission, get_provider
+        from .mission_worker import run_worker
+
+        try:
+            provider = get_provider(args.provider)
+            perm = {"read": Permission.READ, "execute": Permission.EXECUTE,
+                    "write": Permission.WRITE}[args.permission]
+            agent = Agent(provider, max_permission=perm, max_steps=args.max_steps)
+
+            def run(goal: str):
+                return agent.run(goal, target_path=args.target,
+                                 project_dir=args.project_dir)
+
+            count = run_worker(
+                args.store, run, owner=args.owner, once=args.once,
+                interval=args.interval, limit=args.limit, lease_s=args.lease,
+                should_stop=lambda: False)
+            print(f"[mission-worker] handled={count}")
+            return 0
+        except KeyboardInterrupt:
+            return 130
+        except Exception as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+
     try:
         mission = store.load(args.id)
         if mission is None:
@@ -957,6 +983,20 @@ def build_parser() -> argparse.ArgumentParser:
                           default="write")
     m_resume.add_argument("--max-steps", type=int, default=24)
     m_resume.set_defaults(func=_cmd_mission)
+    m_worker = mission_sub.add_parser("worker", help="run due missions once or as a daemon")
+    m_worker.add_argument("--store", default="./missions")
+    m_worker.add_argument("--project-dir")
+    m_worker.add_argument("--target")
+    m_worker.add_argument("--provider", default="deepseek")
+    m_worker.add_argument("--permission", choices=["read", "execute", "write"],
+                          default="write")
+    m_worker.add_argument("--max-steps", type=int, default=24)
+    m_worker.add_argument("--owner", default="")
+    m_worker.add_argument("--once", action="store_true")
+    m_worker.add_argument("--interval", type=float, default=10.0)
+    m_worker.add_argument("--limit", type=int, default=1)
+    m_worker.add_argument("--lease", type=float, default=300.0)
+    m_worker.set_defaults(func=_cmd_mission)
 
     return parser
 

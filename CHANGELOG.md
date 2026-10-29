@@ -16,7 +16,7 @@
   header, suggestion cards, calmer composer, surface cards, mobile adjustments.
 - The system prompt now tells the agent to use surfaces for decisions, forms,
   comparisons, graphs, diffs, approvals, and other task-native interactions.
-- 61 new tests; total 580; 61 tools covered by contract tests.
+- 71 new tests; total 590; 62 tools covered by contract tests.
 - A larger default output budget and chunked `write_file` appends fix truncated
   large-file writes. Invalid/truncated tool arguments now return a clear,
   actionable message instead of retrying blindly.
@@ -30,6 +30,10 @@
 - Missions now have an explicit resume worker: `reverseai mission list` and
   `reverseai mission resume <id>`. It reloads persisted phases/checkpoints,
   runs the normal agent, and checkpoints the outcome for the next process.
+- Landlock filesystem enforcement is wired into bubblewrap as an opt-in
+  (`REVERSEAI_LANDLOCK=1`): a standalone pre-exec helper applies a ruleset over
+  system reads, workspace rights, `/tmp`, and `/dev`, and reports
+  `filesystem=namespaced+landlock`.
 - Per-token monthly quotas for runs, tokens, and cost are now enforced on
   `/jobs/start`, `/jobs`, and surface continuations, with `GET /quota` and a
   thread-safe ledger. Auth remains single-token; this is abuse control, not

@@ -73,6 +73,9 @@ class MissionStore:
         })
         if status:
             mission["status"] = status
+            if status != "running":
+                mission.pop("lease_owner", None)
+                mission.pop("lease_until", None)
         self.save(mission)
         return mission
 
@@ -87,3 +90,51 @@ class MissionStore:
         mission["resume_count"] += 1
         self.save(mission)
         return mission
+
+    def claim(self, mission_id: str, owner: str,
+              lease_s: float = 300.0, now: float | None = None) -> dict[str, Any]:
+        """Claim a mission for one explicit worker, with a time-bounded lease."""
+        mission = self.load(mission_id)
+        if mission is None:
+            raise MissionStoreError("mission not found")
+        if mission.get("status") in ("done", "failed", "cancelled"):
+            raise MissionStoreError("mission is already terminal")
+        now = time.time() if now is None else float(now)
+        until = float(mission.get("lease_until") or 0)
+        holder = str(mission.get("lease_owner") or "")
+        if mission.get("status") == "running" and until > now and holder != owner:
+            raise MissionStoreError(
+                f"mission is leased by {holder or 'another worker'} until {until:.0f}")
+        mission["status"] = "running"
+        mission["lease_owner"] = owner
+        mission["lease_until"] = now + max(1.0, float(lease_s))
+        mission["claimed_at"] = now
+        self.save(mission)
+        return mission
+
+    def release(self, mission_id: str, owner: str | None = None,
+                status: str | None = None) -> dict[str, Any]:
+        mission = self.load(mission_id)
+        if mission is None:
+            raise MissionStoreError("mission not found")
+        if owner and mission.get("lease_owner") not in (None, owner):
+            raise MissionStoreError("mission lease is held by another worker")
+        mission.pop("lease_owner", None)
+        mission.pop("lease_until", None)
+        if status:
+            mission["status"] = status
+        self.save(mission)
+        return mission
+
+    def due(self, now: float | None = None) -> list[dict[str, Any]]:
+        """Missions a worker may claim: planned, paused, or expired leases."""
+        now = time.time() if now is None else float(now)
+        out = []
+        for mission in self.list():
+            status = mission.get("status")
+            if status in ("planned", "paused"):
+                out.append(mission)
+            elif status == "running" and float(mission.get("lease_until") or 0) <= now:
+                out.append(mission)
+        out.sort(key=lambda m: float(m.get("updated_at") or m.get("created_at") or 0))
+        return out

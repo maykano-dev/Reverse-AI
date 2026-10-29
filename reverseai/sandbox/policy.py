@@ -25,6 +25,10 @@ class SandboxPolicy:
     # a target needs a denied syscall and you accept the reduced boundary.
     seccomp: bool = field(
         default_factory=lambda: os.environ.get("REVERSEAI_SECCOMP", "1") != "0")
+    # Apply a Landlock filesystem ruleset inside bubblewrap when the kernel
+    # supports it. Opt-in until a host-specific ruleset has been validated.
+    landlock: bool = field(
+        default_factory=lambda: os.environ.get("REVERSEAI_LANDLOCK", "0") == "1")
 
     # --- trust gate ---
     # Running an unknown/untrusted binary requires this to be explicitly True.

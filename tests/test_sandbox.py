@@ -74,7 +74,7 @@ class BubblewrapBackendTests(unittest.TestCase):
         self.sb = BubblewrapSandbox()
 
     def test_echo_isolated(self):
-        res = self.sb.run(["/bin/echo", "contained"], SandboxPolicy())
+        res = self.sb.run(["/bin/echo", "contained"], SandboxPolicy(landlock=False))
         self.assertTrue(res.ok, res.to_dict())
         self.assertEqual(res.stdout_text().strip(), "contained")
         self.assertEqual(res.isolation.filesystem, "namespaced")

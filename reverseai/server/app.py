@@ -193,6 +193,17 @@ class _Handler(BaseHTTPRequestHandler):
                          "quota": result})
         return False
 
+    def _quota_reserve(self) -> tuple[bool, str]:
+        tracker = getattr(self, "quota", None)
+        key = self._quota_key()
+        if tracker is None or not key or not tracker.policy.enabled():
+            return True, ""
+        try:
+            return True, tracker.reserve(key, runs=1)
+        except QuotaError as exc:
+            self._send(429, {"error": "quota exceeded: " + str(exc)})
+            return False, ""
+
     def _require_auth(self) -> bool:
         if self._authorized():
             return True
@@ -574,13 +585,18 @@ class _Handler(BaseHTTPRequestHandler):
         }
 
     def _start_run(self, body) -> None:
-        if not self._quota_check():
+        ok, reservation = self._quota_reserve()
+        if not ok:
             return
         if self._quota_key():
             body = dict(body)
             body["_quota_token"] = self._quota_key()
+            if reservation:
+                body["_quota_reservation"] = reservation
         stream_id, conversation_id, error = self.runs.start(body)
         if error:
+            if reservation:
+                self.quota.release(reservation)
             code = 402 if error.startswith("monthly budget") else (
                 409 if "no longer available" in error else 400)
             return self._send(code, {"error": error})
@@ -762,18 +778,18 @@ class _Handler(BaseHTTPRequestHandler):
         self.surface_events.append(job_id, surface["id"], event)
         surface["status"] = "submitted"
         surface["last_event"] = event.to_dict()
-        rec["surfaces"] = rec.get("surfaces") or []
-        try:
-            self.store.path_for(job_id).write_text(
-                json.dumps(rec, indent=2), encoding="utf-8")
-        except OSError:
-            pass
+        self.store.mark_surface(rec.get("conversation_id"), surface["id"],
+                                event.to_dict())
 
     def _surface_event(self, job_id: str, surface_id: str, body: dict) -> None:
         rec = self.store.get(job_id)
         if rec is None:
             return self._send(404, {"error": "job not found"})
         surface = find_surface(rec.get("surfaces") or [], surface_id)
+        if surface is None and rec.get("conversation_id"):
+            surface = find_surface(
+                self.store.surfaces_for_conversation(rec["conversation_id"]),
+                surface_id)
         if surface is None:
             return self._send(404, {"error": "surface not found"})
         try:
@@ -784,18 +800,29 @@ class _Handler(BaseHTTPRequestHandler):
         return self._send(200, {"accepted": True, "event": event.to_dict()})
 
     def _surface_respond(self, job_id: str, surface_id: str, body: dict) -> None:
-        if not self._quota_check():
+        ok, reservation = self._quota_reserve()
+        if not ok:
             return
         rec = self.store.get(job_id)
         if rec is None:
+            if reservation:
+                self.quota.release(reservation)
             return self._send(404, {"error": "job not found"})
         surface = find_surface(rec.get("surfaces") or [], surface_id)
+        if surface is None and rec.get("conversation_id"):
+            surface = find_surface(
+                self.store.surfaces_for_conversation(rec["conversation_id"]),
+                surface_id)
         if surface is None:
+            if reservation:
+                self.quota.release(reservation)
             return self._send(404, {"error": "surface not found"})
         try:
             event = event_from_body(job_id, surface, body)
             self._record_surface_event(job_id, rec, surface, event)
         except SurfaceError as exc:
+            if reservation:
+                self.quota.release(reservation)
             return self._send(400, {"error": str(exc)})
         import json as _json
 
@@ -816,9 +843,12 @@ class _Handler(BaseHTTPRequestHandler):
             "max_steps": max(1, min(int(body.get("max_steps", 24) or 24), 64)),
             "client": body.get("client", 1),
             "_quota_token": self._quota_key(),
+            "_quota_reservation": reservation,
         }
         stream_id, cid, error = self.runs.start(run_body)
         if error:
+            if reservation:
+                self.quota.release(reservation)
             code = 402 if error.startswith("monthly budget") else 409
             return self._send(code, {"error": error})
         return self._send(202, {

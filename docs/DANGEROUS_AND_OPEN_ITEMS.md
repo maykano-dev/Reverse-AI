@@ -39,8 +39,9 @@ Status key: **built**, **foundation**, **deferred**.
       modified artifacts, sandbox-only, crash/regression reporting.
 - [x] **PE depth**: resources, version info, TLS callbacks, rich header.
 - [x] **Mach-O depth**: dylib dependencies and export/import metadata.
-- [~] **Landlock surface**: ABI/query module and ruleset plan. Enforcement is
-      not applied; bubblewrap remains the filesystem boundary.
+- [x] **Landlock surface**: ABI/query module, pre-exec ruleset helper, and
+      opt-in enforcement (`REVERSEAI_LANDLOCK=1`). Bubblewrap remains the primary
+      boundary; the report says when Landlock was actually applied.
 - [~] **cgroup v2 surface**: detection and optional scope creation. Host
       delegation is required; enforcement is not automatic.
 - [~] **QEMU surface**: command builder and preflight; the guest-runner
@@ -95,4 +96,4 @@ python3 -m unittest tests.test_macho_extra -v
 ```
 
 The full suite and `python3 -m reverseai audit` must pass. Current baseline:
-580 tests passing, 4 environment-dependent skips, version 0.9.0.
+590 tests passing, 4 environment-dependent skips, version 0.9.0.

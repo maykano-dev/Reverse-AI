@@ -274,6 +274,13 @@ class SurfaceHTTPTests(unittest.TestCase):
         status, latest = _get(f"{self.base}/jobs/{sid2}")
         self.assertEqual(status, 200)
         self.assertEqual([s["id"] for s in latest["surfaces"]], [surface["id"]])
+        # Acting on the card from the latest job must update the owning job.
+        status, body = _post(
+            f"{self.base}/jobs/{sid2}/surfaces/{surface['id']}/events",
+            {"action_id": "continue", "value": {"strategy": "patch"}})
+        self.assertEqual(status, 200, body)
+        status, latest = _get(f"{self.base}/jobs/{sid2}")
+        self.assertEqual(latest["surfaces"][0]["status"], "submitted")
 
     def test_respond_continues_the_conversation(self):
         sid, surface = self._make_job_with_surface()

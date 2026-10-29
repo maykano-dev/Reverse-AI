@@ -80,8 +80,8 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   recovery, packer heuristics, string extraction, optional capstone
   disassembly, structural binary diff, APK structure + native ELF analysis.
 - **Sandbox lab:** hardened bubblewrap (namespaces, no network, caps dropped,
-  read-only system, tmpfs workdir, x86_64 seccomp denylist), resource-limited
-  subprocess, experimental qiling; auto-selects the strongest backend and
+  read-only system, tmpfs workdir, x86_64 seccomp denylist, optional Landlock
+  filesystem ruleset), resource-limited subprocess, experimental qiling; auto-selects the strongest backend and
   refuses untrusted execution when none can contain it. Optional rootfs for
   qiling. The seccomp filter blocks ptrace, namespace/mount escape, module
   loading, keyring, bpf, perf, io_uring, and similar attack-surface syscalls.
