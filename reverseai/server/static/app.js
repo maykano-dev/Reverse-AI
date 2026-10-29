@@ -1683,18 +1683,40 @@ function renderArtifact(container, meta, name, jobId) {
   const m = meta || {};
   if (!m.name && !name) return;
   const fname = m.name || name || "artifact";
-  const a = el("a", "artifact");
-  a.href = withToken(`/jobs/${jobId}/artifact`);
-  a.setAttribute("download", fname);
+  const ext = (fname.split(".").pop() || "").toLowerCase();
+  const dlHref = withToken(`/jobs/${jobId}/artifact`);
+  const previewable = ["pdf", "html", "htm", "svg", "png", "jpg", "jpeg",
+    "gif", "webp", "txt", "md", "csv", "json"].includes(ext);
   const size = m.size ? fmtSize(m.size) : "";
   const sha = m.sha256 ? "sha256 " + m.sha256.slice(0, 10) : "";
-  a.innerHTML = `<span class="ai">${ic("download", 18)}</span>
-    <span class="at"><b>${esc(fname)}</b><span>${[size, sha].filter(Boolean).join(" · ") || "Delivered file"}</span></span>
-    <span class="ad">${ic("download", 17)}</span>`;
-  container.appendChild(a);
+  const card = el("div", "artifact");
+  card.innerHTML = `<span class="ai">${ic("file", 18)}</span>
+    <span class="at"><b>${esc(fname)}</b><span>${[ext.toUpperCase(), size, sha].filter(Boolean).join(" · ") || "Delivered file"}</span></span>
+    <span class="aacts"></span>`;
+  const acts = card.querySelector(".aacts");
+  if (previewable) {
+    const inlineUrl = withToken(`/jobs/${jobId}/artifact?inline=1`);
+    const pv = el("button", "abtn", "Preview");
+    // The in-app preview pane is a sandboxed iframe, which Chromium's PDF
+    // viewer won't run in; open PDFs in a real tab for native rendering.
+    // Everything else (html/svg/images/text) renders fine in the pane.
+    if (ext === "pdf") {
+      pv.addEventListener("click", () => window.open(inlineUrl, "_blank", "noopener"));
+    } else {
+      pv.addEventListener("click", () => showPreview(
+        inlineUrl, { local: true, title: fname, newTab: true }));
+    }
+    acts.appendChild(pv);
+  }
+  const dl = el("a", "abtn abtn-dl");
+  dl.href = dlHref;
+  dl.setAttribute("download", fname);
+  dl.innerHTML = `${ic("download", 15)}<span>Download</span>`;
+  acts.appendChild(dl);
+  container.appendChild(card);
   addReportLink(container, jobId);
-  if (!sessionArtifacts.some((x) => x.href === a.href)) {
-    sessionArtifacts.unshift({ name: fname, href: a.href, goal: fname, size: m.size, sha: m.sha256 });
+  if (!sessionArtifacts.some((x) => x.href === dlHref)) {
+    sessionArtifacts.unshift({ name: fname, href: dlHref, goal: fname, size: m.size, sha: m.sha256 });
     updateArtCount();
   }
 }

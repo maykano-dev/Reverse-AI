@@ -351,7 +351,21 @@ class ServerTests(unittest.TestCase):
         # download via the durable job endpoint
         with urllib.request.urlopen(f"{self.base}/jobs/{job.id}/artifact", timeout=5) as r:
             self.assertEqual(r.read(), b"PATCHED-BINARY-BYTES")
+            self.assertIn("attachment", r.headers.get("Content-Disposition", ""))
             self.assertIn("app.patched", r.headers.get("Content-Disposition", ""))
+
+    def test_inline_preview_serves_pdf_with_right_type(self):
+        job = Job(goal="doc")
+        job.status = "completed"
+        self.srv.store.save(job)
+        with tempfile.TemporaryDirectory() as d:
+            art = Path(d) / "report.pdf"
+            art.write_bytes(b"%PDF-1.4\n%%EOF\n")
+            self.srv.store.save_artifact(job.id, str(art))
+        with urllib.request.urlopen(
+                f"{self.base}/jobs/{job.id}/artifact?inline=1", timeout=5) as r:
+            self.assertEqual(r.headers.get("Content-Type"), "application/pdf")
+            self.assertIn("inline", r.headers.get("Content-Disposition", ""))
 
     def test_serves_ui(self):
         with urllib.request.urlopen(f"{self.base}/", timeout=5) as r:

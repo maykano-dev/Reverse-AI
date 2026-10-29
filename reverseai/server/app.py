@@ -696,6 +696,15 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    # Content types we are willing to render inline in the preview pane.
+    _INLINE_TYPES = {
+        ".pdf": "application/pdf", ".html": "text/html", ".htm": "text/html",
+        ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
+        ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8",
+        ".csv": "text/plain; charset=utf-8", ".json": "application/json",
+    }
+
     def _serve_file(self, path, not_found_msg: str) -> None:
         if not path:
             return self._send(404, {"error": not_found_msg})
@@ -704,10 +713,18 @@ class _Handler(BaseHTTPRequestHandler):
         except OSError as exc:
             return self._send(404, {"error": str(exc)})
         name = safe_download_name(Path(path).name.split("__", 1)[-1])
+        qs = urllib.parse.urlparse(self.path).query
+        want_inline = (urllib.parse.parse_qs(qs).get("inline") or ["0"])[0] == "1"
+        ext = Path(name).suffix.lower()
+        ctype = self._INLINE_TYPES.get(ext)
         self.send_response(200)
         self._auth_headers()
-        self.send_header("Content-Type", "application/octet-stream")
-        self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+        if want_inline and ctype:
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Disposition", f'inline; filename="{name}"')
+        else:
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
