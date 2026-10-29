@@ -65,26 +65,52 @@ def _files_from(value: Any) -> dict[str, bytes]:
     return out
 
 
+# Natural aliases a model tends to use for the exit code inside an expect dict.
+_EXIT_ALIASES = ("exit", "status", "returncode", "return_code", "code")
+
+
+def _apply_flat(exp: dict[str, Any], src: dict[str, Any]) -> None:
+    """Apply flat expect_* / flag keys from a source (args or a case) into exp."""
+    if "expect_stdout" in src:
+        exp["stdout"] = src["expect_stdout"]
+    if "expect_stderr" in src:
+        exp["stderr"] = src["expect_stderr"]
+    if "expect_exit" in src:
+        exp["exit_code"] = src["expect_exit"]
+    if "expect_diff" in src:
+        exp["differs"] = bool(src["expect_diff"])
+    if "differs" in src:
+        exp["differs"] = bool(src["differs"])
+    if "same_as_original" in src:
+        exp["same_as_original"] = bool(src["same_as_original"])
+    if "stdout_contains" in src:
+        exp["stdout_contains"] = src["stdout_contains"]
+    if "stderr_contains" in src:
+        exp["stderr_contains"] = src["stderr_contains"]
+    if "output_files" in src and isinstance(src["output_files"], dict):
+        exp["output_files"] = src["output_files"]
+
+
+def _normalize_exit(exp: dict[str, Any]) -> None:
+    """Map 'exit'/'status'/'code'/... inside an expect dict to 'exit_code'."""
+    for alias in _EXIT_ALIASES:
+        if alias in exp:
+            exp.setdefault("exit_code", exp.pop(alias))
+        else:
+            exp.pop(alias, None)
+
+
 def _expectation(args: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
     exp = dict(args.get("expect") or {})
     if isinstance(case.get("expect"), dict):
         exp.update(case["expect"])
-    if "expect_stdout" in args:
-        exp["stdout"] = args["expect_stdout"]
-    if "expect_stderr" in args:
-        exp["stderr"] = args["expect_stderr"]
-    if "expect_exit" in args:
-        exp["exit_code"] = args["expect_exit"]
-    if "expect_diff" in args:
-        exp["differs"] = bool(args["expect_diff"])
-    if "same_as_original" in args:
-        exp["same_as_original"] = bool(args["same_as_original"])
-    if "stdout_contains" in args:
-        exp["stdout_contains"] = args["stdout_contains"]
-    if "stderr_contains" in args:
-        exp["stderr_contains"] = args["stderr_contains"]
-    if "output_files" in args and isinstance(args["output_files"], dict):
-        exp["output_files"] = args["output_files"]
+    # The model naturally writes {"exit": 0, "stdout": "..."} inside a case's
+    # expect; the matcher keys on exit_code, so normalize the alias.
+    _normalize_exit(exp)
+    # Flat expect_* / flags may appear at the args level (global) or on the case
+    # itself; the case takes precedence.
+    _apply_flat(exp, args)
+    _apply_flat(exp, case)
     return exp
 
 

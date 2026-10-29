@@ -327,5 +327,38 @@ class ServerDeliveryTests(unittest.TestCase):
             tmp.cleanup()
 
 
+class ExpectationNormalizationTests(unittest.TestCase):
+    """Regression: the natural multi-case expect form must not be dropped.
+
+    A model naturally writes cases like {"args": ["x"], "expect": {"exit": 0,
+    "stdout": "..."}} and flags like same_as_original at the case level. If those
+    aren't normalized to the canonical keys the matcher reads (exit_code), a
+    correct modification is wrongly reported as not verified (false negative).
+    """
+
+    def test_exit_alias_in_case_expect_maps_to_exit_code(self):
+        from reverseai.agent.verify_tools import build_cases
+        cases = build_cases({"cases": [
+            {"name": "c", "args": ["x"], "expect": {"exit": 2, "stdout": "u"}}]})
+        self.assertEqual(cases[0].expect.get("exit_code"), 2)
+        self.assertNotIn("exit", cases[0].expect)
+        self.assertEqual(cases[0].expect.get("stdout"), "u")
+
+    def test_case_level_flat_keys_apply(self):
+        from reverseai.agent.verify_tools import build_cases
+        cases = build_cases({"cases": [
+            {"name": "c", "args": [], "expect_exit": 2, "same_as_original": True}]})
+        self.assertEqual(cases[0].expect.get("exit_code"), 2)
+        self.assertTrue(cases[0].expect.get("same_as_original"))
+
+    def test_other_exit_aliases_normalize(self):
+        from reverseai.agent.verify_tools import build_cases
+        for alias in ("status", "returncode", "return_code", "code"):
+            cases = build_cases({"cases": [
+                {"name": "c", "args": [], "expect": {alias: 0}}]})
+            self.assertEqual(cases[0].expect.get("exit_code"), 0, alias)
+            self.assertNotIn(alias, cases[0].expect)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
