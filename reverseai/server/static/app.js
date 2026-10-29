@@ -1766,6 +1766,7 @@ const TOOL_LABELS = {
   analyze_domain: "Analyzing the domain",
   forge_tool: "Forging a tool",
   run_forged_tool: "Using a tool it built",
+  create_document: "Creating a document",
   export_tool_manifests: "Describing tools",
   capability_map: "Measuring capabilities",
   trust_check: "Checking the consequence",

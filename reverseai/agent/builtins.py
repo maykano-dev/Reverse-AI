@@ -1012,6 +1012,7 @@ def default_tools() -> list[Tool]:
     from .intelligence_tools import intelligence_tools
     from .modify_engine import ChooseModificationStrategyTool, PlanAndModifyTool
     from .coding_tools import InstallMediaTool, InstallResourceTool
+    from .docgen_tools import CreateDocumentTool
     from .surface_tools import surface_tools
     from .verify_tools import (
         AssessTestStrengthTool, DifferentialFuzzTool, DifferentialTestTool,
@@ -1064,6 +1065,7 @@ def default_tools() -> list[Tool]:
         RestoreCheckpointTool(),
         InstallMediaTool(),
         InstallResourceTool(),
+        CreateDocumentTool(),
     ]
     tools.extend(intelligence_tools())
     tools.extend(surface_tools())

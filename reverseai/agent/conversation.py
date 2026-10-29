@@ -62,6 +62,9 @@ _SAFE_EXTRA = {
     "mode", "strategy", "modification_plan", "last_checkpoint",
 }
 _GATED_OPERATIONS = {"patch", "imports", "section", "rebuild", "reimplement"}
+# Fresh deliverables created from scratch (not a modification of an untrusted
+# original), so they do not go through the binary verification gate.
+_FRESH_DELIVERABLES = {"site", "document"}
 _PREVIEW_WRITE_TOOLS = {"write_file", "edit_file", "install_media",
                         "run_command", "clone_website"}
 
@@ -302,17 +305,17 @@ class Conversation:
         if modified_turn != job.id and verified_turn != job.id:
             return
         operation = self.ctx.extra.get("modified_operation") or "patch"
-        if operation == "site":
+        if operation in _FRESH_DELIVERABLES:
             self.ctx.extra["verification"] = self.ctx.extra.get("verification") or {
                 "verified": False,
-                "kind": "site",
-                "reason": "site bundle delivery does not require binary execution",
+                "kind": operation,
+                "reason": f"{operation} delivery does not require binary execution",
                 "passed_tests": 0,
                 "attempts": [],
             }
             self.ctx.extra["delivery"] = {
                 "allowed": True,
-                "reason": "site bundle packaged",
+                "reason": f"{operation} produced",
             }
             return
         if operation not in _GATED_OPERATIONS:

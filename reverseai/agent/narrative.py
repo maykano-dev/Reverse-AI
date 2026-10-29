@@ -53,6 +53,7 @@ _TOOL_ICON = {
     "analyze_domain": "box",
     "forge_tool": "code",
     "run_forged_tool": "code",
+    "create_document": "file",
     "export_tool_manifests": "file",
     "capability_map": "chart",
     "trust_check": "lock",
@@ -258,6 +259,10 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "run_forged_tool":
         title = "Using a tool I built"
         detail = "Running the tool I forged earlier, in the sandbox, on this task."
+    elif name == "create_document":
+        kind = str((args or {}).get("kind") or "file").upper()
+        title = f"Creating a {kind}"
+        detail = "Generating a real, downloadable file to hand back."
     elif name == "export_tool_manifests":
         title = "Describing the available tools"
         detail = "Permissions, inputs, side effects, and security boundaries."
