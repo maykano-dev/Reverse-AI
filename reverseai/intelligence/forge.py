@@ -143,6 +143,59 @@ class ToolForge:
         self._save(tool)
         return tool
 
+    def find(self, ref: str) -> ForgedTool | None:
+        """Look up a forged tool by name or id."""
+        for tool in self.list():
+            if tool.name == ref or tool.id == ref:
+                return tool
+        return None
+
+    def invoke(self, ref: str, payload: dict[str, Any] | None,
+               policy: SandboxPolicy | None = None) -> dict[str, Any]:
+        """Run a forged tool that passed its tests, with a real payload.
+
+        This is what lets the agent actually USE a tool it built for the task.
+        Only a tool whose tests passed (tested/promoted) may run, and it runs
+        only inside the isolating sandbox.
+        """
+        tool = self.find(ref)
+        if tool is None:
+            raise ForgeError(f"no forged tool named {ref!r}")
+        if tool.status not in ("tested", "promoted"):
+            raise ForgeError(
+                f"tool {tool.name!r} has not passed its tests; forge and test it first")
+        src = self.root / f"{tool.name}.py"
+        if not src.exists():
+            raise ForgeError(f"tool code for {tool.name!r} is missing")
+        harness = self.root / f".{tool.name}-invoke.py"
+        harness.write_text(
+            "import json, sys\n"
+            f"sys.path.insert(0, {str(self.root)!r})\n"
+            f"from {tool.name} import run\n"
+            "payload = json.loads(sys.stdin.read() or '{}')\n"
+            "print(json.dumps(run(payload), default=str))\n",
+            encoding="utf-8")
+        policy = policy or SandboxPolicy(allow_untrusted_execution=True)
+        from dataclasses import replace
+
+        policy = replace(policy, allow_untrusted_execution=True,
+                         workdir=str(self.root), timeout_seconds=15)
+        try:
+            sandbox = create_sandbox(policy)
+        except Exception as exc:
+            raise ForgeError(
+                f"no isolating sandbox; refusing to run the forged tool: {exc}") from exc
+        result = sandbox.run([sys.executable, harness.name], policy,
+                             cwd=str(self.root),
+                             stdin=json.dumps(payload or {}).encode())
+        if result.error or result.exit_code != 0:
+            raise ForgeError(result.error or result.stderr_text()[:800]
+                             or "forged tool failed to run")
+        try:
+            return json.loads(result.stdout_text() or "{}")
+        except json.JSONDecodeError:
+            raise ForgeError("forged tool did not print JSON")
+
     def list(self) -> list[ForgedTool]:
         out = []
         for p in sorted(self.root.glob("tool_*.json")):

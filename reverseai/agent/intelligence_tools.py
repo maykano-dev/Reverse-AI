@@ -608,6 +608,39 @@ class ForgeToolTool(Tool):
                                   tool=tool.to_dict())
 
 
+class RunForgedToolTool(Tool):
+    name = "run_forged_tool"
+    description = (
+        "Run a tool you previously forged and tested, with a real payload, "
+        "inside the sandbox, and get its result. Use this to actually apply a "
+        "tool you built for the current task. Only a tool that passed its tests "
+        "can run. Provide the tool name (or id) and a 'payload' object."
+    )
+    parameters = {"type": "object", "properties": {
+        "tool": {"type": "string", "description": "forged tool name or id"},
+        "payload": {"type": "object", "description": "input mapping for the tool"}},
+        "required": ["tool"]}
+    permission = Permission.EXECUTE
+
+    def run(self, args, ctx) -> ToolResult:
+        ref = str(args.get("tool") or "").strip()
+        if not ref:
+            return ToolResult.failure("missing 'tool'")
+        try:
+            forge = ToolForge(ctx.workspace)
+            out = forge.invoke(
+                ref, args.get("payload") or {},
+                policy=ctx.sandbox_policy or
+                SandboxPolicy(allow_untrusted_execution=True))
+        except ForgeError as exc:
+            return ToolResult.failure(str(exc))
+        if ctx.evidence is not None:
+            ctx.evidence.observed(
+                f"ran forged tool {ref} in the sandbox", source=self.name)
+        return ToolResult.success(json.dumps(out, default=str, indent=2),
+                                  result=out)
+
+
 class ExportToolManifestsTool(Tool):
     name = "export_tool_manifests"
     description = (
@@ -786,7 +819,8 @@ def intelligence_tools() -> list[Tool]:
         PlanDiscoveryMissionTool(), FormHypothesesTool(), SimulateChangeTool(),
         SearchArchitecturesTool(), PlanProductTool(), SelectModelTool(),
         BuildProofPackageTool(), PlanMissionTool(), AnalyzeDomainTool(),
-        ForgeToolTool(), ExportToolManifestsTool(), CapabilityMapTool(),
+        ForgeToolTool(), RunForgedToolTool(), ExportToolManifestsTool(),
+        CapabilityMapTool(),
         TrustCheckTool(), RealityCheckTool(), HumanDecisionTool(),
         CompressionPlanTool(), ReconstructionPlanTool(),
     ]

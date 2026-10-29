@@ -139,6 +139,27 @@ class ForgeTests(unittest.TestCase):
             self.assertEqual(tool.status, "promoted")
             self.assertEqual(len(forge.list()), 1)
 
+    def test_tested_tool_can_be_invoked_with_a_real_payload(self):
+        with tempfile.TemporaryDirectory() as td:
+            forge = ToolForge(td)
+            tool = forge.create(
+                "double_it", "double x",
+                "def run(payload):\n    return {'value': int(payload['x']) * 2}\n")
+            tool = forge.test(tool, [{"inputs": {"x": 2}, "expect": {"value": 4}}])
+            self.assertEqual(tool.status, "tested")
+            out = forge.invoke("double_it", {"x": 21})
+            self.assertEqual(out["value"], 42)
+
+    def test_untested_tool_cannot_be_invoked(self):
+        with tempfile.TemporaryDirectory() as td:
+            forge = ToolForge(td)
+            forge.create("raw_tool", "x",
+                         "def run(payload):\n    return {'ok': True}\n")
+            with self.assertRaises(ForgeError):
+                forge.invoke("raw_tool", {})
+            with self.assertRaises(ForgeError):
+                forge.invoke("does_not_exist", {})
+
     def test_failing_tool_is_not_promoted(self):
         with tempfile.TemporaryDirectory() as td:
             forge = ToolForge(td)
