@@ -304,6 +304,7 @@ class Conversation:
         self.ctx.extra.pop("delivery", None)
         self.ctx.extra.pop("surfaces", None)
         self.ctx.extra.pop("pending_surface", None)
+        self.ctx.extra.pop("renders", None)   # page renders are per-turn
         self._loop(job, emit, stop_event)
         if job.status not in ("cancelled", "failed"):
             self._enforce_delivery_gate(job, emit)

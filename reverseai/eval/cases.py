@@ -87,6 +87,18 @@ def _pptx_image_embed():
     assert b"<p:pic>" in z.read("ppt/slides/slide1.xml")
 
 
+def _pptx_advanced_diagrams():
+    from reverseai.docgen import generate
+    for st, steps in [("comparison", [{"title": "A", "items": ["x"]}, {"title": "B", "items": ["y"]}]),
+                      ("stats", [{"value": "9%", "label": "a"}, {"value": "3%", "label": "b"}]),
+                      ("funnel", ["A", "B", "C"]), ("hub", ["A", "B", "C"])]:
+        data = generate("pptx", {"slides": [{"layout": "diagram", "title": "x",
+                                             "steps": steps, "center": "C",
+                                             "diagram_style": st}]}).data
+        z = __import__("zipfile").ZipFile(__import__("io").BytesIO(data))
+        assert z.testzip() is None, st
+
+
 def _pptx_diagram():
     from reverseai.docgen import generate
     spec = {"slides": [{"layout": "diagram", "title": "f", "shapes": [
@@ -212,6 +224,7 @@ CASES = [
     Case("pptx_all_layouts", "docgen", _pptx_all_layouts),
     Case("pptx_image_embed", "docgen", _pptx_image_embed),
     Case("pptx_diagram", "docgen", _pptx_diagram),
+    Case("pptx_advanced_diagrams", "docgen", _pptx_advanced_diagrams),
     Case("pptx_flow_autolayout", "docgen", _pptx_flow_autolayout),
     Case("pdf_image_embed", "docgen", _pdf_image_embed),
     Case("pdf_diagram", "docgen", _pdf_diagram),

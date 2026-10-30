@@ -76,7 +76,11 @@ def flow_shapes(steps, style="flow", colors=("2D6CDF", "7C5CFF")):
     Shared by the PDF diagram renderer so documents get the same clean flow as
     decks, without the model picking coordinates.
     """
-    steps = [str(s) for s in (steps or []) if str(s).strip()][:6]
+    def _lbl(s):
+        if isinstance(s, dict):
+            return str(s.get("title") or s.get("label") or s.get("text") or s.get("value") or "")
+        return str(s)
+    steps = [_lbl(s) for s in (steps or []) if _lbl(s).strip()][:6]
     if not steps:
         return []
     n = len(steps)
@@ -195,8 +199,9 @@ def _pptx(spec):
             image_w=int(s.get("image_w") or 0),
             image_h=int(s.get("image_h") or 0),
             shapes=s.get("shapes") or [],
-            steps=[str(x) for x in (s.get("steps") or [])],
+            steps=list(s.get("steps") or []),
             cards=[c for c in (s.get("cards") or []) if isinstance(c, dict)],
+            center=str(s.get("center") or ""),
             diagram_style=str(s.get("diagram_style") or s.get("style") or "flow"),
             bg_style=str(s.get("bg_style") or s.get("background") or ""),
             bg_spec=s.get("bg_spec") if isinstance(s.get("bg_spec"), dict) else {},

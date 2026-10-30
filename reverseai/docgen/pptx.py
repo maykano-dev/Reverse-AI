@@ -105,9 +105,10 @@ class Slide:
     image_w: int = 0
     image_h: int = 0
     shapes: list = field(default_factory=list)   # diagram primitives (low-level)
-    steps: list = field(default_factory=list)    # auto-laid-out flow/cycle labels
+    steps: list = field(default_factory=list)    # labels, or dicts for rich diagrams
     cards: list = field(default_factory=list)    # [{num?/label?, title, text?}] grid
-    diagram_style: str = "flow"      # flow | cycle | pillars
+    center: str = ""                 # hub diagram centre label
+    diagram_style: str = "flow"      # flow|pillars|timeline|pyramid|cycle|comparison|matrix|funnel|hub|stats
     bg_style: str = ""               # mesh | geometric | glow | rings | diagonal | gradient | plain
     bg_spec: dict = field(default_factory=dict)   # custom generative background
     kicker: str = ""                 # small eyebrow label above the title
@@ -319,16 +320,178 @@ def _diag_cycle(steps, t, sid, area):
     return "".join(out)
 
 
-def _flow_diagram(steps, t, sid, area, style="flow"):
-    """Auto-lay-out a clean diagram from step labels only: flow, pillars,
-    timeline, pyramid, or cycle. The engine owns sizing, spacing, alignment and
-    color, so the result is tidy regardless of model-chosen coordinates.
+def _label(node):
+    if isinstance(node, dict):
+        return str(node.get("title") or node.get("label") or node.get("text")
+                   or node.get("value") or "")
+    return str(node)
+
+
+def _node_items(node):
+    if isinstance(node, dict):
+        it = node.get("items") or node.get("points") or node.get("bullets")
+        if isinstance(it, list):
+            return [str(x) for x in it]
+        if node.get("text"):
+            return [str(node["text"])]
+    return []
+
+
+def _diag_comparison(nodes, t, sid, area):
+    left, top, w, h = area
+    nodes = nodes[:3]
+    n = len(nodes) or 1
+    gap = w * 0.045
+    pw = (w - (n - 1) * gap) / n
+    cols = [t["accent"], t["accent2"], _shade(t["accent"], -0.2)]
+    border = _shade(t["surface"], 0.14) if _is_dark(t["surface"]) else _shade(t["surface"], -0.1)
+    out = []
+    head_h = min(h * 0.18, 760000)
+    for i, node in enumerate(nodes):
+        x = left + i * (pw + gap)
+        out.append(_shp(sid, x, top, pw, h, fill=t["surface"], geom="roundRect",
+                        round_val=5000, line=border, line_w=12700))
+        out.append(_shp(sid, x, top, pw, head_h, fill=cols[i % 3], geom="roundRect",
+                        round_val=5000))
+        out.append(_shp(sid, x, top + head_h - 180000, pw, 180000, fill=cols[i % 3]))
+        out.append(_textbox(next(sid), "ch", x + 180000, top, pw - 360000, head_h,
+                            [_para(_run(_label(node), 16, t["on_accent"],
+                                        t["fonts"]["body"], bold=True), space_after=0)],
+                            anchor="ctr"))
+        items = _node_items(node)
+        if items:
+            paras = [_para(_run(str(it), 13, t["ink"], t["fonts"]["body"]),
+                           marL=210000, indent=-210000, bu_color=cols[i % 3],
+                           bu_char="•", space_after=450) for it in items[:6]]
+            out.append(_textbox(next(sid), "ci", x + 220000, top + head_h + 220000,
+                                pw - 440000, h - head_h - 400000, paras, anchor="t"))
+    return "".join(out)
+
+
+def _diag_matrix(nodes, t, sid, area):
+    left, top, w, h = area
+    nodes = (nodes + [{}] * 4)[:4]
+    gap = w * 0.03
+    cw = (w - gap) / 2
+    ch = (h - gap) / 2
+    tints = [0.10, 0.0, 0.0, -0.12]
+    out = []
+    for i, node in enumerate(nodes):
+        r, c = divmod(i, 2)
+        x, y = left + c * (cw + gap), top + r * (ch + gap)
+        fill = _shade(t["accent"], tints[i])
+        out.append(_shp(sid, x, y, cw, ch, fill=fill, geom="roundRect", round_val=4000))
+        paras = [_para(_run(_label(node), 16, t["on_accent"], t["fonts"]["body"],
+                            bold=True), space_after=(400 if _node_items(node) or
+                            (isinstance(node, dict) and node.get("text")) else 0))]
+        body = _node_items(node) or ([node.get("text")] if isinstance(node, dict)
+                                     and node.get("text") else [])
+        for it in body[:4]:
+            paras.append(_para(_run(str(it), 12.5, t["on_accent"], t["fonts"]["body"]),
+                               space_after=200))
+        out.append(_textbox(next(sid), "mq", x + 260000, y + 240000, cw - 520000,
+                            ch - 480000, paras, anchor="t"))
+    return "".join(out)
+
+
+def _diag_funnel(nodes, t, sid, area):
+    left, top, w, h = area
+    n = len(nodes)
+    gap = h * 0.04
+    bar_h = (h - (n - 1) * gap) / n
+    max_w, min_w = w * 0.92, w * 0.34
+    out = []
+    for i, node in enumerate(nodes):
+        frac = 1 - i / n          # top widest, narrowing down (a funnel)
+        bw = min_w + (max_w - min_w) * frac
+        x = left + (w - bw) / 2
+        y = top + i * (bar_h + gap)
+        col = _shade(t["accent"], -0.05 - 0.22 * (i / max(1, n - 1)))
+        out.append(_flow_box(sid, x, y, bw, bar_h, col, _label(node), t["on_accent"],
+                             t["fonts"]["body"]))
+    return "".join(out)
+
+
+def _diag_hub(nodes, t, sid, area, center):
+    left, top, w, h = area
+    cx, cy = left + w / 2, top + h / 2
+    spokes = nodes if center else nodes[1:]
+    center = center or (_label(nodes[0]) if nodes else "")
+    spokes = spokes[:6]
+    n = len(spokes) or 1
+    R = min(w * 0.42, h * 0.46)
+    sw, sh = min(w * 0.20, 1850000), min(h * 0.20, 820000)
+    cw, chh = min(w * 0.22, 2050000), min(h * 0.24, 980000)
+    out = []
+    # spokes positioned around; connectors first (behind)
+    pts = []
+    for i in range(n):
+        ang = -math.pi / 2 + 2 * math.pi * i / n
+        pts.append((cx + R * math.cos(ang), cy + R * math.sin(ang)))
+    for (sx, sy) in pts:
+        out.append(f'<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="{next(sid)}" name="spoke"/>'
+                   f'<p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr>'
+                   f'<a:xfrm><a:off x="{int(min(cx, sx))}" y="{int(min(cy, sy))}"/>'
+                   f'<a:ext cx="{int(abs(sx - cx)) or 1}" cy="{int(abs(sy - cy)) or 1}"/>'
+                   f'</a:xfrm><a:prstGeom prst="line"><a:avLst/></a:prstGeom>'
+                   f'<a:ln w="19050"><a:solidFill><a:srgbClr val="{t["muted"]}">'
+                   f'<a:alpha val="45000"/></a:srgbClr></a:solidFill></a:ln></p:spPr></p:cxnSp>')
+    for i, (sx, sy) in enumerate(pts):
+        out.append(_flow_box(sid, sx - sw / 2, sy - sh / 2, sw, sh,
+                             t["accent2"], _label(spokes[i]), t["on_accent"],
+                             t["fonts"]["body"]))
+    out.append(_flow_box(sid, cx - cw / 2, cy - chh / 2, cw, chh, t["accent"],
+                         center, t["on_accent"], t["fonts"]["title"]))
+    return "".join(out)
+
+
+def _diag_stats(nodes, t, sid, area):
+    left, top, w, h = area
+    nodes = nodes[:4]
+    n = len(nodes) or 1
+    gap = w * 0.04
+    cw = (w - (n - 1) * gap) / n
+    ch = min(h * 0.62, 2600000)
+    cy = top + (h - ch) / 2
+    border = _shade(t["surface"], 0.14) if _is_dark(t["surface"]) else _shade(t["surface"], -0.1)
+    out = []
+    for i, node in enumerate(nodes):
+        x = left + i * (cw + gap)
+        value = str(node.get("value") if isinstance(node, dict) else node) or ""
+        label = str(node.get("label") or node.get("text") or "") if isinstance(node, dict) else ""
+        out.append(_shp(sid, x, cy, cw, ch, fill=t["surface"], geom="roundRect",
+                        round_val=5000, line=border, line_w=12700))
+        paras = [_para(_run(value, 44, t["accent"], t["fonts"]["title"], bold=True,
+                            spc=-20), space_after=(400 if label else 0))]
+        if label:
+            paras.append(_para(_run(label, 13, t["muted"], t["fonts"]["body"]),
+                               space_after=0))
+        out.append(_textbox(next(sid), "kpi", x + 180000, cy, cw - 360000, ch,
+                            paras, anchor="ctr"))
+    return "".join(out)
+
+
+def _flow_diagram(steps, t, sid, area, style="flow", center=""):
+    """Auto-lay-out a clean diagram from labels (or rich {title,items,value}
+    nodes): flow, pillars, timeline, pyramid, cycle, comparison, matrix, funnel,
+    hub, stats. The engine owns sizing, spacing, alignment and color.
     """
     left, top, w, h = area
-    steps = [str(s) for s in steps if str(s).strip()][:6]
-    if not steps:
+    nodes = [s for s in steps if (isinstance(s, dict) or str(s).strip())][:8]
+    if not nodes:
         return ""
     style = (style or "flow").lower()
+    if style == "comparison":
+        return _diag_comparison(nodes, t, sid, area)
+    if style in ("matrix", "quadrant"):
+        return _diag_matrix(nodes, t, sid, area)
+    if style == "funnel":
+        return _diag_funnel(nodes, t, sid, area)
+    if style == "hub":
+        return _diag_hub(nodes, t, sid, area, center)
+    if style in ("stats", "kpi"):
+        return _diag_stats(nodes, t, sid, area)
+    steps = [_label(n) for n in nodes][:6]
     if style == "timeline":
         return _diag_timeline(steps, t, sid, area)
     if style == "pyramid":
@@ -743,7 +906,8 @@ def _slide_shapes(slide: Slide, t: dict):
     if layout == "diagram":
         area = (_MARGIN, body_top, _W - 2 * _MARGIN, body_h)
         if slide.steps:
-            sp.append(_flow_diagram(slide.steps, t, sid, area, slide.diagram_style))
+            sp.append(_flow_diagram(slide.steps, t, sid, area, slide.diagram_style,
+                                    center=slide.center))
         else:
             sp.append(_diagram_shapes(slide.shapes, t, sid, area))
         return bg, "".join(sp), media, anim
