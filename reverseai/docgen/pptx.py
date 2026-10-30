@@ -83,6 +83,8 @@ def resolve_theme(theme) -> dict:
     for k in ("bg", "surface", "ink", "muted", "accent", "accent2", "on_accent"):
         base[k] = _hex(base[k], PRESETS["light"][k])
     base.setdefault("fonts", dict(_DEFAULT_FONTS))
+    if isinstance(theme, dict) and theme.get("bg_style"):
+        base["bg_style"] = str(theme["bg_style"])
     return base
 
 
@@ -104,6 +106,7 @@ class Slide:
     shapes: list = field(default_factory=list)   # diagram primitives (low-level)
     steps: list = field(default_factory=list)    # auto-laid-out flow/cycle labels
     diagram_style: str = "flow"      # flow | cycle | pillars
+    bg_style: str = ""               # mesh | geometric | glow | rings | diagonal | gradient | plain
     animate: bool = False
     idx: int = 0                     # position in the deck (for varied decor)
 
@@ -363,22 +366,72 @@ def _diagram_shapes(shapes, t, sid, area):
 # --------------------------------------------------------------------------- #
 # per-layout composition
 # --------------------------------------------------------------------------- #
-def _decor_corner(t, sid):
-    """A big soft accent circle bleeding off the top-right corner."""
-    return _rect(sid, "decor", _W - 2200000, -1100000, 3300000, 3300000,
-                 t["accent"], alpha=9000, geom="ellipse")
+def _shp(sid, x, y, w, h, *, fill=None, alpha=None, geom="rect", rot=None,
+         line=None, line_w=19050, line_alpha=None, round_val=None):
+    """A flexible decorative shape: fill and/or outline, optional rotation."""
+    rotattr = f' rot="{int(rot)}"' if rot is not None else ""
+    av = f'<a:gd name="adj" fmla="val {round_val}"/>' if round_val is not None else ""
+    if fill is not None:
+        fillxml = (f'<a:solidFill><a:srgbClr val="{fill}">'
+                   + (f'<a:alpha val="{alpha}"/>' if alpha is not None else "")
+                   + '</a:srgbClr></a:solidFill>')
+    else:
+        fillxml = '<a:noFill/>'
+    if line is not None:
+        linexml = (f'<a:ln w="{line_w}"><a:solidFill><a:srgbClr val="{line}">'
+                   + (f'<a:alpha val="{line_alpha}"/>' if line_alpha is not None else "")
+                   + '</a:srgbClr></a:solidFill></a:ln>')
+    else:
+        linexml = '<a:ln><a:noFill/></a:ln>'
+    return (f'<p:sp><p:nvSpPr><p:cNvPr id="{next(sid)}" name="bg"/><p:cNvSpPr/>'
+            f'<p:nvPr/></p:nvSpPr><p:spPr><a:xfrm{rotattr}>'
+            f'<a:off x="{int(x)}" y="{int(y)}"/><a:ext cx="{int(w)}" cy="{int(h)}"/>'
+            f'</a:xfrm><a:prstGeom prst="{geom}"><a:avLst>{av}</a:avLst></a:prstGeom>'
+            f'{fillxml}{linexml}</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>'
+            f'<a:p><a:endParaRPr lang="en-US"/></a:p></p:txBody></p:sp>')
 
 
-def _auto_decor(t, idx, accent, sid):
-    """A faint accent shape bleeding off a corner, varied per slide."""
-    variants = [
-        # (x, y, w, h, geom) - large soft shapes off a corner
-        (_W - 2600000, _H - 2300000, 3600000, 3600000, "ellipse"),   # bottom-right circle
-        (-1400000, _H - 2000000, 3200000, 3200000, "ellipse"),       # bottom-left circle
-        (_W - 1700000, _H - 1500000, 2400000, 2400000, "ellipse"),   # smaller bottom-right
-    ]
-    x, y, w, h, geom = variants[idx % len(variants)]
-    return _rect(sid, "decor", x, y, w, h, accent, alpha=6000, geom=geom)
+def _is_dark(hexv):
+    hexv = _hex(hexv, "FFFFFF")
+    r, g, b = int(hexv[0:2], 16), int(hexv[2:4], 16), int(hexv[4:6], 16)
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 140
+
+
+_BG_ROTATION = ["mesh", "geometric", "glow", "rings", "diagonal"]
+
+
+def _bg_decor(style, t, bg, accent, accent2, idx, on_dark, sid):
+    """Creative, tasteful background shapes drawn behind the content.
+
+    Kept subtle (low alpha) so text stays readable, and varied per slide so a
+    deck looks designed rather than templated.
+    """
+    s = []
+    # On a strong accent background (section), use light shapes; else accent tints.
+    c1 = on_dark if on_dark else accent
+    a_lo, a_mid = (14000, 9000) if not on_dark else (16000, 10000)
+    if style == "mesh":
+        s.append(_shp(sid, -_W * 0.12, -_H * 0.18, _W * 0.52, _W * 0.52,
+                      fill=accent, alpha=a_lo, geom="ellipse"))
+        s.append(_shp(sid, _W * 0.68, _H * 0.52, _W * 0.5, _W * 0.5,
+                      fill=accent2, alpha=a_mid, geom="ellipse"))
+    elif style == "geometric":
+        s.append(_shp(sid, _W * 0.72, -_H * 0.35, _W * 0.5, _H * 1.7,
+                      fill=accent, alpha=a_mid, geom="rect", rot=-900000))
+        s.append(_shp(sid, _W * 0.08, _H * 0.72, 1700000, 1700000,
+                      fill=accent2, alpha=a_lo, geom="ellipse"))
+    elif style == "glow":
+        s.append(_shp(sid, -_W * 0.08, _H * 0.18, _W * 0.6, _W * 0.6,
+                      fill=accent, alpha=a_lo, geom="ellipse"))
+    elif style == "rings":
+        cx, cy = _W * 0.9, _H * 0.12
+        for r in (1200000, 2100000, 3000000):
+            s.append(_shp(sid, cx - r, cy - r, 2 * r, 2 * r, geom="ellipse",
+                          line=accent, line_alpha=a_mid, line_w=19050))
+    elif style == "diagonal":
+        s.append(_shp(sid, -_W * 0.25, _H * 0.55, _W * 1.6, _H * 0.9,
+                      fill=accent, alpha=a_lo, geom="rect", rot=-1200000))
+    return "".join(s)
 
 
 def _img_ext(data: bytes) -> str:
@@ -400,6 +453,17 @@ def _slide_shapes(slide: Slide, t: dict):
     media = []
     anim = []
 
+    # Creative background, drawn first (behind content). Varied per slide and
+    # overridable per slide (bg_style) or per deck (theme bg_style).
+    if layout in ("cover", "content", "two-column", "image", "diagram"):
+        style = (slide.bg_style or t.get("bg_style")
+                 or _BG_ROTATION[slide.idx % len(_BG_ROTATION)]).lower()
+        if style not in ("plain", "gradient", "none"):
+            decor = _bg_decor(style, t, bg, accent, t["accent2"], slide.idx,
+                              _is_dark(bg), sid)
+            if decor:
+                sp.append(decor)
+
     def add_image(bx, by, bw, bh):
         if not slide.image_data:
             return
@@ -419,8 +483,6 @@ def _slide_shapes(slide: Slide, t: dict):
             ink_c, muted_c = ink, muted
         sp.append(_rect(next(sid), "band", _MARGIN, _H * 0.60, 1500000, 26000,
                         accent if layout == "cover" else t["on_accent"]))
-        if layout == "cover":
-            sp.append(_decor_corner(t, next(sid)))
         tid = next(sid)
         sp.append(_textbox(tid, "title", _MARGIN, _H * 0.30, _W - 2 * _MARGIN, 2200000,
                            [_para(_run(slide.title or "", 46, ink_c, font_t, bold=True,
@@ -455,10 +517,7 @@ def _slide_shapes(slide: Slide, t: dict):
         return bg, "".join(sp), media, anim
 
     # ---- title header shared by content / two-column / image / diagram ----
-    # Subtle, cohesive decoration so slides aren't flat text: a faint accent
-    # shape bleeding off a corner, alternating per slide for variety.
-    if layout in ("content", "two-column"):
-        sp.append(_auto_decor(t, slide.idx, accent, next(sid)))
+    # (the creative background is drawn above, behind the content)
     sp.append(_rect(next(sid), "dot", _MARGIN, 620000, 150000, 150000, accent,
                     geom="ellipse"))
     sp.append(_textbox(next(sid), "title", _MARGIN + 260000, 470000,
