@@ -792,6 +792,12 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--json", action="store_true")
     audit.set_defaults(func=_cmd_audit)
 
+    ev = sub.add_parser("eval", help="run the model-free capability eval set")
+    ev.add_argument("--category", default=None,
+                    help="only run one category (docgen, render, studio, images)")
+    ev.add_argument("--json", action="store_true")
+    ev.set_defaults(func=_cmd_eval)
+
     mcp = sub.add_parser("mcp", help="MCP manifest utilities")
     mcp_sub = mcp.add_subparsers(dest="mcp_cmd", required=True)
     mcp_validate = mcp_sub.add_parser("validate", help="validate an MCP manifest")
@@ -999,6 +1005,24 @@ def build_parser() -> argparse.ArgumentParser:
     m_worker.set_defaults(func=_cmd_mission)
 
     return parser
+
+
+def _cmd_eval(args: argparse.Namespace) -> int:
+    import json as _json
+
+    from .eval.cases import CASES
+    from .eval.harness import render_text, run_cases, summarize
+
+    results = run_cases(CASES, category=args.category)
+    if args.json:
+        print(_json.dumps({
+            "summary": summarize(results),
+            "results": [{"name": r.name, "category": r.category, "ok": r.ok,
+                         "ms": round(r.ms, 1), "detail": r.detail} for r in results],
+        }, indent=2))
+    else:
+        print(render_text(results))
+    return 0 if summarize(results)["ok"] else 1
 
 
 def main(argv: list[str] | None = None) -> int:

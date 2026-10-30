@@ -14,6 +14,7 @@ A one-shot ``Agent.run`` is just a Conversation with a single turn.
 
 from __future__ import annotations
 
+import os
 import tempfile
 import threading
 import time
@@ -34,6 +35,52 @@ from .prompts import SYSTEM_PROMPT
 from .providers.base import Message, Role, ToolCall
 from .templates import prompt_addendum
 from .tools import ToolContext
+
+
+def _resilient_chat(agent, messages, specs, emit):
+    """Call the model with retries and provider fallback.
+
+    Retries the primary provider on transient errors (backoff), then falls back
+    to REVERSEAI_FALLBACK_PROVIDERS (comma-separated names). A turn should not
+    die silently because one provider hiccuped. Returns (response, provider).
+    """
+    try:
+        retries = max(0, min(int(os.environ.get("REVERSEAI_MODEL_RETRIES", "2")), 5))
+    except ValueError:
+        retries = 2
+    providers = [agent.provider]
+    fb = os.environ.get("REVERSEAI_FALLBACK_PROVIDERS", "").strip()
+    if fb:
+        from . import get_provider
+        for name in (n.strip() for n in fb.split(",")):
+            if not name or name == agent.provider.name:
+                continue
+            try:
+                providers.append(get_provider(name))
+            except Exception:
+                pass
+    last = None
+    for pi, prov in enumerate(providers):
+        for attempt in range(retries + 1):
+            try:
+                resp = prov.chat(messages, tools=specs,
+                                 temperature=agent.temperature,
+                                 max_tokens=getattr(agent, "max_tokens", 8192))
+                return resp, prov
+            except Exception as exc:  # noqa: BLE001 - provider errors are opaque
+                last = exc
+                if attempt < retries:
+                    emit({"type": "reason", "tool": "model",
+                          "title": "Retrying the model",
+                          "detail": "The model call did not go through; trying again.",
+                          "icon": "refresh"})
+                    time.sleep(min(2 ** attempt, 6))
+                elif pi < len(providers) - 1:
+                    emit({"type": "reason", "tool": "model",
+                          "title": "Switching to a backup model",
+                          "detail": "The primary model kept failing; using a fallback.",
+                          "icon": "cpu"})
+    raise last if last else RuntimeError("model call failed")
 
 
 def _lead_sentence(text: str) -> str:
@@ -385,16 +432,14 @@ class Conversation:
             emit({"type": "step", "step": step})
             self.messages = compact_messages(self.messages, agent.max_context_chars)
             try:
-                resp = agent.provider.chat(
-                    self.messages, tools=agent.registry.provider_specs(),
-                    temperature=agent.temperature,
-                    max_tokens=getattr(agent, "max_tokens", 8192))
+                resp, used_provider = _resilient_chat(
+                    agent, self.messages, agent.registry.provider_specs(), emit)
             except Exception as exc:
                 job.status = "failed"
                 job.error = f"provider error: {exc}"
                 emit({"type": "error", "error": job.error})
                 return
-            _acc_usage(job, resp, agent.provider)
+            _acc_usage(job, resp, used_provider)
 
             self.messages.append(Message(
                 Role.ASSISTANT, content=resp.content, tool_calls=resp.tool_calls))
