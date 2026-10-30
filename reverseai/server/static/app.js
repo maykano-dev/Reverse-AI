@@ -712,8 +712,36 @@ function userTurn(text) {
   removeWelcome();
   const t = el("div", "turn user");
   t.appendChild(el("div", "bubble", text));
+  t.appendChild(userActions(text));
   $("#threadInner").appendChild(t);
   scrollDown();
+}
+function userActions(text) {
+  const row = el("div", "msg-actions");
+  const copy = el("button", "msg-action");
+  copy.type = "button";
+  copy.title = "Copy";
+  copy.setAttribute("aria-label", "Copy message");
+  copy.innerHTML = ic("copy", 13);
+  copy.addEventListener("click", async () => {
+    await copyText(text);
+    copy.innerHTML = ic("check", 13);
+    setTimeout(() => { copy.innerHTML = ic("copy", 13); }, 1400);
+  });
+  const edit = el("button", "msg-action");
+  edit.type = "button";
+  edit.title = "Edit and resend";
+  edit.setAttribute("aria-label", "Edit and resend");
+  edit.innerHTML = ic("edit", 13);
+  edit.addEventListener("click", () => {
+    input.value = text;
+    autosize();
+    input.focus();
+    input.setSelectionRange(text.length, text.length);
+  });
+  row.appendChild(copy);
+  row.appendChild(edit);
+  return row;
 }
 function aiTurn(jobId) {
   const t = el("div", "turn ai");
@@ -1414,24 +1442,6 @@ function finishFinal(ui, ev, jobId) {
   }
   if (ev.status === "cancelled") {
     ui.body.appendChild(el("div", "usage-line", "Stopped. Nothing else was changed."));
-  }
-
-  const es = ev.evidence_summary || {};
-  if (es.verified || es.observed || es.believed) {
-    const row = el("div", "evi-row");
-    ["verified", "observed", "believed"].forEach((tier) => {
-      const b = el("button", "evi");
-      b.type = "button";
-      b.innerHTML = `<span class="tier ${tier}">${tier}</span> <b>${es[tier] || 0}</b>`;
-      b.addEventListener("click", () => showReport(jobId));
-      row.appendChild(b);
-    });
-    const rep = el("button", "evi");
-    rep.type = "button";
-    rep.innerHTML = `${ic("file", 13)} report`;
-    rep.addEventListener("click", () => showReport(jobId));
-    row.appendChild(rep);
-    ui.body.appendChild(row);
   }
 
   renderSources(ui.body, ev.sources || ui.sources);

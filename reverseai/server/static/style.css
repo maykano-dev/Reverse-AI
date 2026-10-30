@@ -477,7 +477,18 @@ svg.icon { display: block; flex: none; }
 /* ------------------------------------------------------------------ */
 .turn { margin-bottom: 24px; animation: rise .26s ease; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.turn.user { display: flex; justify-content: flex-end; }
+.turn.user { display: flex; flex-direction: column; align-items: flex-end; }
+.msg-actions {
+  display: flex; gap: 2px; margin-top: 5px; opacity: 0; transition: opacity .15s;
+}
+.turn.user:hover .msg-actions, .msg-actions:focus-within { opacity: 1; }
+.msg-action {
+  display: inline-grid; place-items: center; width: 28px; height: 28px;
+  border: 1px solid transparent; background: none; color: var(--faint);
+  border-radius: 8px; cursor: pointer; transition: .12s;
+}
+.msg-action:hover { color: var(--text); background: var(--sunken); border-color: var(--border); }
+@media (hover: none) { .msg-actions { opacity: 1; } }
 .turn.user .bubble {
   background: var(--user-bg);
   border: 1px solid var(--border);
