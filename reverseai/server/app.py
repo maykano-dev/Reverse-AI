@@ -562,6 +562,13 @@ class _Handler(BaseHTTPRequestHandler):
         from ..agent import get_provider
         from ..ocr import ocr_available, unlimited_ocr_available
 
+        def _vision_status():
+            from .. import vision
+            return {
+                "configured": vision.available(),
+                "env": "REVERSEAI_VISION_URL + REVERSEAI_VISION_MODEL",
+            }
+
         name = os.environ.get("REVERSEAI_PROVIDER", "deepseek")
         try:
             get_provider(name)
@@ -599,6 +606,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "unlimited": unlimited_ocr_available(),
                 "tesseract": ocr_available(),
             },
+            "vision": _vision_status(),
             "budget_usd": _budget(),
             "templates": [t.id for t in all_templates()],
         }
