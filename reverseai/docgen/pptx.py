@@ -98,12 +98,21 @@ class Slide:
     bg: str = ""                     # per-slide background override (hex)
     accent: str = ""                 # per-slide accent override (hex)
     notes: str = ""
+    image_data: bytes = b""          # embedded image bytes (png/jpeg)
+    image_w: int = 0
+    image_h: int = 0
+    shapes: list = field(default_factory=list)   # diagram primitives
+    animate: bool = False
 
     def effective_layout(self) -> str:
         if self.layout:
             return self.layout.lower()
+        if self.shapes:
+            return "diagram"
         if self.quote:
             return "quote"
+        if self.image_data and not self.bullets:
+            return "image"
         if self.columns:
             return "two-column"
         if not self.bullets and self.subtitle:
@@ -170,6 +179,84 @@ def _textbox(sid, name, x, y, w, h, paras, anchor="t"):
             f'</p:txBody></p:sp>')
 
 
+def _pic(sid, name, rid, x, y, cx, cy):
+    return (f'<p:pic><p:nvPicPr><p:cNvPr id="{sid}" name="{name}"/>'
+            f'<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/>'
+            f'</p:nvPicPr><p:blipFill><a:blip r:embed="{rid}"/>'
+            f'<a:stretch><a:fillRect/></a:stretch></p:blipFill>'
+            f'<p:spPr><a:xfrm><a:off x="{int(x)}" y="{int(y)}"/>'
+            f'<a:ext cx="{int(cx)}" cy="{int(cy)}"/></a:xfrm>'
+            f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>')
+
+
+def _fit(iw, ih, bx, by, bw, bh):
+    """Fit an image (px) inside a box (EMU), preserving aspect, centered."""
+    if iw <= 0 or ih <= 0:
+        return bx, by, bw, bh
+    scale = min(bw / iw, bh / ih)
+    cx, cy = iw * scale, ih * scale
+    return bx + (bw - cx) / 2, by + (bh - cy) / 2, cx, cy
+
+
+def _diagram_shapes(shapes, t, sid, area):
+    """Render simple diagram primitives into an area (left, top, w, h) EMU.
+
+    Each shape: {type:'rect'|'ellipse'|'line'|'arrow'|'text', x,y,w,h (0..100),
+    color?, text?, text_color?, size?, bold?}.
+    """
+    lft, top, aw, ah = area
+    out = []
+
+    def X(v): return lft + (float(v) / 100.0) * aw
+    def Y(v): return top + (float(v) / 100.0) * ah
+    def W(v): return (float(v) / 100.0) * aw
+    def H(v): return (float(v) / 100.0) * ah
+
+    for sh in shapes:
+        if not isinstance(sh, dict):
+            continue
+        kind = str(sh.get("type") or "rect").lower()
+        color = _hex(sh.get("color"), t["accent"])
+        if kind in ("rect", "ellipse", "roundrect"):
+            geom = "ellipse" if kind == "ellipse" else "roundRect" if kind == "roundrect" else "rect"
+            rv = 8000 if kind == "roundrect" else None
+            x, y, w, h = X(sh.get("x", 0)), Y(sh.get("y", 0)), W(sh.get("w", 20)), H(sh.get("h", 20))
+            out.append(_rect(next(sid), "shape", x, y, w, h, color,
+                             alpha=sh.get("alpha"), geom=geom, round_val=rv))
+            if sh.get("text"):
+                tc = _hex(sh.get("text_color"), t["on_accent"])
+                runs = _run(sh["text"], float(sh.get("size") or 14), tc,
+                            t["fonts"]["body"], bold=bool(sh.get("bold")))
+                out.append(_textbox(next(sid), "lbl", x, y, w, h,
+                                    [_para(runs, algn="ctr", space_after=0)], anchor="ctr"))
+        elif kind in ("line", "arrow"):
+            x1, y1 = X(sh.get("x", 0)), Y(sh.get("y", 0))
+            x2, y2 = X(sh.get("x2", sh.get("x", 0))), Y(sh.get("y2", sh.get("y", 0)))
+            ox, oy = min(x1, x2), min(y1, y2)
+            ex, ey = abs(x2 - x1), abs(y2 - y1)
+            flipH = ' flipH="1"' if x2 < x1 else ""
+            flipV = ' flipV="1"' if y2 < y1 else ""
+            weight = int(sh.get("weight") or 19050)
+            tail = ('<a:tailEnd type="triangle" w="med" len="med"/>'
+                    if kind == "arrow" else "")
+            out.append(
+                f'<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="{next(sid)}" name="conn"/>'
+                f'<p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr>'
+                f'<a:xfrm{flipH}{flipV}><a:off x="{int(ox)}" y="{int(oy)}"/>'
+                f'<a:ext cx="{int(ex) or 1}" cy="{int(ey) or 1}"/></a:xfrm>'
+                f'<a:prstGeom prst="line"><a:avLst/></a:prstGeom>'
+                f'<a:ln w="{weight}"><a:solidFill><a:srgbClr val="{color}"/>'
+                f'</a:solidFill>{tail}</a:ln></p:spPr></p:cxnSp>')
+        elif kind == "text":
+            tc = _hex(sh.get("color"), t["ink"])
+            runs = _run(sh.get("text", ""), float(sh.get("size") or 16), tc,
+                        t["fonts"]["body"], bold=bool(sh.get("bold")))
+            out.append(_textbox(next(sid), "txt", X(sh.get("x", 0)), Y(sh.get("y", 0)),
+                                W(sh.get("w", 30)), H(sh.get("h", 10)),
+                                [_para(runs, algn=sh.get("align", "l"), space_after=0)]))
+    return "".join(out)
+
+
 # --------------------------------------------------------------------------- #
 # per-layout composition
 # --------------------------------------------------------------------------- #
@@ -179,8 +266,15 @@ def _decor_corner(t, sid):
                  t["accent"], alpha=9000, geom="ellipse")
 
 
-def _slide_shapes(slide: Slide, t: dict) -> tuple[str, str]:
-    """Return (background_hex, inner spTree shapes) for a slide."""
+def _img_ext(data: bytes) -> str:
+    return "png" if data[:4] == b"\x89PNG" else "jpg"
+
+
+def _slide_shapes(slide: Slide, t: dict):
+    """Return (background_hex, shapes_xml, media, anim_ids).
+
+    media: list of (local_rid, ext, bytes). anim_ids: shape ids to fade in.
+    """
     layout = slide.effective_layout()
     accent = _hex(slide.accent, t["accent"]) if slide.accent else t["accent"]
     bg = _hex(slide.bg, t["bg"]) if slide.bg else t["bg"]
@@ -188,92 +282,163 @@ def _slide_shapes(slide: Slide, t: dict) -> tuple[str, str]:
     ink, muted = t["ink"], t["muted"]
     sid = iter(range(10, 400))
     sp = []
+    media = []
+    anim = []
+
+    def add_image(bx, by, bw, bh):
+        if not slide.image_data:
+            return
+        rid = f"rId{100 + len(media)}"
+        media.append((rid, _img_ext(bytes(slide.image_data)), bytes(slide.image_data)))
+        x, y, cx, cy = _fit(slide.image_w, slide.image_h, bx, by, bw, bh)
+        iid = next(sid)
+        sp.append(_pic(iid, "image", rid, x, y, cx, cy))
+        if slide.animate:
+            anim.append(iid)
 
     if layout in ("cover", "section"):
-        on_bg = bg
         if layout == "section":
             bg = accent
-            ink_c = t["on_accent"]
-            muted_c = t["on_accent"]
+            ink_c = muted_c = t["on_accent"]
         else:
-            ink_c = ink
-            muted_c = muted
-        # decorative band + corner
+            ink_c, muted_c = ink, muted
         sp.append(_rect(next(sid), "band", _MARGIN, _H * 0.60, 1500000, 26000,
                         accent if layout == "cover" else t["on_accent"]))
         if layout == "cover":
             sp.append(_decor_corner(t, next(sid)))
-        title_runs = _run(slide.title or "", 46, ink_c, font_t, bold=True, spc=-20)
-        sp.append(_textbox(next(sid), "title", _MARGIN, _H * 0.30,
-                           _W - 2 * _MARGIN, 2200000,
-                           [_para(title_runs, space_after=0)], anchor="b"))
+        tid = next(sid)
+        sp.append(_textbox(tid, "title", _MARGIN, _H * 0.30, _W - 2 * _MARGIN, 2200000,
+                           [_para(_run(slide.title or "", 46, ink_c, font_t, bold=True,
+                                       spc=-20), space_after=0)], anchor="b"))
         if slide.subtitle:
-            sub_runs = _run(slide.subtitle, 20, muted_c, font_b)
-            sp.append(_textbox(next(sid), "sub", _MARGIN, _H * 0.62,
-                               _W - 2 * _MARGIN, 1100000,
-                               [_para(sub_runs, space_after=0)]))
-        return bg, "".join(sp)
+            sp.append(_textbox(next(sid), "sub", _MARGIN, _H * 0.62, _W - 2 * _MARGIN,
+                               1100000, [_para(_run(slide.subtitle, 20, muted_c, font_b),
+                                                space_after=0)]))
+        if slide.animate:
+            anim.append(tid)
+        return bg, "".join(sp), media, anim
 
     if layout == "statement":
-        runs = _run(slide.title or slide.subtitle or "", 40, ink, font_t,
-                    bold=True, spc=-20)
         sp.append(_rect(next(sid), "band", _MARGIN, _H * 0.40, 900000, 22000, accent))
-        sp.append(_textbox(next(sid), "stmt", _MARGIN, _H * 0.44,
-                           _W - 2 * _MARGIN, 2000000, [_para(runs, space_after=0)]))
-        return bg, "".join(sp)
+        sp.append(_textbox(next(sid), "stmt", _MARGIN, _H * 0.44, _W - 2 * _MARGIN,
+                           2000000, [_para(_run(slide.title or slide.subtitle or "", 40,
+                                                ink, font_t, bold=True, spc=-20),
+                                            space_after=0)]))
+        return bg, "".join(sp), media, anim
 
     if layout == "quote":
-        mark = _run("“", 120, accent, font_t, bold=True)
-        sp.append(_textbox(next(sid), "mark", _MARGIN - 40000, _H * 0.14,
-                           1600000, 1600000, [_para(mark, space_after=0)]))
-        q = _run(slide.quote or slide.title or "", 30, ink, font_t, italic=True)
-        sp.append(_textbox(next(sid), "quote", _MARGIN, _H * 0.30,
-                           _W - 2 * _MARGIN, 2600000, [_para(q, space_after=0)]))
+        sp.append(_textbox(next(sid), "mark", _MARGIN - 40000, _H * 0.14, 1600000,
+                           1600000, [_para(_run("“", 120, accent, font_t, bold=True),
+                                           space_after=0)]))
+        sp.append(_textbox(next(sid), "quote", _MARGIN, _H * 0.30, _W - 2 * _MARGIN,
+                           2600000, [_para(_run(slide.quote or slide.title or "", 30,
+                                                ink, font_t, italic=True), space_after=0)]))
         if slide.attribution:
-            at = _run("— " + slide.attribution, 18, muted, font_b)
-            sp.append(_textbox(next(sid), "attr", _MARGIN, _H * 0.70,
-                               _W - 2 * _MARGIN, 700000, [_para(at, space_after=0)]))
-        return bg, "".join(sp)
+            sp.append(_textbox(next(sid), "attr", _MARGIN, _H * 0.70, _W - 2 * _MARGIN,
+                               700000, [_para(_run("— " + slide.attribution, 18,
+                                                   muted, font_b), space_after=0)]))
+        return bg, "".join(sp), media, anim
 
-    # ---- content / two-column: title band at top, then body ----
+    # ---- title header shared by content / two-column / image / diagram ----
     sp.append(_rect(next(sid), "dot", _MARGIN, 620000, 150000, 150000, accent,
                     geom="ellipse"))
-    title_runs = _run(slide.title or "", 30, ink, font_t, bold=True, spc=-10)
     sp.append(_textbox(next(sid), "title", _MARGIN + 260000, 470000,
                        _W - 2 * _MARGIN - 260000, 900000,
-                       [_para(title_runs, space_after=0)]))
+                       [_para(_run(slide.title or "", 30, ink, font_t, bold=True, spc=-10),
+                              space_after=0)]))
     sp.append(_rect(next(sid), "rule", _MARGIN, 1420000, 1150000, 20000, accent))
     if slide.subtitle:
-        sub = _run(slide.subtitle, 17, muted, font_b)
-        sp.append(_textbox(next(sid), "sub", _MARGIN, 1520000,
-                           _W - 2 * _MARGIN, 600000, [_para(sub, space_after=0)]))
+        sp.append(_textbox(next(sid), "sub", _MARGIN, 1520000, _W - 2 * _MARGIN, 600000,
+                           [_para(_run(slide.subtitle, 17, muted, font_b), space_after=0)]))
     body_top = 2050000 if slide.subtitle else 1760000
+    body_h = _H - body_top - 500000
+
+    if layout == "diagram":
+        area = (_MARGIN, body_top, _W - 2 * _MARGIN, body_h)
+        sp.append(_diagram_shapes(slide.shapes, t, sid, area))
+        return bg, "".join(sp), media, anim
 
     def bullet_paras(items):
-        out = []
-        for b in items:
-            runs = _run(str(b), 18, ink, font_b)
-            out.append(_para(runs, marL=320000, indent=-320000,
-                             bu_color=accent, bu_char="•", space_after=1000))
+        out = [_para(_run(str(b), 18, ink, font_b), marL=320000, indent=-320000,
+                     bu_color=accent, bu_char="•", space_after=1000) for b in items]
         return out or [_para(_run("", 18, ink, font_b), space_after=0)]
 
-    if layout == "two-column" and slide.columns:
+    if layout == "image":
+        add_image(_MARGIN, body_top, _W - 2 * _MARGIN, body_h)
+        return bg, "".join(sp), media, anim
+
+    if slide.image_data:
+        # text left, image right
+        text_w = (_W - 2 * _MARGIN) * 0.52
+        bid = next(sid)
+        sp.append(_textbox(bid, "body", _MARGIN, body_top, text_w, body_h,
+                           bullet_paras(slide.bullets)))
+        if slide.animate:
+            anim.append(bid)
+        img_x = _MARGIN + text_w + 400000
+        add_image(img_x, body_top, _W - _MARGIN - img_x, body_h)
+    elif layout == "two-column" and slide.columns:
         cols = slide.columns[:2]
         col_w = (_W - 2 * _MARGIN - 500000) / 2
         for ci, col in enumerate(cols):
             x = _MARGIN + ci * (col_w + 500000)
-            sp.append(_textbox(next(sid), f"col{ci}", x, body_top, col_w,
-                               _H - body_top - 500000, bullet_paras(col)))
+            cid = next(sid)
+            sp.append(_textbox(cid, f"col{ci}", x, body_top, col_w, body_h,
+                               bullet_paras(col)))
+            if slide.animate:
+                anim.append(cid)
     else:
-        sp.append(_textbox(next(sid), "body", _MARGIN, body_top,
-                           _W - 2 * _MARGIN, _H - body_top - 500000,
+        bid = next(sid)
+        sp.append(_textbox(bid, "body", _MARGIN, body_top, _W - 2 * _MARGIN, body_h,
                            bullet_paras(slide.bullets)))
-    return bg, "".join(sp)
+        if slide.animate:
+            anim.append(bid)
+    return bg, "".join(sp), media, anim
 
 
-def _slide_xml(slide: Slide, t: dict) -> str:
-    bg, shapes = _slide_shapes(slide, t)
+def _timing_fade(anim_ids: list) -> str:
+    """A conservative sequential fade-in entrance for the given shape ids.
+
+    Experimental: OOXML timing is strict. Kept simple (one fade per shape, on
+    the main sequence) so the file still opens if a viewer ignores animations.
+    """
+    if not anim_ids:
+        return ""
+    effects = []
+    cid = 10
+    for spid in anim_ids:
+        effects.append(
+            f'<p:par><p:cTn id="{cid}" fill="hold"><p:stCondLst>'
+            f'<p:cond delay="{"0" if cid == 10 else "indefinite"}"/></p:stCondLst>'
+            f'<p:childTnLst><p:par><p:cTn id="{cid + 1}" fill="hold"><p:stCondLst>'
+            f'<p:cond delay="0"/></p:stCondLst><p:childTnLst><p:par>'
+            f'<p:cTn id="{cid + 2}" presetID="10" presetClass="entr" presetSubtype="0" '
+            f'fill="hold" nodeType="{"clickEffect" if cid == 10 else "afterEffect"}">'
+            f'<p:stCondLst><p:cond delay="0"/></p:stCondLst><p:childTnLst>'
+            f'<p:set><p:cBhvr><p:cTn id="{cid + 3}" dur="1" fill="hold"><p:stCondLst>'
+            f'<p:cond delay="0"/></p:stCondLst></p:cTn><p:tgtEl><p:spTgt spid="{spid}"/>'
+            f'</p:tgtEl><p:attrNameLst><p:attrName>style.visibility</p:attrName>'
+            f'</p:attrNameLst></p:cBhvr><p:to><p:strVal val="visible"/></p:to></p:set>'
+            f'<p:animEffect transition="in" filter="fade"><p:cBhvr>'
+            f'<p:cTn id="{cid + 4}" dur="500"/><p:tgtEl><p:spTgt spid="{spid}"/></p:tgtEl>'
+            f'</p:cBhvr></p:animEffect></p:childTnLst></p:cTn></p:par></p:childTnLst>'
+            f'</p:cTn></p:par></p:childTnLst></p:cTn></p:par>')
+        cid += 10
     return (
+        '<p:timing><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" '
+        'nodeType="tmRoot"><p:childTnLst><p:seq concurrent="1" nextAc="seek">'
+        '<p:cTn id="2" dur="indefinite" nodeType="mainSeq"><p:childTnLst>'
+        + "".join(effects) +
+        '</p:childTnLst></p:cTn><p:prevCondLst><p:cond evt="onPrev" delay="0">'
+        '<p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst>'
+        '<p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl>'
+        '</p:cond></p:nextCondLst></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>')
+
+
+def _slide_xml(slide: Slide, t: dict):
+    bg, shapes, media, anim = _slide_shapes(slide, t)
+    timing = _timing_fade(anim) if slide.animate else ""
+    xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
         '<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
@@ -287,7 +452,22 @@ def _slide_xml(slide: Slide, t: dict) -> str:
         '</a:xfrm></p:grpSpPr>'
         f'{shapes}'
         '</p:spTree></p:cSld>'
-        '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>')
+        '<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>'
+        f'{timing}</p:sld>')
+    return xml, media
+
+
+def _slide_rels(media) -> str:
+    rels = ['<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/'
+            'officeDocument/2006/relationships/slideLayout" '
+            'Target="../slideLayouts/slideLayout1.xml"/>']
+    for gi, (rid, ext, _data) in media:
+        rels.append(
+            f'<Relationship Id="{rid}" Type="http://schemas.openxmlformats.org/'
+            f'officeDocument/2006/relationships/image" Target="../media/image{gi}.{ext}"/>')
+    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            + "".join(rels) + "</Relationships>")
 
 
 # --------------------------------------------------------------------------- #
@@ -297,6 +477,9 @@ _CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
+<Default Extension="png" ContentType="image/png"/>
+<Default Extension="jpg" ContentType="image/jpeg"/>
+<Default Extension="jpeg" ContentType="image/jpeg"/>
 <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
 <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
 <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
@@ -405,7 +588,15 @@ def render_pptx(slides: list, theme=None) -> bytes:
         z.writestr("ppt/slideLayouts/slideLayout1.xml", _SLIDE_LAYOUT)
         z.writestr("ppt/slideLayouts/_rels/slideLayout1.xml.rels",
                    _SLIDE_LAYOUT_RELS)
+        media_n = 0
         for i, slide in enumerate(slides):
-            z.writestr(f"ppt/slides/slide{i + 1}.xml", _slide_xml(slide, t))
-            z.writestr(f"ppt/slides/_rels/slide{i + 1}.xml.rels", _SLIDE_RELS)
+            xml, media = _slide_xml(slide, t)
+            z.writestr(f"ppt/slides/slide{i + 1}.xml", xml)
+            indexed = []
+            for (rid, ext, data) in media:
+                media_n += 1
+                z.writestr(f"ppt/media/image{media_n}.{ext}", data)
+                indexed.append((media_n, (rid, ext, data)))
+            z.writestr(f"ppt/slides/_rels/slide{i + 1}.xml.rels",
+                       _slide_rels(indexed))
     return buf.getvalue()

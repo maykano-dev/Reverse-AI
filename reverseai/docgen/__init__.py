@@ -115,7 +115,11 @@ def _docx(spec):
         if not isinstance(b, dict):
             continue
         t = str(b.get("type") or "paragraph")
-        if t == "table" and isinstance(b.get("rows"), list):
+        if t == "image" and isinstance(b.get("data"), (bytes, bytearray)):
+            d.image(bytes(b["data"]), int(b.get("img_w") or 0),
+                    int(b.get("img_h") or 0),
+                    caption=str(b.get("caption") or b.get("text") or ""))
+        elif t == "table" and isinstance(b.get("rows"), list):
             d.table(b["rows"])
         elif t == "subtitle":
             d.subtitle = str(b.get("text") or "")
@@ -135,6 +139,7 @@ def _pptx(spec):
             continue
         cols = s.get("columns") or []
         columns = [[str(x) for x in (c or [])] for c in cols] if cols else []
+        img = s.get("image_data")
         slides.append(Slide(
             title=str(s.get("title") or ""),
             subtitle=str(s.get("subtitle") or ""),
@@ -145,7 +150,12 @@ def _pptx(spec):
             attribution=str(s.get("attribution") or ""),
             bg=str(s.get("bg") or ""),
             accent=str(s.get("accent") or ""),
-            notes=str(s.get("notes") or "")))
+            notes=str(s.get("notes") or ""),
+            image_data=img if isinstance(img, (bytes, bytearray)) else b"",
+            image_w=int(s.get("image_w") or 0),
+            image_h=int(s.get("image_h") or 0),
+            shapes=s.get("shapes") or [],
+            animate=bool(s.get("animate") or spec.get("animate"))))
     if not slides and spec.get("title"):
         slides.append(Slide(title=str(spec["title"])))
     return render_pptx(slides, theme=spec.get("theme"))

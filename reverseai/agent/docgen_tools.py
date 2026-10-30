@@ -35,12 +35,17 @@ class CreateDocumentTool(Tool):
         "subtitle), section (full-accent divider), content ({title, subtitle?, "
         "bullets}), two-column ({title, columns:[[...],[...]]}), quote ({quote, "
         "attribution}), or statement ({title}); plus per-slide 'bg'/'accent' "
-        "overrides. Pick a theme that fits the topic and vary the layouts. "
-        "sheets (xlsx/csv) take {rows:[[...],[...]], sheet?}; json takes {data}; "
-        "svg/html/txt may take {content}. To place a picture in a pdf, add a "
-        "block {type:'image', src:'assets/photo.png', caption?, width?} where "
-        "'src' is a PNG/JPEG already in the workspace (e.g. installed with "
-        "install_media). Give a clear 'name' for the file."
+        "overrides. Pick a theme that fits the topic and vary the layouts. A slide "
+        "can include an image ('image':'assets/x.png'; layout 'image' for a big "
+        "figure, or with bullets for text+image), a diagram (layout 'diagram', "
+        "'shapes':[{type:'rect'|'roundrect'|'ellipse'|'line'|'arrow'|'text', "
+        "x,y,w,h as 0-100 percent, x2/y2 for lines, color, text, text_color}]) to "
+        "draw flows and boxes, and a subtle entrance fade ('animate':true on the "
+        "deck or a slide). sheets (xlsx/csv) take {rows:[[...],[...]], sheet?}; "
+        "json takes {data}; svg/html/txt may take {content}. To place a picture in "
+        "a pdf or Word doc, add a block {type:'image', src:'assets/photo.png', "
+        "caption?, width?} where 'src' is a PNG/JPEG already in the workspace (e.g. "
+        "from install_media). Give a clear 'name' for the file."
     )
     parameters = {
         "type": "object",

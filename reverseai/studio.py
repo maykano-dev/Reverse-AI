@@ -51,47 +51,58 @@ def _sidecar(workspace: str | Path, filename: str) -> Path:
     return studio_dir(workspace) / (_safe_name(filename) + ".json")
 
 
+def _json_safe(value):
+    """Recursively drop bytes values so a spec can be stored as JSON."""
+    if isinstance(value, (bytes, bytearray)):
+        return None
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            sv = _json_safe(v)
+            if sv is not None or not isinstance(v, (bytes, bytearray)):
+                out[k] = sv
+        return out
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 def _strip_bytes(spec: dict[str, Any]) -> dict[str, Any]:
     """Return a JSON-safe copy of a spec: drop embedded image bytes, keep src."""
-    import copy
+    return _json_safe(spec)
 
-    clean = copy.deepcopy({k: v for k, v in spec.items() if k != "blocks"})
-    blocks = []
-    for b in spec.get("blocks") or []:
-        if isinstance(b, dict):
-            blocks.append({k: v for k, v in b.items()
-                           if k != "data" and not isinstance(v, (bytes, bytearray))})
-        else:
-            blocks.append(b)
-    if "blocks" in spec:
-        clean["blocks"] = blocks
-    return clean
+
+def _read_image(workspace, src):
+    from .docgen.images import ImageError, decode_image
+    if not isinstance(src, str) or not src:
+        return None
+    try:
+        p = _safe_join_ws(workspace, src)
+        if p.is_file() and p.stat().st_size <= 12 * 1024 * 1024:
+            data = p.read_bytes()
+            img = decode_image(data)       # validate + get dimensions
+            return data, img.width, img.height
+    except (OSError, ValueError, ImageError):
+        return None
+    return None
 
 
 def embed_images(spec: dict[str, Any], workspace: str | Path) -> None:
-    """Resolve {type:'image', src:'assets/x.png'} to embedded bytes in place.
+    """Resolve image src references to embedded bytes in place (blocks + slides).
 
-    Keeps the pure renderer off the filesystem: the path is read and validated
-    here. Safe to call repeatedly; already-embedded blocks are left alone.
+    Keeps the pure renderer off the filesystem: paths are read and validated
+    here. Safe to call repeatedly; already-embedded items are left alone.
     """
-    from .docgen.images import ImageError, decode_image
-
-    blocks = spec.get("blocks")
-    if not isinstance(blocks, list):
-        return
-    for b in blocks:
-        if not isinstance(b, dict) or b.get("type") != "image" or b.get("data"):
-            continue
-        src = b.get("src") or b.get("path")
-        if not isinstance(src, str) or not src:
-            continue
-        try:
-            p = _safe_join_ws(workspace, src)
-            if p.is_file() and p.stat().st_size <= 12 * 1024 * 1024:
-                decode_image(p.read_bytes())  # validate it is a real image
-                b["data"] = p.read_bytes()
-        except (OSError, ValueError, ImageError):
-            continue
+    for b in spec.get("blocks") or []:
+        if (isinstance(b, dict) and b.get("type") == "image" and not b.get("data")):
+            got = _read_image(workspace, b.get("src") or b.get("path"))
+            if got:
+                b["data"], b["img_w"], b["img_h"] = got
+    for s in spec.get("slides") or []:
+        if isinstance(s, dict) and s.get("image") and not s.get("image_data"):
+            got = _read_image(workspace, s.get("image"))
+            if got:
+                s["image_data"], s["image_w"], s["image_h"] = got
 
 
 def _safe_join_ws(workspace: str | Path, rel: str) -> Path:

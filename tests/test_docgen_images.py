@@ -3,7 +3,9 @@
 import struct
 import tempfile
 import unittest
+import zipfile
 import zlib
+from io import BytesIO
 from pathlib import Path
 
 from reverseai.docgen import generate
@@ -81,3 +83,61 @@ class PdfImageEmbedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _png_bytes(w, h):
+    return _png(w, h)
+
+
+class DocxImageTests(unittest.TestCase):
+    def test_docx_embeds_image(self):
+        import tempfile
+        from pathlib import Path
+        from reverseai.studio import embed_images
+        ws = tempfile.mkdtemp()
+        (Path(ws) / "assets").mkdir()
+        (Path(ws) / "assets" / "p.png").write_bytes(_png(60, 40))
+        spec = {"title": "Doc", "blocks": [
+            {"type": "image", "src": "assets/p.png", "caption": "fig"}]}
+        embed_images(spec, ws)
+        data = generate("docx", spec, name="d").data
+        z = zipfile.ZipFile(BytesIO(data))
+        self.assertIsNone(z.testzip())
+        self.assertIn("word/media/image1.png", z.namelist())
+        self.assertIn(b"<w:drawing>", z.read("word/document.xml"))
+
+
+class DeckImageDiagramTests(unittest.TestCase):
+    def test_deck_embeds_slide_image(self):
+        import tempfile
+        from pathlib import Path
+        from reverseai.studio import embed_images
+        ws = tempfile.mkdtemp()
+        (Path(ws) / "assets").mkdir()
+        (Path(ws) / "assets" / "s.png").write_bytes(_png(80, 60))
+        spec = {"slides": [{"layout": "image", "title": "Pic", "image": "assets/s.png"}]}
+        embed_images(spec, ws)
+        data = generate("pptx", spec, name="deck").data
+        z = zipfile.ZipFile(BytesIO(data))
+        self.assertIsNone(z.testzip())
+        self.assertTrue(any("media/image" in n for n in z.namelist()))
+        self.assertIn(b"<p:pic>", z.read("ppt/slides/slide1.xml"))
+
+    def test_diagram_shapes_render(self):
+        spec = {"slides": [{"layout": "diagram", "title": "Flow", "shapes": [
+            {"type": "roundrect", "x": 5, "y": 30, "w": 20, "h": 18, "text": "A"},
+            {"type": "arrow", "x": 25, "y": 39, "x2": 45, "y2": 39},
+            {"type": "rect", "x": 45, "y": 30, "w": 20, "h": 18, "text": "B"}]}]}
+        data = generate("pptx", spec, name="diag").data
+        z = zipfile.ZipFile(BytesIO(data))
+        self.assertIsNone(z.testzip())
+        slide = z.read("ppt/slides/slide1.xml")
+        self.assertIn(b"prst=\"line\"", slide)
+        self.assertIn(b"tailEnd", slide)
+
+    def test_animation_adds_timing_but_stays_valid(self):
+        data = generate("pptx", {"animate": True, "slides": [
+            {"title": "x", "bullets": ["a", "b"]}]}, name="anim").data
+        z = zipfile.ZipFile(BytesIO(data))
+        self.assertIsNone(z.testzip())
+        self.assertIn(b"<p:timing>", z.read("ppt/slides/slide1.xml"))
