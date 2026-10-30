@@ -156,6 +156,13 @@ function renderMd(node, text) {
   node.innerHTML = md(text);
   enhanceCodeBlocks(node);
 }
+// The model's first natural sentence, for a step headline (restore path).
+function leadSentence(text) {
+  const t = deDash(String(text || "")).replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  const m = t.split(/(?<=[.!?])\s/);
+  return (m[0] || t).replace(/:$/, "").slice(0, 160).trim();
+}
 function copyText(text) {
   if (navigator.clipboard && window.isSecureContext) {
     return navigator.clipboard.writeText(text);
@@ -1595,7 +1602,8 @@ function handleEvent(ui, ev, jobId) {
       addReason(ui, ev);
       break;
     case "assistant":
-      if (ev.content && ev.tool_calls && ev.tool_calls.length) addThought(ui, ev.content);
+      // The model's in-the-moment narration is now the headline of the next
+      // "reason" step, so it is not repeated here as a separate note.
       break;
     case "tool_result":
       addToolResult(ui, ev);
@@ -1964,11 +1972,13 @@ async function openConversation(jobId) {
       if (calls.length) {
         if (!archivedUI) archivedUI = aiTurn(jobId);
         addPlan(archivedUI, (rec.plan || []));
-        calls.forEach((call) => {
+        const lead = leadSentence(m.content);
+        calls.forEach((call, ci) => {
           const fn = call.function || call;
           const name = fn.name || "";
           const args = parseArgs(fn.arguments);
-          addReason(archivedUI, { title: toolLabel(name), detail: "" });
+          const headline = (ci === 0 && lead) ? lead : toolLabel(name);
+          addReason(archivedUI, { title: headline, detail: "" });
           const out = toolResults.get(call.id) || "";
           addToolResult(archivedUI, { name, ok: true, title: toolLabel(name), content: out });
           if (name === "create_surface") {
@@ -1979,7 +1989,6 @@ async function openConversation(jobId) {
             }
           }
         });
-        if (m.content) addThought(archivedUI, m.content);
       } else if (m.content) {
         finalAnswer = m.content;
       }

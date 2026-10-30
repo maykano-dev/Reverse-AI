@@ -36,6 +36,18 @@ from .templates import prompt_addendum
 from .tools import ToolContext
 
 
+def _lead_sentence(text: str) -> str:
+    """The model's first natural sentence, for the live step headline."""
+    import re
+    t = " ".join((text or "").split())
+    if not t:
+        return ""
+    lead = re.split(r"(?<=[.!?])\s", t, maxsplit=1)[0].strip()
+    # Drop a trailing colon ("Let me do X:") and cap the length.
+    lead = lead.rstrip(":")
+    return lead[:160].strip()
+
+
 def make_emitter(on_event):
     """Wrap on_event so a bad callback can never break the loop."""
     if on_event is None:
@@ -155,10 +167,14 @@ class Conversation:
                 parts += ["", block]
         parts += [
             "",
-            "Reasoning display: the interface shows a short, human timeline of what "
-            "you do. Keep your interim notes specific and natural (what you are "
-            "checking and why), never mention tool names, and do not narrate the "
-            "interface itself.",
+            "Narrating as you work: before you act, write ONE short, natural "
+            "sentence, in the first person and present tense, saying what you are "
+            "doing right now and why, the way you would tell a colleague looking "
+            "over your shoulder (for example: \"Let me open the file and see how "
+            "it's laid out,\" or \"Now I'll run it in the sandbox to watch what it "
+            "actually does\"). This line is shown live as your headline for that "
+            "step. Keep it specific and human, vary the wording, never mention "
+            "tool names, and do not narrate the interface itself.",
         ]
         return "\n".join(parts)
 
@@ -393,15 +409,19 @@ class Conversation:
                 job.status = "completed"
                 return
 
-            for tc in resp.tool_calls:
+            narration = _lead_sentence(strip_dashes(resp.content or ""))
+            for ti, tc in enumerate(resp.tool_calls):
                 if stop_event is not None and stop_event.is_set():
                     job.status = "cancelled"
                     job.final_answer = "Stopped. Nothing else was changed."
                     return
                 before = len(self.evidence.all())
                 info = describe_tool(tc.name, tc.arguments)
+                # Prefer the model's own in-the-moment narration as the headline;
+                # fall back to the templated title when it did not narrate.
+                headline = narration if (ti == 0 and narration) else info["title"]
                 emit({"type": "reason", "step": step, "tool": tc.name,
-                      "title": info["title"], "detail": info["detail"],
+                      "title": headline, "detail": info["detail"],
                       "icon": info["icon"]})
 
                 result = agent.mediator.dispatch(tc.name, tc.arguments, self.ctx)
