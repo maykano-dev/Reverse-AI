@@ -63,6 +63,14 @@ class CreateDocumentTool(Tool):
         except OSError as exc:
             return ToolResult.failure(f"could not write file: {exc}")
 
+        # Keep the spec so the file can be reopened and edited in the Studio.
+        try:
+            from ..studio import save_spec
+            save_spec(ctx.workspace, doc.filename, doc.kind, spec,
+                      name=args.get("name"))
+        except Exception:  # pragma: no cover - sidecar is best-effort
+            pass
+
         _invalidate(ctx)
         ctx.extra["modified_path"] = str(out)
         ctx.extra["modified_operation"] = "document"

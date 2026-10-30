@@ -72,7 +72,11 @@ class SurfaceUIContractTests(unittest.TestCase):
         js = APP.read_text(encoding="utf-8")
         sw = (ROOT / "reverseai/server/static/sw.js").read_text(encoding="utf-8")
         self.assertIn("controllerchange", js)
-        self.assertIn("rvai-v21", sw)
+        # A versioned cache name must exist and stale caches must be purged on
+        # activate; the exact number bumps with every shell change.
+        import re
+        self.assertRegex(sw, r'VERSION\s*=\s*"rvai-v\d+"')
+        self.assertIn("caches.delete", sw)
 
     def test_custom_view_is_sandboxed(self):
         js = APP.read_text(encoding="utf-8")

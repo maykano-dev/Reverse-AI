@@ -103,6 +103,9 @@ _SURFACE_EVENT_PATH = re.compile(
 _SURFACE_RESPOND_PATH = re.compile(
     r"^/jobs/(job_[A-Za-z0-9]+)/surfaces/(sf_[A-Za-z0-9]+)/respond$")
 _VENDOR_PATH = re.compile(r"^/vendor/([A-Za-z0-9._-]+)$")
+_STUDIO_PATH = re.compile(r"^/studio/(conv_[A-Za-z0-9]+)/([A-Za-z0-9._-]+)$")
+_STUDIO_EXPORT_PATH = re.compile(
+    r"^/studio/(conv_[A-Za-z0-9]+)/([A-Za-z0-9._-]+)/export$")
 _STATIC_DIR = Path(__file__).parent / "static"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
@@ -295,7 +298,8 @@ class _Handler(BaseHTTPRequestHandler):
             # The shell is public so the login screen can load; every API call
             # behind it is still authenticated.
             return self._send_static("index.html", "text/html; charset=utf-8", csp=True)
-        if path in ("/app.js", "/style.css", "/manifest.webmanifest", "/sw.js", "/icon.svg"):
+        if path in ("/app.js", "/studio.js", "/style.css", "/manifest.webmanifest",
+                    "/sw.js", "/icon.svg"):
             return self._serve_asset(path)
         vm = _VENDOR_PATH.match(path)
         if vm:
@@ -385,6 +389,12 @@ class _Handler(BaseHTTPRequestHandler):
         rm = _PREVIEW_RELOAD_PATH.match(path)
         if rm:
             return self._preview_reload_js(rm.group(1))
+        sx = _STUDIO_EXPORT_PATH.match(path)
+        if sx:
+            return self._studio_export(sx.group(1), sx.group(2))
+        st = _STUDIO_PATH.match(path)
+        if st:
+            return self._studio_load(st.group(1), st.group(2))
         pm = _PREVIEW_PATH.match(path)
         if pm:
             return self._serve_preview(pm.group(1), pm.group(2))
@@ -437,6 +447,9 @@ class _Handler(BaseHTTPRequestHandler):
             ok = self.runs.cancel(cm.group(1))
             return self._send(200 if ok else 404,
                               {"cancelled": ok, "id": cm.group(1)})
+        sp = _STUDIO_PATH.match(self.path.split("?", 1)[0])
+        if sp:
+            return self._studio_save(sp.group(1), sp.group(2), body)
         svs = _PREVIEW_SERVER_START.match(self.path)
         if svs:
             return self._preview_server_start(svs.group(1), body)
@@ -1021,6 +1034,82 @@ class _Handler(BaseHTTPRequestHandler):
             html = rewrite_html(data.decode("utf-8", "replace"), final_url)
             return self._serve_raw(html.encode("utf-8"), "text/html; charset=utf-8")
         return self._serve_raw(data, ctype or "application/octet-stream")
+
+    # --- Studio: edit & regenerate a generated deliverable --------------
+    def _studio_conv(self, cid: str):
+        conv = self.runs.conversation(cid)
+        if conv is None:
+            self._send(404, {"error": "no such session"})
+            return None
+        return conv
+
+    def _studio_load(self, cid: str, filename: str) -> None:
+        from .. import studio
+
+        conv = self._studio_conv(cid)
+        if conv is None:
+            return
+        try:
+            record = studio.load_spec(conv.workspace, filename)
+        except studio.StudioError as exc:
+            return self._send(404, {"error": str(exc)})
+        file_url = f"/preview/{cid}/{record['filename']}"
+        return self._send(200, {
+            "filename": record["filename"],
+            "kind": record["kind"],
+            "name": record.get("name"),
+            "spec": record["spec"],
+            "file_url": file_url,
+        })
+
+    def _studio_save(self, cid: str, filename: str, body: dict) -> None:
+        from .. import studio
+
+        conv = self._studio_conv(cid)
+        if conv is None:
+            return
+        spec = body.get("spec")
+        if not isinstance(spec, dict):
+            return self._send(400, {"error": "'spec' must be an object"})
+        try:
+            out = studio.regenerate(conv.workspace, filename, spec)
+        except studio.StudioError as exc:
+            return self._send(400, {"error": str(exc)})
+        return self._send(200, {
+            "ok": True,
+            "filename": out.filename,
+            "kind": out.kind,
+            "size": out.size,
+            "sha256": out.sha256,
+        })
+
+    def _studio_export(self, cid: str, filename: str) -> None:
+        from .. import studio
+
+        conv = self._studio_conv(cid)
+        if conv is None:
+            return
+        qs = urllib.parse.urlparse(self.path).query
+        fmt = (urllib.parse.parse_qs(qs).get("format") or ["pdf"])[0]
+        try:
+            out = studio.export(conv.workspace, filename, fmt)
+        except studio.StudioError as exc:
+            return self._send(400, {"error": str(exc)})
+        name = safe_download_name(out.filename)
+        self.send_response(200)
+        self._auth_headers()
+        ctype = self._INLINE_TYPES.get("." + out.kind, "application/octet-stream")
+        want_inline = (urllib.parse.parse_qs(qs).get("inline") or ["0"])[0] == "1"
+        disp = "inline" if (want_inline and ctype != "application/octet-stream") else "attachment"
+        self.send_header("Content-Type", ctype if disp == "inline" else "application/octet-stream")
+        self.send_header("Content-Disposition", f'{disp}; filename="{name}"')
+        self.send_header("Content-Length", str(len(out.data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            self.wfile.write(out.data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _serve_raw(self, data: bytes, ctype: str) -> None:
         self.send_response(200)

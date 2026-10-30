@@ -93,6 +93,10 @@ const P = {
   bookmark: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
   undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
   browser: '<rect x="3" y="5" width="18" height="15" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
+  layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>',
+  edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"/>',
+  present: '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
+  slide: '<rect x="3" y="4" width="18" height="12" rx="2"/><line x1="7" y1="20" x2="17" y2="20"/>',
 };
 function ic(name, size) {
   const s = size || 18;
@@ -1427,7 +1431,7 @@ function finishFinal(ui, ev, jobId) {
   if (delivery.allowed === false) {
     renderDeliveryBlocked(ui.body, delivery.reason, jobId);
   } else {
-    renderArtifact(ui.body, ev.artifact_meta, ev.artifact, jobId);
+    renderArtifact(ui.body, ev.artifact_meta, ev.artifact, jobId, conversationId);
   }
   renderAnswerActions(ui.body, ev.answer || "", jobId);
   if (ev.preview && conversationId) {
@@ -1679,22 +1683,33 @@ function addReportLink(container, jobId) {
   a.innerHTML = `${ic("file", 13)} Verification report`;
   container.appendChild(a);
 }
-function renderArtifact(container, meta, name, jobId) {
+const STUDIO_KINDS = ["pptx", "docx", "pdf", "md", "html", "xlsx", "txt"];
+function renderArtifact(container, meta, name, jobId, convId) {
   const m = meta || {};
   if (!m.name && !name) return;
   const fname = m.name || name || "artifact";
   const ext = (fname.split(".").pop() || "").toLowerCase();
+  const cid = convId || conversationId;
   const dlHref = withToken(`/jobs/${jobId}/artifact`);
   const previewable = ["pdf", "html", "htm", "svg", "png", "jpg", "jpeg",
     "gif", "webp", "txt", "md", "csv", "json"].includes(ext);
+  const editable = cid && STUDIO_KINDS.includes(ext);
+  const isDeck = ext === "pptx";
   const size = m.size ? fmtSize(m.size) : "";
   const sha = m.sha256 ? "sha256 " + m.sha256.slice(0, 10) : "";
   const card = el("div", "artifact");
-  card.innerHTML = `<span class="ai">${ic("file", 18)}</span>
+  card.innerHTML = `<span class="ai">${ic(isDeck ? "layout" : "file", 18)}</span>
     <span class="at"><b>${esc(fname)}</b><span>${[ext.toUpperCase(), size, sha].filter(Boolean).join(" · ") || "Delivered file"}</span></span>
     <span class="aacts"></span>`;
   const acts = card.querySelector(".aacts");
-  if (previewable) {
+  if (editable) {
+    const label = isDeck ? "Open in Studio" : "Edit";
+    const edit = el("button", "abtn abtn-primary");
+    edit.innerHTML = `${ic("edit", 15)}<span>${label}</span>`;
+    edit.addEventListener("click", () => openStudio(cid, fname));
+    acts.appendChild(edit);
+  }
+  if (previewable && !isDeck) {
     const inlineUrl = withToken(`/jobs/${jobId}/artifact?inline=1`);
     const pv = el("button", "abtn", "Preview");
     // The in-app preview pane is a sandboxed iframe, which Chromium's PDF
@@ -1977,7 +1992,7 @@ async function openConversation(jobId) {
     if (rec.delivery && rec.delivery.allowed === false) {
       renderDeliveryBlocked(archivedUI.body, rec.delivery.reason, jobId);
     } else {
-      renderArtifact(archivedUI.body, rec.artifact_meta, rec.artifact, jobId);
+      renderArtifact(archivedUI.body, rec.artifact_meta, rec.artifact, jobId, rec.conversation_id || conversationId);
     }
     renderAnswerActions(archivedUI.body, answer, jobId);
     renderPreviewCard(archivedUI.body, rec.conversation_id || conversationId, rec.preview);
@@ -2003,7 +2018,7 @@ async function openConversation(jobId) {
     if (rec.delivery && rec.delivery.allowed === false) {
       renderDeliveryBlocked(body, rec.delivery.reason, jobId);
     } else {
-      renderArtifact(body, rec.artifact_meta, rec.artifact, jobId);
+      renderArtifact(body, rec.artifact_meta, rec.artifact, jobId, rec.conversation_id || conversationId);
     }
     renderAnswerActions(body, answer, jobId);
     renderPreviewCard(body, rec.conversation_id || conversationId, rec.preview);
@@ -2508,12 +2523,28 @@ function reloadPreview() {
   const sep = base.includes("?") ? "&" : "?";
   f.src = `${base}${sep}__live=${Date.now()}`;
 }
+// Decide, the way a browser omnibox does, whether typed text is an address or a
+// search. Spaces, or a word with no dot and no scheme, mean "search", not a URL.
+function looksLikeUrl(s) {
+  if (/^https?:\/\//i.test(s)) return true;
+  if (/\s/.test(s)) return false;
+  if (/^localhost(:\d+)?([/?#]|$)/i.test(s)) return true;
+  if (/^\d{1,3}(\.\d{1,3}){3}(:\d+)?([/?#]|$)/.test(s)) return true;  // IPv4
+  return /^[^\s/?#.]+(\.[^\s/?#.]+)+(:\d+)?([/?#]|$)/.test(s);        // host.tld
+}
 function browse(u) {
   if (!u) return;
   if (u.startsWith("/")) { showPreview(u, { local: true }); return; }
-  if (!/^https?:\/\//i.test(u)) u = "https://" + u;
-  showPreview("/proxy?url=" + encodeURIComponent(u),
-    { shown: u, keepBar: true, title: hostOf(u) });
+  if (looksLikeUrl(u)) {
+    if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+    showPreview("/proxy?url=" + encodeURIComponent(u),
+      { shown: u, keepBar: true, title: hostOf(u) });
+    return;
+  }
+  // Not an address: run it as a web search (static results page the proxy can render).
+  const search = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(u);
+  showPreview("/proxy?url=" + encodeURIComponent(search),
+    { shown: u, keepBar: true, title: u });
 }
 function showLaunchCard(cid, rel) {
   const url = previewHref(cid, rel);

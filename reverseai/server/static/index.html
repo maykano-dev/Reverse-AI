@@ -116,6 +116,7 @@
       <div class="tabs" role="tablist">
         <button class="tab" data-pane="preview" role="tab">Preview</button>
         <button class="tab active" data-pane="editor" role="tab">Output</button>
+        <button class="tab" data-pane="studio" role="tab" id="studioTab" style="display:none;">Studio</button>
         <button class="tab" data-pane="report" role="tab">Report</button>
         <button class="tab" data-pane="caps" role="tab">Host</button>
       </div>
@@ -181,8 +182,26 @@
             sandbox="allow-scripts allow-forms allow-popups" title="Preview"></iframe>
         </div>
       </div>
+      <div class="pane studio" id="studioPane">
+        <div class="st-empty" id="stEmpty">
+          <div class="ce-big" data-icon="layout" data-size="28"></div>
+          <p>Open a generated deck or document to edit it here.</p>
+        </div>
+      </div>
     </div>
   </aside>
+</div>
+
+<!-- present mode overlay -->
+<div class="present" id="present" aria-hidden="true">
+  <div class="present-stage" id="presentStage"></div>
+  <div class="present-bar">
+    <button class="present-ic" id="presentPrev" aria-label="Previous" data-icon="chevronLeft"></button>
+    <span class="present-count" id="presentCount">1 / 1</span>
+    <button class="present-ic" id="presentNext" aria-label="Next" data-icon="chevronRight"></button>
+    <span class="present-grow"></span>
+    <button class="present-ic" id="presentClose" aria-label="Exit" data-icon="x"></button>
+  </div>
 </div>
 
 <!-- sheets -->
@@ -297,5 +316,6 @@
 <script src="/vendor/marked.min.js"></script>
 <script src="/vendor/purify.min.js"></script>
 <script src="/app.js"></script>
+<script src="/studio.js"></script>
 </body>
 </html>

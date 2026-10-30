@@ -1,9 +1,10 @@
 /* ReverseAI service worker — app shell only.
    Never cache API responses, SSE streams, uploads, previews, or downloads. */
-const VERSION = "rvai-v21";
+const VERSION = "rvai-v22";
 const SHELL = [
   "/",
   "/app.js",
+  "/studio.js",
   "/style.css",
   "/manifest.webmanifest",
   "/icon.svg",
@@ -27,8 +28,8 @@ self.addEventListener("activate", (event) => {
 
 function isShell(url) {
   const p = url.pathname;
-  if (p === "/" || p === "/app.js" || p === "/style.css" || p === "/icon.svg" ||
-      p === "/manifest.webmanifest") return true;
+  if (p === "/" || p === "/app.js" || p === "/studio.js" || p === "/style.css" ||
+      p === "/icon.svg" || p === "/manifest.webmanifest") return true;
   return p.startsWith("/vendor/");
 }
 
