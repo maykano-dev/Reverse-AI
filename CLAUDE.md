@@ -109,6 +109,21 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   adapters, tool forging, manifests, capability mapping, trust, and reality
   classification, plus coding, memory, research, delegate, routines, archive
   extraction, website cloning, and OCR.
+- **Agentic coding navigation:** `search_code` (ripgrep-style literal/regex
+  search over the project, with globbing and context, skipping VCS/build/binary
+  noise) and `code_outline` (a symbol map of classes/functions with line
+  numbers - Python via `ast`, JS/TS/Go/Rust/Java/C/C++/Ruby/PHP via patterns)
+  so the agent navigates a large repo without reading whole files.
+- **Git integration:** `git_status`, `git_diff`, `git_log`, `git_branch`, and
+  `git_commit` operate on the project repo (pager/prompt disabled, output
+  capped). Local and reversible only - no `push` and no remote mutation; a PR
+  or CI read goes through `run_command` with `gh` when coding network is
+  operator-enabled.
+- **Test-write-run-fix loop:** `run_tests` auto-detects the runner
+  (pytest/unittest, npm test, go test, cargo test) or takes an explicit argv,
+  runs it in the sandbox, and reports a PASSED/FAILED verdict - the "run" step
+  of edit -> test -> read failures -> fix. A passing test, not a successful
+  build, is the proof.
 - **Interactive surfaces:** the agent can call `create_surface` to render a
   validated question, form, table, chart, graph, diff, code view, progress
   panel, approval card, file drop, dashboard, or sandboxed custom view inside

@@ -77,6 +77,14 @@ _TOOL_ICON = {
     "write_file": "file",
     "edit_file": "code",
     "run_command": "terminal",
+    "run_tests": "check",
+    "search_code": "search",
+    "code_outline": "code",
+    "git_status": "code",
+    "git_diff": "bars",
+    "git_log": "code",
+    "git_branch": "code",
+    "git_commit": "bookmark",
     "web_search": "search",
     "web_read": "globe",
     "web_images": "search",
@@ -329,6 +337,32 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
         cmd = " ".join(str(x) for x in argv[:4]) if isinstance(argv, list) else str(argv)
         title = "Running a command"
         detail = _short(cmd, 90)
+    elif name == "run_tests":
+        title = "Running the tests"
+        argv = a.get("argv") or []
+        detail = (_short(" ".join(str(x) for x in argv[:4]), 90) if argv
+                  else "Running the project's test suite and reading the result.")
+    elif name == "search_code":
+        title = "Searching the code"
+        detail = f"Looking for: {_short(a.get('query', ''), 80)}"
+    elif name == "code_outline":
+        title = "Mapping the code"
+        detail = _short(a.get("path", "."), 60)
+    elif name == "git_status":
+        title = "Checking what changed"
+        detail = "Reading the working-tree status."
+    elif name == "git_diff":
+        title = "Reviewing the diff"
+        detail = _short(a.get("ref", "") or "working-tree changes", 60)
+    elif name == "git_log":
+        title = "Reading the history"
+        detail = "Looking at recent commits."
+    elif name == "git_branch":
+        title = "Working with branches"
+        detail = _short(a.get("name", "") or "listing branches", 60)
+    elif name == "git_commit":
+        title = "Committing the change"
+        detail = _short(a.get("message", ""), 90)
     elif name == "web_search":
         title = "Searching the web"
         detail = f"Looking for: {_short(a.get('query', ''), 90)}"

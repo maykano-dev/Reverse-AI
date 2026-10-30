@@ -556,6 +556,90 @@ class RunCommandTool(Tool):
                           content=summary, data=res.to_dict(), error=res.error)
 
 
+def _detect_test_command(root: Path) -> tuple[list[str] | None, str]:
+    """Pick a reasonable test command for the project, or (None, reason)."""
+    import json as _json
+    if (root / "go.mod").is_file():
+        return ["go", "test", "./..."], "go"
+    if (root / "Cargo.toml").is_file():
+        return ["cargo", "test"], "cargo"
+    pkg = root / "package.json"
+    if pkg.is_file():
+        try:
+            data = _json.loads(pkg.read_text("utf-8", "replace"))
+            if isinstance(data.get("scripts"), dict) and data["scripts"].get("test"):
+                return ["npm", "test", "--silent"], "npm"
+        except (OSError, ValueError):
+            pass
+    # Python: prefer pytest if configured, else unittest discovery over tests/.
+    if (root / "pytest.ini").is_file() or (root / "conftest.py").is_file():
+        return ["python3", "-m", "pytest", "-q"], "pytest"
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file():
+        try:
+            if "pytest" in pyproject.read_text("utf-8", "replace"):
+                return ["python3", "-m", "pytest", "-q"], "pytest"
+        except OSError:
+            pass
+    tests_dir = root / "tests"
+    if tests_dir.is_dir():
+        return ["python3", "-m", "unittest", "discover", "-s", "tests"], "unittest"
+    return None, "no test runner detected (pass argv explicitly)"
+
+
+def _verdict(text: str, exit_code: int) -> str:
+    low = text.lower()
+    if exit_code == 0:
+        return "PASSED"
+    for marker in ("failed", "error", "assertionerror", "failures="):
+        if marker in low:
+            return "FAILED"
+    return "FAILED" if exit_code != 0 else "PASSED"
+
+
+class RunTestsTool(Tool):
+    name = "run_tests"
+    description = (
+        "Run the project's test suite in the sandbox and report pass/fail. "
+        "Auto-detects the runner (pytest/unittest for Python, npm test, go "
+        "test, cargo test) from the project files; override with 'argv'. This "
+        "is the 'run' step of the write-tests / run / fix loop: after an edit, "
+        "run the tests, read the failures, fix, and run again. 'It built' is "
+        "never proof - a passing test is."
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "argv": {"type": "array", "items": {"type": "string"},
+                     "description": "explicit test command (overrides detection)"},
+            "timeout_seconds": {"type": "number", "minimum": 0.1, "default": 120},
+        },
+    }
+    permission = Permission.EXECUTE
+
+    def run(self, args, ctx) -> ToolResult:
+        root = _project_root(ctx)
+        argv = [str(a) for a in (args.get("argv") or [])]
+        detected = ""
+        if not argv:
+            argv, detected = _detect_test_command(root)
+            if not argv:
+                return ToolResult.failure(detected)
+        res = RunCommandTool().run(
+            {"argv": argv, "timeout_seconds": args.get("timeout_seconds", 120)}, ctx)
+        data = res.data or {}
+        exit_code = data.get("exit_code", 1 if not res.ok else 0)
+        text = (data.get("stdout", "") or "") + "\n" + (data.get("stderr", "") or "")
+        verdict = _verdict(text, exit_code if isinstance(exit_code, int) else 1)
+        label = f"[{detected or 'tests'}] {verdict}\n" if detected else f"{verdict}\n"
+        return ToolResult(ok=(verdict == "PASSED"), content=label + res.content,
+                          data={**data, "verdict": verdict, "runner": detected},
+                          error=res.error)
+
+
 def coding_tools() -> list[Tool]:
+    from .code_nav_tools import code_nav_tools
+    from .git_tools import git_tools
+
     return [ListDirTool(), ReadFileTool(), WriteFileTool(), EditFileTool(),
-            RunCommandTool()]
+            RunCommandTool(), RunTestsTool(), *code_nav_tools(), *git_tools()]
