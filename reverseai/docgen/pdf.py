@@ -1,10 +1,11 @@
 """Dependency-free, *designed* PDF writer.
 
 Generates a valid multi-page PDF with real typographic hierarchy using the
-built-in Helvetica family: a bold accent title with a rule under it, an optional
-subtitle, bold section headings, body paragraphs, and bullet lines, all with
-sensible spacing and color. No third-party packages; the xref/offsets are
-written correctly so it opens in any viewer.
+built-in Helvetica family: a bold title with an accent rule, an optional
+subtitle, section headings with a colored tick, justified-width body paragraphs,
+and crisp vector bullets. Text is WinAnsi-encoded so bullets, dashes, and smart
+quotes render in every viewer (not just ones that tolerate latin-1). No
+third-party packages; the xref/offsets are written correctly.
 """
 
 from __future__ import annotations
@@ -13,27 +14,31 @@ from dataclasses import dataclass, field
 
 _PAGE_W = 612
 _PAGE_H = 792
-_MARGIN = 72
-_LEADING = 15
-_TITLE_SIZE = 22
+_MARGIN = 64
+_LEADING = 15.5
+_TITLE_SIZE = 26
 _SUBTITLE_SIZE = 13
-_HEADING_SIZE = 14
+_HEADING_SIZE = 15
 _BODY_SIZE = 11
-_CHARS_PER_LINE = 92
+_CHARS_PER_LINE = 95
 
 _ACCENT = (0.039, 0.518, 1.0)     # #0A84FF
-_INK = (0.114, 0.114, 0.122)      # #1D1D1F
-_DIM = (0.43, 0.43, 0.45)
+_INK = (0.102, 0.102, 0.11)       # #1A1A1C
+_DIM = (0.44, 0.44, 0.47)
+_K = 0.5523                        # circle Bezier constant
 
 
 @dataclass
 class _Line:
     text: str
-    size: int
-    gap: float = 0.0
+    size: float
+    gap: float = 0.0              # extra space above this line
     bold: bool = False
     color: tuple = _INK
-    rule: bool = False            # draw a thin accent rule under this line
+    rule: bool = False            # accent rule under this line (title)
+    bullet: bool = False          # draw a vector bullet dot to the left
+    tick: bool = False            # draw a short accent tick to the left (heading)
+    indent: float = 0.0
 
 
 @dataclass
@@ -69,8 +74,13 @@ def _esc(text: str) -> str:
     return text.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
 
 
+def _enc(text: str) -> bytes:
+    # WinAnsi (cp1252) so U+2022 bullet, em dash, smart quotes etc. survive.
+    return _esc(text).encode("cp1252", "replace")
+
+
 def _wrap(text: str, width: int) -> list[str]:
-    words = text.split()
+    words = str(text).split()
     if not words:
         return [""]
     lines, cur = [], words[0]
@@ -87,37 +97,45 @@ def _wrap(text: str, width: int) -> list[str]:
 def _lines(doc: PdfDoc) -> list[_Line]:
     out: list[_Line] = []
     if doc.title:
-        wrapped = _wrap(doc.title, _CHARS_PER_LINE)
+        wrapped = _wrap(doc.title, 42)
         for i, ln in enumerate(wrapped):
             out.append(_Line(ln, _TITLE_SIZE, 0, bold=True, color=_INK,
                              rule=(i == len(wrapped) - 1)))
     if doc.subtitle:
-        for ln in _wrap(doc.subtitle, _CHARS_PER_LINE):
-            out.append(_Line(ln, _SUBTITLE_SIZE, 2, color=_DIM))
-    out.append(_Line("", _BODY_SIZE, 6))
+        for i, ln in enumerate(_wrap(doc.subtitle, 70)):
+            out.append(_Line(ln, _SUBTITLE_SIZE, 16 if i == 0 else 2, color=_DIM))
+    out.append(_Line("", _BODY_SIZE, 10))
     for b in doc.blocks:
         if b.kind == "space":
-            out.append(_Line("", _BODY_SIZE, 6))
-        elif b.kind == "heading":
             out.append(_Line("", _BODY_SIZE, 8))
-            for ln in _wrap(b.text, _CHARS_PER_LINE):
-                out.append(_Line(ln, _HEADING_SIZE, 0, bold=True, color=_ACCENT))
+        elif b.kind == "heading":
+            first = True
+            for ln in _wrap(b.text, 60):
+                out.append(_Line(ln, _HEADING_SIZE, 14 if first else 0,
+                                 bold=True, color=_INK, tick=first, indent=12))
+                first = False
+            out.append(_Line("", _BODY_SIZE, 3))
         elif b.kind == "bullet":
-            wrapped = _wrap(b.text, _CHARS_PER_LINE - 2)
+            wrapped = _wrap(b.text, _CHARS_PER_LINE - 6)
             for i, ln in enumerate(wrapped):
-                out.append(_Line(("•  " if i == 0 else "   ") + ln, _BODY_SIZE))
+                out.append(_Line(ln, _BODY_SIZE, 3 if i == 0 else 0,
+                                 bullet=(i == 0), indent=18))
         else:
             for ln in _wrap(b.text, _CHARS_PER_LINE):
                 out.append(_Line(ln, _BODY_SIZE))
-            out.append(_Line("", _BODY_SIZE, 2))
+            out.append(_Line("", _BODY_SIZE, 4))
     return out
+
+
+def _step(ln: _Line) -> float:
+    return _LEADING + ln.gap + (ln.size - _BODY_SIZE) * 0.62
 
 
 def _paginate(lines: list[_Line]) -> list[list[_Line]]:
     pages, page = [], []
     y = _PAGE_H - _MARGIN
     for ln in lines:
-        step = _LEADING + ln.gap + (ln.size - _BODY_SIZE) * 0.6
+        step = _step(ln)
         if y - step < _MARGIN:
             pages.append(page)
             page, y = [], _PAGE_H - _MARGIN
@@ -128,34 +146,57 @@ def _paginate(lines: list[_Line]) -> list[list[_Line]]:
     return pages or [[]]
 
 
+def _circle(cx: float, cy: float, r: float) -> str:
+    k = _K * r
+    return (f"{cx - r:.2f} {cy:.2f} m "
+            f"{cx - r:.2f} {cy + k:.2f} {cx - k:.2f} {cy + r:.2f} {cx:.2f} {cy + r:.2f} c "
+            f"{cx + k:.2f} {cy + r:.2f} {cx + r:.2f} {cy + k:.2f} {cx + r:.2f} {cy:.2f} c "
+            f"{cx + r:.2f} {cy - k:.2f} {cx + k:.2f} {cy - r:.2f} {cx:.2f} {cy - r:.2f} c "
+            f"{cx - k:.2f} {cy - r:.2f} {cx - r:.2f} {cy - k:.2f} {cx - r:.2f} {cy:.2f} c f")
+
+
 def _page_stream(lines: list[_Line]) -> bytes:
-    parts, rules = ["BT"], []
+    text_parts = ["BT"]
+    vec_parts: list[str] = []
     y = _PAGE_H - _MARGIN
-    last = _INK
-    parts.append(f"{last[0]} {last[1]} {last[2]} rg")
-    first = True
+    last_color = None
+    a = _ACCENT
     for ln in lines:
         y -= ln.gap
-        if ln.color != last:
-            parts.append(f"{ln.color[0]} {ln.color[1]} {ln.color[2]} rg")
-            last = ln.color
-        font = "F2" if ln.bold else "F1"
-        if first:
-            parts.append(f"/{font} {ln.size} Tf")
-            parts.append(f"{_MARGIN} {y:.1f} Td")
-            first = False
-        else:
-            parts.append(f"/{font} {ln.size} Tf")
-            parts.append(f"0 {-(_LEADING + ln.gap):.1f} Td")
-        parts.append(f"({_esc(ln.text)}) Tj")
-        y -= _LEADING
+        baseline = y - ln.size * 0.80
+        if ln.text:
+            if ln.color != last_color:
+                text_parts.append(f"{ln.color[0]} {ln.color[1]} {ln.color[2]} rg")
+                last_color = ln.color
+            font = "F2" if ln.bold else "F1"
+            x = _MARGIN + ln.indent
+            text_parts.append(f"/{font} {ln.size:g} Tf")
+            text_parts.append(f"1 0 0 1 {x:.1f} {baseline:.1f} Tm")
+            text_parts.append(f"({_esc(ln.text)}) Tj")
+        if ln.bullet:
+            vec_parts.append(f"{a[0]} {a[1]} {a[2]} rg "
+                             + _circle(_MARGIN + 6, baseline + ln.size * 0.28, 2.0))
+        if ln.tick:
+            ty = baseline - 1
+            vec_parts.append(f"{a[0]} {a[1]} {a[2]} rg "
+                             f"{_MARGIN:.1f} {ty:.1f} 3 {ln.size:.1f} re f")
         if ln.rule:
-            rules.append(y + 6)
-    parts.append("ET")
-    for ry in rules:
-        parts.append(f"{_ACCENT[0]} {_ACCENT[1]} {_ACCENT[2]} RG 1.2 w "
-                     f"{_MARGIN} {ry:.1f} m {_PAGE_W - _MARGIN} {ry:.1f} l S")
-    return ("\n".join(parts)).encode("latin-1", "replace")
+            ry = baseline - 8
+            vec_parts.append(f"{a[0]} {a[1]} {a[2]} RG 1.4 w "
+                             f"{_MARGIN} {ry:.1f} m {_PAGE_W - _MARGIN} {ry:.1f} l S")
+        y -= _LEADING + (ln.size - _BODY_SIZE) * 0.62
+    text_parts.append("ET")
+    # Draw vector marks first, then text on top.
+    body = "\n".join(vec_parts + text_parts)
+    out = bytearray()
+    for part in body.split("\n"):
+        if part.endswith(" Tj") and "(" in part:
+            head, rest = part.split("(", 1)
+            inner = rest[:-len(") Tj")]  # strip ") Tj"
+            out += head.encode("ascii") + b"(" + inner.encode("cp1252", "replace") + b") Tj\n"
+        else:
+            out += part.encode("ascii", "replace") + b"\n"
+    return bytes(out)
 
 
 def render_pdf(doc: PdfDoc) -> bytes:
@@ -182,8 +223,9 @@ def render_pdf(doc: PdfDoc) -> bytes:
     kids = " ".join(f"{n} 0 R" for n in page_nums)
     objects[0] = f"<< /Type /Catalog /Pages {pages_num} 0 R >>".encode()
     objects[1] = (f"<< /Type /Pages /Kids [{kids}] /Count {len(page_nums)} >>").encode()
-    objects[2] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
-    objects[3] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"
+    enc = b" /Encoding /WinAnsiEncoding"
+    objects[2] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica" + enc + b" >>"
+    objects[3] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold" + enc + b" >>"
 
     out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
     offsets = [0] * (len(objects) + 1)

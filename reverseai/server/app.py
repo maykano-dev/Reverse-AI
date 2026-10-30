@@ -111,11 +111,12 @@ _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self'; "
+    "script-src 'self' blob:; "
+    "worker-src 'self' blob:; "
     "style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data: https:; "
+    "img-src 'self' data: https: blob:; "
     "font-src 'self' data:; "
-    "connect-src 'self'; "
+    "connect-src 'self' blob:; "
     "frame-src 'self' http://127.0.0.1:* http://localhost:*; "
     "base-uri 'self'; "
     "form-action 'self'"

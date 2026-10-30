@@ -1380,7 +1380,8 @@ function finishFinal(ui, ev, jobId) {
   if (ui.current) ui.current.classList.remove("live", "open");
   $$(".cot-step", ui.cot).forEach((s) => s.classList.remove("open"));
   ui.bar.classList.add("done");
-  ui.bar.querySelector(".orbit").outerHTML = ic("check", 16);
+  const orbit = ui.bar.querySelector(".orbit");
+  if (orbit) orbit.outerHTML = ic("check", 16);
   const n = ui.steps || ev.steps || 1;
   const awaiting = ev.status === "awaiting_input";
   ui.label.textContent = ev.status === "cancelled"
@@ -1555,11 +1556,28 @@ function attachStream(jobId, ui, after) {
   src.onerror = () => {
     src.close();
     if (currentSrc === src) currentSrc = null;
-    if (!busy || !ui || ui.finished) return;
-    // The event log is durable; reconnect from where we stopped.
-    setTimeout(() => {
+    if (!ui || ui.finished) return;
+    // The stream dropped. Check whether the job already finished (the final
+    // event can be missed across a reconnect); if so, finalize now so the
+    // thinking indicator never spins forever. Otherwise reconnect and resume.
+    setTimeout(async () => {
+      if (ui.finished) return;
+      try {
+        const rec = await getJSON(`/jobs/${jobId}`);
+        const terminal = ["done", "error", "cancelled", "incomplete", "awaiting_input"];
+        if (rec && terminal.includes(rec.status)) {
+          if (rec.status === "error") finishError(ui, rec.error || "The turn failed.");
+          else finishFinal(ui, {
+            status: rec.status, answer: rec.answer, steps: rec.steps,
+            evidence_summary: rec.evidence_summary, artifact_meta: rec.artifact_meta,
+            artifact: rec.artifact, delivery: rec.delivery, sources: rec.sources,
+            usage: rec.usage,
+          }, jobId);
+          return;
+        }
+      } catch (_) {}
       if (!ui.finished && busy) attachStream(jobId, ui, ui.seq);
-    }, 1200);
+    }, 1000);
   };
 }
 function handleEvent(ui, ev, jobId) {
@@ -1710,16 +1728,15 @@ function renderArtifact(container, meta, name, jobId, convId) {
     acts.appendChild(edit);
   }
   if (previewable && !isDeck) {
-    const inlineUrl = withToken(`/jobs/${jobId}/artifact?inline=1`);
+    const inlineUrl = `/jobs/${jobId}/artifact?inline=1`;
     const pv = el("button", "abtn", "Preview");
-    // The in-app preview pane is a sandboxed iframe, which Chromium's PDF
-    // viewer won't run in; open PDFs in a real tab for native rendering.
-    // Everything else (html/svg/images/text) renders fine in the pane.
+    // PDFs render in-pane with pdf.js (the preview iframe is sandboxed and
+    // cannot run Chromium's PDF plugin). Everything else loads in the iframe.
     if (ext === "pdf") {
-      pv.addEventListener("click", () => window.open(inlineUrl, "_blank", "noopener"));
+      pv.addEventListener("click", () => showPdf(inlineUrl, { title: fname }));
     } else {
       pv.addEventListener("click", () => showPreview(
-        inlineUrl, { local: true, title: fname, newTab: true }));
+        withToken(inlineUrl), { local: true, title: fname, newTab: true }));
     }
     acts.appendChild(pv);
   }
@@ -1976,9 +1993,17 @@ async function openConversation(jobId) {
   if (archivedUI) {
     archivedUI.finished = true;
     clearInterval(archivedUI.timer);
+    archivedUI.finished = true;
     $$(".cot-step", archivedUI.cot).forEach((s) => s.classList.remove("open", "live"));
     archivedUI.think.classList.add("closed");
     archivedUI.label.classList.remove("shimmer");
+    // Finalize the thinking bar: a restored turn is done, so never leave the
+    // orbit spinning or the stop button sitting there.
+    archivedUI.bar.classList.add("done");
+    const _orbit = archivedUI.bar.querySelector(".orbit");
+    if (_orbit) _orbit.outerHTML = ic("check", 16);
+    const _stop = archivedUI.bar.querySelector(".stop-mini");
+    if (_stop) _stop.remove();
     const n = archivedUI.steps || rec.steps || 1;
     const waiting = rec.status === "awaiting_input" || rec.awaiting_surface;
     archivedUI.label.textContent = waiting ? "Waiting for your choice"
@@ -2352,6 +2377,54 @@ function openCanvas(pane) {
     if (tab) tab.click();
   }
 }
+
+// Drag-to-resize the workspace panel (desktop). Width is remembered per device.
+(function initCanvasResize() {
+  const canvas = $("#canvas");
+  if (!canvas) return;
+  const grip = el("div", "canvas-grip");
+  grip.title = "Drag to resize";
+  canvas.appendChild(grip);
+  const KEY = "rvai-canvas-w";
+  function clamp(px) {
+    const min = 360, max = Math.min(window.innerWidth - 420, window.innerWidth * 0.82);
+    return Math.max(min, Math.min(px, max));
+  }
+  function apply(px) {
+    if (window.innerWidth < 760) { canvas.style.width = ""; return; }
+    canvas.style.width = clamp(px) + "px";
+  }
+  try { const saved = +localStorage.getItem(KEY); if (saved) apply(saved); } catch (_) {}
+  let startX = 0, startW = 0, dragging = false;
+  function down(e) {
+    if (window.innerWidth < 760) return;
+    dragging = true;
+    startX = (e.touches ? e.touches[0].clientX : e.clientX);
+    startW = canvas.getBoundingClientRect().width;
+    document.body.classList.add("canvas-resizing");
+    e.preventDefault();
+  }
+  function move(e) {
+    if (!dragging) return;
+    const x = (e.touches ? e.touches[0].clientX : e.clientX);
+    apply(startW + (startX - x));  // panel is on the right: drag left = wider
+  }
+  function up() {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("canvas-resizing");
+    try { localStorage.setItem(KEY, String(parseInt(canvas.style.width) || 0)); } catch (_) {}
+    const tab = activeTab && activeTab();
+    if (tab && tab.pdf) reloadPreview();  // re-rasterize at the new width
+  }
+  grip.addEventListener("mousedown", down);
+  grip.addEventListener("touchstart", down, { passive: false });
+  window.addEventListener("mousemove", move);
+  window.addEventListener("touchmove", move, { passive: false });
+  window.addEventListener("mouseup", up);
+  window.addEventListener("touchend", up);
+  grip.addEventListener("dblclick", () => { canvas.style.width = ""; try { localStorage.removeItem(KEY); } catch (_) {} });
+})();
 function newPreviewTab() {
   return { url: "", local: false, history: [], index: -1,
            title: "New tab", shown: "" };
@@ -2393,24 +2466,104 @@ function setPreviewNav() {
 function applyPreviewTab() {
   const tab = activeTab();
   const f = $("#pvFrame");
+  const pdfBox = $("#pvPdf");
   f.sandbox = "allow-scripts allow-forms allow-popups";
-  if (tab.url) {
+  if (tab.url && tab.pdf) {
+    f.style.display = "none";
+    f.src = "about:blank";
+    pdfBox.style.display = "block";
+    $("#pvEmpty").style.display = "none";
+    $("#pvLaunch").style.display = "none";
+    $("#pvUrl").value = tab.shown || "PDF document";
+    renderPdfInto(pdfBox, tab.url);
+  } else if (tab.url) {
+    pdfBox.style.display = "none";
     f.src = tab.local ? withToken(tab.url) : tab.url;
     f.style.display = "block";
     $("#pvEmpty").style.display = "none";
     $("#pvLaunch").style.display = "none";
     $("#pvUrl").value = tab.shown || previewAddress(tab.url);
   } else {
+    pdfBox.style.display = "none";
     f.style.display = "none";
     f.src = "about:blank";
     $("#pvEmpty").style.display = "flex";
     $("#pvUrl").value = "";
     if ($("#pvLaunch").dataset.url) $("#pvLaunch").style.display = "flex";
   }
-  $("#pvLive").classList.toggle("on", !!tab.local && !!tab.url);
+  $("#pvLive").classList.toggle("on", !!tab.local && !!tab.url && !tab.pdf);
   setPreviewNav();
   renderPreviewTabs();
   openCanvas("preview");
+}
+
+// --- inline PDF rendering with pdf.js -------------------------------------
+if (window.pdfjsLib) {
+  try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdf.worker.min.js"; } catch (_) {}
+}
+let pdfRenderToken = 0;
+function pdfPaneWidth(container) {
+  const raw = container.clientWidth || container.getBoundingClientRect().width || 0;
+  // Floor well above zero: the pane may still be laying out when we first draw.
+  return Math.min(Math.max(Math.round(raw) - 28, 460), 1000);
+}
+async function renderPdfInto(container, url) {
+  const myToken = ++pdfRenderToken;
+  if (url) container.dataset.url = url;
+  const src = url || container.dataset.url;
+  container.innerHTML = `<div class="pv-pdf-load">${ic("file", 20)}<span>Rendering PDF…</span></div>`;
+  if (!window.pdfjsLib || !src) {
+    container.innerHTML = '<div class="pv-pdf-load">PDF viewer is unavailable.</div>';
+    return;
+  }
+  // Attach a one-time observer so the pages re-rasterize at the right width
+  // once the pane finishes opening or the panel is resized.
+  if (!container._pdfRO && window.ResizeObserver) {
+    container._pdfW = pdfPaneWidth(container);
+    let t = null;
+    container._pdfRO = new ResizeObserver(() => {
+      const w = pdfPaneWidth(container);
+      if (Math.abs(w - (container._pdfW || 0)) < 32) return;
+      container._pdfW = w;
+      clearTimeout(t);
+      t = setTimeout(() => {
+        if (container.dataset.url && getComputedStyle(container).display !== "none") {
+          renderPdfInto(container, container.dataset.url);
+        }
+      }, 160);
+    });
+    container._pdfRO.observe(container);
+  }
+  try {
+    const pdf = await window.pdfjsLib.getDocument({ url: withToken(src) }).promise;
+    if (myToken !== pdfRenderToken) return;
+    container.innerHTML = "";
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = pdfPaneWidth(container);
+    for (let n = 1; n <= pdf.numPages; n++) {
+      const page = await pdf.getPage(n);
+      if (myToken !== pdfRenderToken) return;
+      const base = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: (cssW / base.width) * dpr });
+      const canvas = el("canvas", "pv-pdf-page");
+      canvas.width = Math.ceil(vp.width);
+      canvas.height = Math.ceil(vp.height);
+      canvas.style.width = cssW + "px";
+      canvas.style.height = Math.ceil(vp.height / dpr) + "px";
+      container.appendChild(canvas);
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
+    }
+  } catch (e) {
+    container.innerHTML = `<div class="pv-pdf-load">Could not render this PDF.<br><small>${esc(e.message || "")}</small></div>`;
+  }
+}
+function showPdf(url, opts) {
+  const o = opts || {};
+  previewTabs.push(Object.assign(newPreviewTab(), {
+    url, local: true, pdf: true, title: o.title || "PDF", shown: o.title || "PDF document",
+  }));
+  previewActive = previewTabs.length - 1;
+  applyPreviewTab();
 }
 function switchPreviewTab(i) {
   if (i < 0 || i >= previewTabs.length) return;
@@ -2518,6 +2671,7 @@ function showPreview(url, opts) {
 function reloadPreview() {
   const tab = activeTab();
   if (!tab.url) return;
+  if (tab.pdf) { renderPdfInto($("#pvPdf"), tab.url); return; }
   const f = $("#pvFrame");
   const base = tab.local ? withToken(tab.url) : tab.url;
   const sep = base.includes("?") ? "&" : "?";
