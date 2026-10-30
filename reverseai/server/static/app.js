@@ -1751,8 +1751,12 @@ function renderArtifact(container, meta, name, jobId, convId) {
     const pv = el("button", "abtn", "Preview");
     // PDFs render in-pane with pdf.js (the preview iframe is sandboxed and
     // cannot run Chromium's PDF plugin). Everything else loads in the iframe.
+    const imageExt = ["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext);
     if (ext === "pdf") {
       pv.addEventListener("click", () => showPdf(inlineUrl, { title: fname }));
+    } else if (imageExt) {
+      // Images pop up in the lightbox overlay, not the sandboxed iframe.
+      pv.addEventListener("click", () => openLightbox(withToken(inlineUrl)));
     } else {
       pv.addEventListener("click", () => showPreview(
         withToken(inlineUrl), { local: true, title: fname, newTab: true }));
@@ -1776,13 +1780,23 @@ function openLightbox(src) {
   if (!box) {
     box = el("div", "lightbox");
     box.id = "lightbox";
-    box.innerHTML = `<img alt="rendered page"><button class="lb-close" aria-label="Close">${ic("x", 20)}</button>`;
-    box.addEventListener("click", () => box.classList.remove("show"));
+    box.innerHTML = `<img alt="preview"><button class="lb-close" aria-label="Close">${ic("x", 20)}</button>`;
+    box.addEventListener("click", () => closeLightbox());
+    box.querySelector("img").addEventListener("click", (e) => e.stopPropagation());
     document.body.appendChild(box);
   }
   box.querySelector("img").src = src;
   box.classList.add("show");
+  document.addEventListener("keydown", _lbEsc);
 }
+function closeLightbox() {
+  const box = $("#lightbox");
+  if (box) box.classList.remove("show");
+  document.removeEventListener("keydown", _lbEsc);
+}
+function _lbEsc(e) { if (e.key === "Escape") closeLightbox(); }
+const _IMG_EXT = /\.(png|jpe?g|gif|webp|svg|bmp)(\?|#|$)/i;
+function isImageUrl(u) { return _IMG_EXT.test(String(u || "")); }
 function renderRenders(container, renders) {
   if (!container || !Array.isArray(renders) || !renders.length) return;
   const wrap = el("div", "renders");
@@ -2702,6 +2716,12 @@ function previewCidFromUrl(url) {
 function showPreview(url, opts) {
   if (!url) return;
   const o = opts || {};
+  // Images can't render in the sandboxed preview iframe; pop them up in the
+  // lightbox overlay instead (Claude-style), wherever a preview is requested.
+  if (o.image || isImageUrl(url)) {
+    openLightbox(o.local ? withToken(url) : url);
+    return;
+  }
   if (o.local) previewCid = previewCidFromUrl(url) || previewCid;
   if (o.newTab) {
     previewTabs.push(newPreviewTab());
