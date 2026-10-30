@@ -10,6 +10,7 @@ third-party packages; the xref/offsets are written correctly.
 
 from __future__ import annotations
 
+import math
 import zlib
 from dataclasses import dataclass, field
 
@@ -48,6 +49,8 @@ class _Block:
     text: str = ""
     image: object = None          # DecodedImage for kind == "image"
     width: float = 0.0            # requested image width in points (0 = auto)
+    shapes: list = field(default_factory=list)   # for kind == "diagram"
+    height: float = 240.0         # diagram height in points
 
 
 @dataclass
@@ -58,6 +61,14 @@ class _Img:
     h: float
     caption: str = ""
     gap: float = 14.0
+
+
+@dataclass
+class _Diagram:
+    """A laid-out diagram (shape primitives) in the content flow."""
+    shapes: list
+    h: float = 240.0
+    gap: float = 16.0
 
 
 @dataclass
@@ -80,6 +91,13 @@ class PdfDoc:
 
     def image(self, decoded, caption: str = "", width: float = 0.0) -> "PdfDoc":
         self.blocks.append(_Block("image", text=caption, image=decoded, width=width))
+        return self
+
+    def diagram(self, shapes, height: float = 240.0) -> "PdfDoc":
+        b = _Block("diagram")
+        b.shapes = list(shapes or [])
+        b.height = float(height or 240.0)
+        self.blocks.append(b)
         return self
 
     def space(self) -> "PdfDoc":
@@ -136,6 +154,8 @@ def _lines(doc: PdfDoc) -> list[_Line]:
                 h = max_h
                 w = h * (iw / ih) if ih else w
             out.append(_Img(image=b.image, w=w, h=h, caption=b.text or ""))
+        elif b.kind == "diagram":
+            out.append(_Diagram(shapes=b.shapes, h=min(float(b.height or 240), max_h)))
         elif b.kind == "heading":
             first = True
             for ln in _wrap(b.text, 60):
@@ -158,6 +178,8 @@ def _lines(doc: PdfDoc) -> list[_Line]:
 def _step(ln) -> float:
     if isinstance(ln, _Img):
         return ln.gap + ln.h + (16 if ln.caption else 0) + 6
+    if isinstance(ln, _Diagram):
+        return ln.gap + ln.h + 8
     return _LEADING + ln.gap + (ln.size - _BODY_SIZE) * 0.62
 
 
@@ -189,6 +211,81 @@ def _circle(cx: float, cy: float, r: float) -> str:
             f"{cx - k:.2f} {cy - r:.2f} {cx - r:.2f} {cy - k:.2f} {cx - r:.2f} {cy:.2f} c f")
 
 
+def _ellipse(cx: float, cy: float, rx: float, ry: float) -> str:
+    kx, ky = _K * rx, _K * ry
+    return (f"{cx - rx:.2f} {cy:.2f} m "
+            f"{cx - rx:.2f} {cy + ky:.2f} {cx - kx:.2f} {cy + ry:.2f} {cx:.2f} {cy + ry:.2f} c "
+            f"{cx + kx:.2f} {cy + ry:.2f} {cx + rx:.2f} {cy + ky:.2f} {cx + rx:.2f} {cy:.2f} c "
+            f"{cx + rx:.2f} {cy - ky:.2f} {cx + kx:.2f} {cy - ry:.2f} {cx:.2f} {cy - ry:.2f} c "
+            f"{cx - kx:.2f} {cy - ry:.2f} {cx - rx:.2f} {cy - ky:.2f} {cx - rx:.2f} {cy:.2f} c f")
+
+
+def _rgb(c, default):
+    s = str(c or "").lstrip("#")
+    if len(s) == 3:
+        s = "".join(ch * 2 for ch in s)
+    if len(s) == 6:
+        try:
+            return (int(s[0:2], 16) / 255, int(s[2:4], 16) / 255, int(s[4:6], 16) / 255)
+        except ValueError:
+            pass
+    return default
+
+
+def _diagram_ops(shapes, left, top, w, h):
+    """Return (vector_ops, text_ops) for a diagram area. Coords are 0..100."""
+    vec, txt = [], []
+
+    def X(v): return left + (float(v) / 100.0) * w
+    def Yt(v): return top - (float(v) / 100.0) * h      # from the top, going down
+    def Wd(v): return (float(v) / 100.0) * w
+    def Hd(v): return (float(v) / 100.0) * h
+
+    for sh in shapes or []:
+        if not isinstance(sh, dict):
+            continue
+        kind = str(sh.get("type") or "rect").lower()
+        col = _rgb(sh.get("color"), _ACCENT)
+        cs = f"{col[0]:.3f} {col[1]:.3f} {col[2]:.3f}"
+        if kind in ("rect", "roundrect", "ellipse"):
+            x, ytop = X(sh.get("x", 0)), Yt(sh.get("y", 0))
+            bw, bh = Wd(sh.get("w", 20)), Hd(sh.get("h", 18))
+            yb = ytop - bh
+            if kind == "ellipse":
+                vec.append(f"{cs} rg " + _ellipse(x + bw / 2, yb + bh / 2, bw / 2, bh / 2))
+            else:
+                vec.append(f"{cs} rg {x:.1f} {yb:.1f} {bw:.1f} {bh:.1f} re f")
+            if sh.get("text"):
+                tc = _rgb(sh.get("text_color"), (1, 1, 1))
+                size = 11
+                tw = _text_w(str(sh["text"]), size)
+                tx = x + (bw - tw) / 2
+                ty = yb + bh / 2 - size * 0.34
+                txt.append(f"{tc[0]:.3f} {tc[1]:.3f} {tc[2]:.3f} rg")
+                txt.append(f"/F2 {size} Tf")
+                txt.append(f"1 0 0 1 {max(x, tx):.1f} {ty:.1f} Tm")
+                txt.append(f"({_esc(str(sh['text']))}) Tj")
+        elif kind in ("line", "arrow"):
+            x1, y1 = X(sh.get("x", 0)), Yt(sh.get("y", 0))
+            x2, y2 = X(sh.get("x2", sh.get("x", 0))), Yt(sh.get("y2", sh.get("y", 0)))
+            vec.append(f"{cs} RG 1.6 w {x1:.1f} {y1:.1f} m {x2:.1f} {y2:.1f} l S")
+            if kind == "arrow":
+                ang = math.atan2(y2 - y1, x2 - x1)
+                a = 6.5
+                p2x, p2y = x2 - a * math.cos(ang - 0.42), y2 - a * math.sin(ang - 0.42)
+                p3x, p3y = x2 - a * math.cos(ang + 0.42), y2 - a * math.sin(ang + 0.42)
+                vec.append(f"{cs} rg {x2:.1f} {y2:.1f} m {p2x:.1f} {p2y:.1f} l "
+                           f"{p3x:.1f} {p3y:.1f} l f")
+        elif kind == "text":
+            tc = _rgb(sh.get("color"), _INK)
+            size = int(sh.get("size") or 13)
+            txt.append(f"{tc[0]:.3f} {tc[1]:.3f} {tc[2]:.3f} rg")
+            txt.append(f"/F1 {size} Tf")
+            txt.append(f"1 0 0 1 {X(sh.get('x', 0)):.1f} {Yt(sh.get('y', 0)) - size:.1f} Tm")
+            txt.append(f"({_esc(str(sh.get('text', '')))}) Tj")
+    return vec, txt
+
+
 def _page_stream(lines) -> tuple[bytes, list]:
     text_parts = ["BT"]
     vec_parts: list[str] = []
@@ -199,6 +296,14 @@ def _page_stream(lines) -> tuple[bytes, list]:
     last_color = None
     a = _ACCENT
     for ln in lines:
+        if isinstance(ln, _Diagram):
+            y -= ln.gap
+            dv, dt = _diagram_ops(ln.shapes, _MARGIN, y, content_w, ln.h)
+            vec_parts.extend(dv)
+            text_parts.extend(dt)
+            last_color = None
+            y = y - ln.h - 8
+            continue
         if isinstance(ln, _Img):
             y -= ln.gap
             top = y

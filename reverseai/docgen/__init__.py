@@ -97,6 +97,9 @@ def _pdf(spec):
                 except ImageError:
                     pass
             continue
+        if t == "diagram":
+            d.diagram(b.get("shapes") or [], height=float(b.get("height") or 240))
+            continue
         if t == "subtitle":
             d.subtitle = str(b.get("text") or "")
         else:

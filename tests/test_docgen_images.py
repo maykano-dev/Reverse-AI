@@ -141,3 +141,24 @@ class DeckImageDiagramTests(unittest.TestCase):
         z = zipfile.ZipFile(BytesIO(data))
         self.assertIsNone(z.testzip())
         self.assertIn(b"<p:timing>", z.read("ppt/slides/slide1.xml"))
+
+
+class PdfDiagramTests(unittest.TestCase):
+    def test_pdf_diagram_renders_shapes(self):
+        spec = {"title": "Flow", "blocks": [
+            {"type": "diagram", "height": 220, "shapes": [
+                {"type": "roundrect", "x": 5, "y": 35, "w": 24, "h": 20, "text": "A"},
+                {"type": "arrow", "x": 29, "y": 45, "x2": 45, "y2": 45},
+                {"type": "ellipse", "x": 45, "y": 35, "w": 20, "h": 20, "text": "B"},
+                {"type": "text", "x": 5, "y": 10, "text": "caption"}]}]}
+        data = generate("pdf", spec, name="d").data
+        self.assertTrue(data.startswith(b"%PDF-"))
+        # vector ops present: a filled rect (re f), a stroked line (l S)
+        self.assertIn(b" re f", data)
+        self.assertIn(b" l S", data)
+        self.assertIn(b"(A) Tj", data)
+
+    def test_pdf_diagram_empty_is_safe(self):
+        data = generate("pdf", {"title": "x", "blocks": [
+            {"type": "diagram", "shapes": []}]}).data
+        self.assertTrue(data.startswith(b"%PDF-"))
