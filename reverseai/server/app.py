@@ -106,6 +106,8 @@ _VENDOR_PATH = re.compile(r"^/vendor/([A-Za-z0-9._-]+)$")
 _STUDIO_PATH = re.compile(r"^/studio/(conv_[A-Za-z0-9]+)/([A-Za-z0-9._-]+)$")
 _STUDIO_EXPORT_PATH = re.compile(
     r"^/studio/(conv_[A-Za-z0-9]+)/([A-Za-z0-9._-]+)/export$")
+_STUDIO_IMAGE_PATH = re.compile(
+    r"^/studio/(conv_[A-Za-z0-9]+)/([A-Za-z0-9._-]+)/image$")
 _STATIC_DIR = Path(__file__).parent / "static"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
@@ -480,6 +482,9 @@ class _Handler(BaseHTTPRequestHandler):
         # File upload: raw bytes with X-Filename header, streamed to disk.
         if self.path == "/upload":
             return self._upload()
+        sim = _STUDIO_IMAGE_PATH.match(self.path.split("?", 1)[0])
+        if sim:
+            return self._studio_image(sim.group(1), sim.group(2))
         return self._send(404, {"error": "not found"})
 
     def do_DELETE(self):  # noqa: N802
@@ -1083,6 +1088,44 @@ class _Handler(BaseHTTPRequestHandler):
             "size": out.size,
             "sha256": out.sha256,
         })
+
+    def _studio_image(self, cid: str, filename: str) -> None:
+        """Accept an uploaded image into the conversation's assets/ folder.
+
+        Returns a workspace-relative src the deck/doc spec can reference.
+        """
+        from ..docgen.images import ImageError, decode_image
+        from ..security.validate import safe_join
+
+        conv = self._studio_conv(cid)
+        if conv is None:
+            return
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length <= 0 or length > 16 * 1024 * 1024:
+            return self._send(400, {"error": "image must be 1 byte to 16 MB"})
+        data = self.rfile.read(length)
+        try:
+            img = decode_image(data)
+        except ImageError as exc:
+            return self._send(400, {"error": f"not a usable image: {exc}"})
+        raw_name = self.headers.get("X-Filename", "image.png")
+        ext = "png" if data[:4] == b"\x89PNG" else "jpg"
+        base = _SAFE_NAME.sub("_", Path(raw_name).stem)[:60] or "image"
+        try:
+            assets = safe_join(Path(conv.workspace), "assets")
+            assets.mkdir(parents=True, exist_ok=True)
+            name = f"{base}.{ext}"
+            dest = assets / name
+            i = 1
+            while dest.exists():
+                name = f"{base}-{i}.{ext}"
+                dest = assets / name
+                i += 1
+            dest.write_bytes(data)
+        except (OSError, ValueError) as exc:
+            return self._send(400, {"error": f"could not save image: {exc}"})
+        return self._send(200, {"src": f"assets/{name}",
+                                "width": img.width, "height": img.height})
 
     def _studio_export(self, cid: str, filename: str) -> None:
         from .. import studio

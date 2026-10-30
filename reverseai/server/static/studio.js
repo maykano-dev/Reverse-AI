@@ -350,11 +350,27 @@ function renderStage() {
   } else if (layout === "image") {
     card.appendChild(title);
     const holder = el("div", "st-img-holder");
-    if (studio.file_url || s.image) {
-      holder.innerHTML = `<div class="st-img-note">${ic("file", 15)}<span>${esc(s.image || "image")}</span></div>`;
-    } else {
-      holder.innerHTML = `<div class="st-img-note">${ic("file", 15)}<span>Add an image via the Ask bar below (e.g. "add an ocean photo")</span></div>`;
-    }
+    const refreshImg = () => {
+      holder.innerHTML = "";
+      if (s.image) {
+        const img = el("img", "st-img-preview");
+        img.src = withToken(`/preview/${studio.cid}/${s.image}`);
+        img.alt = "slide image";
+        holder.appendChild(img);
+      } else {
+        const note = el("div", "st-img-note");
+        note.innerHTML = `${ic("file", 15)}<span>No image yet. Upload one, or ask the AI to add one below.</span>`;
+        holder.appendChild(note);
+      }
+      const up = el("button", "st-img-btn");
+      up.innerHTML = `${ic("plus", 13)}<span>${s.image ? "Replace image" : "Upload image"}</span>`;
+      up.addEventListener("click", () => pickStudioImage((b) => {
+        s.image = b.src; s.image_w = b.width; s.image_h = b.height; delete s.image_data;
+        refreshImg(); renderRail(); markDirty();
+      }));
+      holder.appendChild(up);
+    };
+    refreshImg();
     card.appendChild(holder);
   } else if (layout === "diagram") {
     card.appendChild(title);
@@ -368,7 +384,35 @@ function renderStage() {
     bullets.id = "stBullets";
     (s.bullets || []).forEach((b) => bullets.appendChild(bulletRow(b)));
     card.appendChild(bullets);
-    card.appendChild(addPointBtn(bullets));
+    const actionsRow = el("div", "st-content-actions");
+    actionsRow.appendChild(addPointBtn(bullets));
+    const imgBtn = el("div", "st-content-img");
+    const refreshCImg = () => {
+      imgBtn.innerHTML = "";
+      if (s.image) {
+        const img = el("img", "st-img-thumb");
+        img.src = withToken(`/preview/${studio.cid}/${s.image}`);
+        imgBtn.appendChild(img);
+        const rm = el("button", "st-add-bullet");
+        rm.innerHTML = `${ic("x", 12)}<span>Remove image</span>`;
+        rm.addEventListener("click", () => {
+          delete s.image; delete s.image_w; delete s.image_h; delete s.image_data;
+          refreshCImg(); renderRail(); markDirty();
+        });
+        imgBtn.appendChild(rm);
+      } else {
+        const add = el("button", "st-add-bullet");
+        add.innerHTML = `${ic("plus", 13)}<span>Add image</span>`;
+        add.addEventListener("click", () => pickStudioImage((b) => {
+          s.image = b.src; s.image_w = b.width; s.image_h = b.height;
+          refreshCImg(); renderRail(); markDirty();
+        }));
+        imgBtn.appendChild(add);
+      }
+    };
+    refreshCImg();
+    actionsRow.appendChild(imgBtn);
+    card.appendChild(actionsRow);
   }
   stage.appendChild(card);
 }
@@ -411,6 +455,32 @@ function placeCaretEnd(node) {
     const sel = window.getSelection();
     sel.removeAllRanges(); sel.addRange(r);
   } catch (_) {}
+}
+
+// Upload an image into the conversation's assets and return {src,width,height}.
+function pickStudioImage(onDone) {
+  const inp = document.createElement("input");
+  inp.type = "file";
+  inp.accept = "image/png,image/jpeg";
+  inp.addEventListener("change", async () => {
+    const file = inp.files && inp.files[0];
+    if (!file) return;
+    stToast("Uploading image…", "");
+    try {
+      const r = await api(`/studio/${studio.cid}/${encodeURIComponent(studio.filename)}/image`, {
+        method: "PUT",
+        headers: { "X-Filename": file.name, "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      const b = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(b.error || "upload failed");
+      stToast("Image added. Save to update the file.", "ok");
+      onDone(b);
+    } catch (e) {
+      stToast(e.message || "Upload failed", "warn");
+    }
+  });
+  inp.click();
 }
 
 function syncDeckFromDom() {
