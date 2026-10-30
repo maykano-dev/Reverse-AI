@@ -198,6 +198,9 @@ def _pptx(spec):
             steps=[str(x) for x in (s.get("steps") or [])],
             diagram_style=str(s.get("diagram_style") or s.get("style") or "flow"),
             bg_style=str(s.get("bg_style") or s.get("background") or ""),
+            bg_spec=s.get("bg_spec") if isinstance(s.get("bg_spec"), dict) else {},
+            kicker=str(s.get("kicker") or ""),
+            footer=str(s.get("footer") or spec.get("footer") or ""),
             animate=bool(s.get("animate") or spec.get("animate"))))
     if not slides and spec.get("title"):
         slides.append(Slide(title=str(spec["title"])))

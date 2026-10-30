@@ -1,6 +1,6 @@
 /* ReverseAI service worker — app shell only.
    Never cache API responses, SSE streams, uploads, previews, or downloads. */
-const VERSION = "rvai-v37";
+const VERSION = "rvai-v38";
 const SHELL = [
   "/",
   "/app.js",

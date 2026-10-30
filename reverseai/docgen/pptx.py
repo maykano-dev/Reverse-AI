@@ -107,8 +107,12 @@ class Slide:
     steps: list = field(default_factory=list)    # auto-laid-out flow/cycle labels
     diagram_style: str = "flow"      # flow | cycle | pillars
     bg_style: str = ""               # mesh | geometric | glow | rings | diagonal | gradient | plain
+    bg_spec: dict = field(default_factory=dict)   # custom generative background
+    kicker: str = ""                 # small eyebrow label above the title
     animate: bool = False
     idx: int = 0                     # position in the deck (for varied decor)
+    footer: str = ""                 # deck footer text (set on every slide)
+    total: int = 0                   # deck slide count (for page numbers)
 
     def effective_layout(self) -> str:
         if self.layout:
@@ -397,6 +401,77 @@ def _is_dark(hexv):
     return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 140
 
 
+def _alpha_val(a):
+    """Accept alpha as 0-100 percent or 0-100000 raw; return OOXML 1/1000 %."""
+    try:
+        a = float(a)
+    except (TypeError, ValueError):
+        return None
+    return int(a * 1000) if a <= 100 else int(a)
+
+
+def custom_bg_fill(fill, default_bg):
+    """p:bg fill XML from a spec: {type:'gradient', from, to, angle} or {type:'solid', color}."""
+    if not isinstance(fill, dict):
+        return None
+    kind = str(fill.get("type") or "gradient").lower()
+    if kind == "solid":
+        return (f'<a:solidFill><a:srgbClr val="{_hex(fill.get("color"), default_bg)}"/>'
+                '</a:solidFill>')
+    c1 = _hex(fill.get("from") or fill.get("start"), default_bg)
+    c2 = _hex(fill.get("to") or fill.get("end"), _shade(c1, -0.12))
+    try:
+        ang = int(float(fill.get("angle", 90)) * 60000)
+    except (TypeError, ValueError):
+        ang = 5400000
+    return (f'<a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="{c1}"/></a:gs>'
+            f'<a:gs pos="100000"><a:srgbClr val="{c2}"/></a:gs></a:gsLst>'
+            f'<a:lin ang="{ang}" scaled="1"/></a:gradFill>')
+
+
+def custom_bg_shapes(shapes, sid):
+    """Render a user-composed background: a list of shapes in 0-100 coords.
+
+    Each: {type:'ellipse'|'rect'|'ring'|'line', x,y,w,h (0-100), color, alpha
+    (0-100), rot (deg), x2,y2 (line), weight (pt), round}.
+    """
+    out = []
+    for sh in shapes or []:
+        if not isinstance(sh, dict):
+            continue
+        kind = str(sh.get("type") or "ellipse").lower()
+        color = _hex(sh.get("color"), "2D6CDF")
+        alpha = _alpha_val(sh.get("alpha", 100))
+        x = (float(sh.get("x", 0)) / 100) * _W
+        y = (float(sh.get("y", 0)) / 100) * _H
+        w = (float(sh.get("w", 20)) / 100) * _W
+        h = (float(sh.get("h", 20)) / 100) * _H
+        rot = int(float(sh.get("rot", 0)) * 60000) if sh.get("rot") else None
+        if kind == "line":
+            x2 = (float(sh.get("x2", sh.get("x", 0))) / 100) * _W
+            y2 = (float(sh.get("y2", sh.get("y", 0))) / 100) * _H
+            weight = int(float(sh.get("weight", 2)) * 12700)
+            out.append(
+                f'<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="{next(sid)}" name="bgline"/>'
+                f'<p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr>'
+                f'<a:xfrm><a:off x="{int(min(x, x2))}" y="{int(min(y, y2))}"/>'
+                f'<a:ext cx="{int(abs(x2 - x)) or 1}" cy="{int(abs(y2 - y)) or 1}"/></a:xfrm>'
+                f'<a:prstGeom prst="line"><a:avLst/></a:prstGeom>'
+                f'<a:ln w="{weight}"><a:solidFill><a:srgbClr val="{color}">'
+                + (f'<a:alpha val="{alpha}"/>' if alpha is not None else "")
+                + '</a:srgbClr></a:solidFill></a:ln></p:spPr></p:cxnSp>')
+        elif kind == "ring":
+            out.append(_shp(sid, x, y, w, h, geom="ellipse", rot=rot, line=color,
+                            line_alpha=alpha, line_w=int(float(sh.get("weight", 2)) * 12700)))
+        else:
+            geom = "ellipse" if kind == "ellipse" else (
+                "roundRect" if kind in ("roundrect", "round") else "rect")
+            rv = 8000 if geom == "roundRect" else None
+            out.append(_shp(sid, x, y, w, h, fill=color, alpha=alpha, geom=geom,
+                            rot=rot, round_val=rv))
+    return "".join(out)
+
+
 _BG_ROTATION = ["mesh", "geometric", "glow", "rings", "diagonal"]
 
 
@@ -453,9 +528,11 @@ def _slide_shapes(slide: Slide, t: dict):
     media = []
     anim = []
 
-    # Creative background, drawn first (behind content). Varied per slide and
-    # overridable per slide (bg_style) or per deck (theme bg_style).
-    if layout in ("cover", "content", "two-column", "image", "diagram"):
+    # Background, drawn first (behind content). A custom bg_spec gives the agent
+    # unlimited control; otherwise a tasteful preset is varied per slide.
+    if slide.bg_spec and slide.bg_spec.get("shapes"):
+        sp.append(custom_bg_shapes(slide.bg_spec["shapes"], sid))
+    elif layout in ("cover", "content", "two-column", "image", "diagram"):
         style = (slide.bg_style or t.get("bg_style")
                  or _BG_ROTATION[slide.idx % len(_BG_ROTATION)]).lower()
         if style not in ("plain", "gradient", "none"):
@@ -481,8 +558,13 @@ def _slide_shapes(slide: Slide, t: dict):
             ink_c = muted_c = t["on_accent"]
         else:
             ink_c, muted_c = ink, muted
-        sp.append(_rect(next(sid), "band", _MARGIN, _H * 0.60, 1500000, 26000,
-                        accent if layout == "cover" else t["on_accent"]))
+        kick_col = accent if layout == "cover" else t["on_accent"]
+        if slide.kicker:
+            sp.append(_textbox(next(sid), "kicker", _MARGIN, int(_H * 0.40),
+                               _W - 2 * _MARGIN, 350000,
+                               [_para(_run(slide.kicker.upper(), 13, kick_col, font_b,
+                                           bold=True, spc=200), space_after=0)]))
+        sp.append(_rect(next(sid), "band", _MARGIN, _H * 0.60, 1500000, 26000, kick_col))
         tid = next(sid)
         sp.append(_textbox(tid, "title", _MARGIN, _H * 0.30, _W - 2 * _MARGIN, 2200000,
                            [_para(_run(slide.title or "", 46, ink_c, font_t, bold=True,
@@ -518,18 +600,27 @@ def _slide_shapes(slide: Slide, t: dict):
 
     # ---- title header shared by content / two-column / image / diagram ----
     # (the creative background is drawn above, behind the content)
-    sp.append(_rect(next(sid), "dot", _MARGIN, 620000, 150000, 150000, accent,
-                    geom="ellipse"))
-    sp.append(_textbox(next(sid), "title", _MARGIN + 260000, 470000,
-                       _W - 2 * _MARGIN - 260000, 900000,
+    shift = 0
+    if slide.kicker:
+        sp.append(_textbox(next(sid), "kicker", _MARGIN, 440000, _W - 2 * _MARGIN, 350000,
+                           [_para(_run(slide.kicker.upper(), 12, accent, font_b,
+                                       bold=True, spc=180), space_after=0)]))
+        title_x = _MARGIN
+        shift = 330000
+    else:
+        sp.append(_rect(next(sid), "dot", _MARGIN, 620000, 150000, 150000, accent,
+                        geom="ellipse"))
+        title_x = _MARGIN + 260000
+    sp.append(_textbox(next(sid), "title", title_x, 470000 + shift,
+                       _W - 2 * _MARGIN - (title_x - _MARGIN), 900000,
                        [_para(_run(slide.title or "", 30, ink, font_t, bold=True, spc=-10),
                               space_after=0)]))
-    sp.append(_rect(next(sid), "rule", _MARGIN, 1420000, 1150000, 20000, accent))
+    sp.append(_rect(next(sid), "rule", _MARGIN, 1420000 + shift, 1150000, 20000, accent))
     if slide.subtitle:
-        sp.append(_textbox(next(sid), "sub", _MARGIN, 1520000, _W - 2 * _MARGIN, 600000,
+        sp.append(_textbox(next(sid), "sub", _MARGIN, 1520000 + shift, _W - 2 * _MARGIN, 600000,
                            [_para(_run(slide.subtitle, 17, muted, font_b), space_after=0)]))
-    body_top = 2050000 if slide.subtitle else 1760000
-    body_h = _H - body_top - 500000
+    body_top = (2050000 if slide.subtitle else 1760000) + shift
+    body_h = _H - body_top - 560000
 
     if layout == "diagram":
         area = (_MARGIN, body_top, _W - 2 * _MARGIN, body_h)
@@ -623,8 +714,31 @@ def _bg_fill(bg: str) -> str:
             f'<a:lin ang="5400000" scaled="1"/></a:gradFill>')
 
 
+def _footer_xml(text, page, t, col):
+    left = (f'<p:sp><p:nvSpPr><p:cNvPr id="900" name="footL"/><p:cNvSpPr txBox="1"/>'
+            f'<p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="{_MARGIN}" y="{_H - 430000}"/>'
+            f'<a:ext cx="{int(_W * 0.7)}" cy="300000"/></a:xfrm>'
+            f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>'
+            f'<p:txBody><a:bodyPr anchor="ctr"/><a:lstStyle/>'
+            + _para(_run(str(text), 10, col, t["fonts"]["body"]), space_after=0)
+            + '</p:txBody></p:sp>')
+    right = (f'<p:sp><p:nvSpPr><p:cNvPr id="901" name="footR"/><p:cNvSpPr txBox="1"/>'
+             f'<p:nvPr/></p:nvSpPr><p:spPr>'
+             f'<a:xfrm><a:off x="{int(_W * 0.78)}" y="{_H - 430000}"/>'
+             f'<a:ext cx="{int(_W * 0.22) - _MARGIN}" cy="300000"/></a:xfrm>'
+             f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>'
+             f'<p:txBody><a:bodyPr anchor="ctr"/><a:lstStyle/>'
+             + _para(_run(f"{page:02d}", 10, col, t["fonts"]["body"]), algn="r", space_after=0)
+             + '</p:txBody></p:sp>')
+    return left + right
+
+
 def _slide_xml(slide: Slide, t: dict):
     bg, shapes, media, anim = _slide_shapes(slide, t)
+    layout = slide.effective_layout()
+    if slide.footer and layout not in ("cover", "section"):
+        col = t["muted"]
+        shapes += _footer_xml(slide.footer, slide.idx + 1, t, col)
     timing = _timing_fade(anim) if slide.animate else ""
     xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
@@ -632,7 +746,8 @@ def _slide_xml(slide: Slide, t: dict):
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
         'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
         '<p:cSld>'
-        f'<p:bg><p:bgPr>{_bg_fill(bg)}<a:effectLst/></p:bgPr></p:bg>'
+        f'<p:bg><p:bgPr>{(custom_bg_fill((slide.bg_spec or {}).get("fill"), bg) or _bg_fill(bg))}'
+        '<a:effectLst/></p:bgPr></p:bg>'
         '<p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/>'
         '<p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/>'
         '<a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/>'
@@ -775,9 +890,25 @@ def render_pptx(slides: list, theme=None) -> bytes:
         z.writestr("ppt/slideLayouts/slideLayout1.xml", _SLIDE_LAYOUT)
         z.writestr("ppt/slideLayouts/_rels/slideLayout1.xml.rels",
                    _SLIDE_LAYOUT_RELS)
+        # A deck-wide footer (deck name) unless a slide sets its own.
+        deck_footer = ""
+        for s in slides:
+            if s.footer:
+                deck_footer = s.footer
+                break
+        if not deck_footer:
+            for s in slides:
+                if s.effective_layout() == "cover" and s.title:
+                    deck_footer = s.title
+                    break
+            else:
+                deck_footer = next((s.title for s in slides if s.title), "")
         media_n = 0
         for i, slide in enumerate(slides):
             slide.idx = i
+            slide.total = len(slides)
+            if not slide.footer:
+                slide.footer = deck_footer
             xml, media = _slide_xml(slide, t)
             z.writestr(f"ppt/slides/slide{i + 1}.xml", xml)
             indexed = []
