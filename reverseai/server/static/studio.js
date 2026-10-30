@@ -374,8 +374,35 @@ function renderStage() {
     card.appendChild(holder);
   } else if (layout === "diagram") {
     card.appendChild(title);
-    card.appendChild(el("div", "st-diagram-note",
-      "This slide is a diagram. Edit its shapes with the Ask bar below (e.g. \"make the middle box green\")."));
+    if (!Array.isArray(s.shapes)) s.shapes = [];
+    const canvas = el("div", "st-diag-canvas");
+    canvas.id = "stDiag";
+    const tools = el("div", "st-diag-tools");
+    const boxCount = () => s.shapes.filter((x) => x && /^(rect|roundrect|ellipse)$/i.test(x.type || "rect")).length;
+    const addBox = el("button", "st-diag-btn");
+    addBox.innerHTML = `${ic("plus", 13)}<span>Box</span>`;
+    addBox.addEventListener("click", () => {
+      const n = boxCount();
+      s.shapes.push({ type: "roundrect", x: 8 + (n % 3) * 30, y: 20 + Math.floor(n / 3) * 26,
+        w: 24, h: 18, color: DIAG_COLORS[n % DIAG_COLORS.length], text: "Label", text_color: "FFFFFF" });
+      renderDiagramEditor(canvas, s); markDirty();
+    });
+    const addArrow = el("button", "st-diag-btn");
+    addArrow.innerHTML = `${ic("plus", 13)}<span>Arrow</span>`;
+    addArrow.addEventListener("click", () => {
+      s.shapes.push({ type: "arrow", x: 20, y: 72, x2: 55, y2: 72, color: normHex(ink) });
+      renderDiagramEditor(canvas, s); markDirty();
+    });
+    const addText = el("button", "st-diag-btn");
+    addText.innerHTML = `${ic("plus", 13)}<span>Text</span>`;
+    addText.addEventListener("click", () => {
+      s.shapes.push({ type: "text", x: 10, y: 15, w: 40, text: "Caption", color: normHex(ink) });
+      renderDiagramEditor(canvas, s, accent); markDirty();
+    });
+    tools.appendChild(addBox); tools.appendChild(addArrow); tools.appendChild(addText);
+    card.appendChild(canvas);
+    card.appendChild(tools);
+    renderDiagramEditor(canvas, s, accent);
   } else {
     // content
     card.appendChild(title);
@@ -481,6 +508,150 @@ function pickStudioImage(onDone) {
     }
   });
   inp.click();
+}
+
+// --- visual diagram editor ------------------------------------------------
+const DIAG_COLORS = ["2D6CDF", "12B5A5", "35C06A", "FF9F0A", "FF375F", "7C5CFF", "E8560A", "5A6676"];
+function nextDiagColor(cur) {
+  const i = DIAG_COLORS.indexOf(normHex(cur));
+  return DIAG_COLORS[(i + 1) % DIAG_COLORS.length];
+}
+function dragPercent(node, rectFn, onMove) {
+  node.addEventListener("mousedown", (e) => {
+    if (e.target.closest(".st-diag-ctl, .st-diag-handle, [contenteditable]")) return;
+    e.preventDefault();
+    let px = e.clientX, py = e.clientY;
+    const rect = rectFn();
+    const move = (ev) => {
+      onMove((ev.clientX - px) / rect.width * 100, (ev.clientY - py) / rect.height * 100);
+      px = ev.clientX; py = ev.clientY;
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      markDirty();
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
+}
+function renderDiagramEditor(canvas, slide) {
+  canvas.innerHTML = "";
+  const shapes = slide.shapes || [];
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "st-diag-svg");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("preserveAspectRatio", "none");
+  const defs = document.createElementNS(NS, "defs");
+  defs.innerHTML = '<marker id="stArrow" markerWidth="6" markerHeight="6" refX="4.5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="context-stroke"/></marker>';
+  svg.appendChild(defs);
+  canvas.appendChild(svg);
+  const rectFn = () => canvas.getBoundingClientRect();
+
+  shapes.forEach((sh, idx) => {
+    if (!sh || typeof sh !== "object") return;
+    const kind = String(sh.type || "rect").toLowerCase();
+    if (kind === "arrow" || kind === "line") {
+      diagArrow(svg, canvas, slide, sh, idx, rectFn);
+    } else {
+      diagBox(canvas, slide, sh, idx, kind, rectFn);
+    }
+  });
+}
+function diagBox(canvas, slide, sh, idx, kind, rectFn) {
+  const box = el("div", "st-diag-box" + (kind === "ellipse" ? " ellipse" : "") + (kind === "text" ? " textonly" : ""));
+  box.style.left = (sh.x || 0) + "%";
+  box.style.top = (sh.y || 0) + "%";
+  box.style.width = (sh.w || 24) + "%";
+  if (kind !== "text") {
+    box.style.height = (sh.h || 18) + "%";
+    box.style.background = "#" + (sh.color ? normHex(sh.color) : "2D6CDF");
+  }
+  const tc = kind === "text"
+    ? (sh.color ? normHex(sh.color) : "111111")
+    : (sh.text_color ? normHex(sh.text_color) : "FFFFFF");
+  const txt = el("div", "st-diag-text");
+  txt.contentEditable = "true";
+  txt.spellcheck = false;
+  txt.textContent = sh.text || "";
+  txt.style.color = "#" + tc;
+  txt.addEventListener("input", () => { sh.text = txt.textContent; markDirty(); });
+  box.appendChild(txt);
+  const del = el("button", "st-diag-ctl del");
+  del.innerHTML = ic("x", 11);
+  del.title = "Delete";
+  del.addEventListener("click", () => { slide.shapes.splice(idx, 1); renderDiagramEditor(canvas, slide); markDirty(); });
+  box.appendChild(del);
+  if (kind !== "text") {
+    const col = el("button", "st-diag-ctl col");
+    col.title = "Color";
+    col.style.background = "#" + (sh.color ? normHex(sh.color) : "2D6CDF");
+    col.addEventListener("click", () => { sh.color = nextDiagColor(sh.color); renderDiagramEditor(canvas, slide); markDirty(); });
+    box.appendChild(col);
+    const h = el("div", "st-diag-handle");
+    h.addEventListener("mousedown", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      let px = e.clientX, py = e.clientY;
+      const rect = rectFn();
+      const move = (ev) => {
+        sh.w = Math.max(6, (sh.w || 24) + (ev.clientX - px) / rect.width * 100);
+        sh.h = Math.max(5, (sh.h || 18) + (ev.clientY - py) / rect.height * 100);
+        box.style.width = sh.w + "%"; box.style.height = sh.h + "%";
+        px = ev.clientX; py = ev.clientY;
+      };
+      const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); markDirty(); };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    });
+    box.appendChild(h);
+  }
+  dragPercent(box, rectFn, (dx, dy) => {
+    sh.x = Math.max(0, Math.min(98, (sh.x || 0) + dx));
+    sh.y = Math.max(0, Math.min(98, (sh.y || 0) + dy));
+    box.style.left = sh.x + "%"; box.style.top = sh.y + "%";
+  });
+  canvas.appendChild(box);
+}
+function diagArrow(svg, canvas, slide, sh, idx, rectFn) {
+  const NS = "http://www.w3.org/2000/svg";
+  const col = "#" + (sh.color ? normHex(sh.color) : "5A6676");
+  const line = document.createElementNS(NS, "line");
+  const setLine = () => {
+    line.setAttribute("x1", sh.x || 0); line.setAttribute("y1", sh.y || 0);
+    line.setAttribute("x2", sh.x2 || 0); line.setAttribute("y2", sh.y2 || 0);
+  };
+  line.setAttribute("stroke", col);
+  line.setAttribute("stroke-width", "0.9");
+  if (String(sh.type).toLowerCase() === "arrow") line.setAttribute("marker-end", "url(#stArrow)");
+  setLine();
+  svg.appendChild(line);
+  const endpoint = (xk, yk) => {
+    const hd = el("div", "st-diag-end");
+    const place = () => { hd.style.left = (sh[xk] || 0) + "%"; hd.style.top = (sh[yk] || 0) + "%"; };
+    place();
+    hd.addEventListener("mousedown", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const rect = rectFn();
+      const move = (ev) => {
+        sh[xk] = Math.max(0, Math.min(100, (ev.clientX - rect.left) / rect.width * 100));
+        sh[yk] = Math.max(0, Math.min(100, (ev.clientY - rect.top) / rect.height * 100));
+        setLine(); place();
+      };
+      const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); markDirty(); };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    });
+    canvas.appendChild(hd);
+  };
+  endpoint("x", "y"); endpoint("x2", "y2");
+  const del = el("button", "st-diag-ctl del endpt");
+  del.innerHTML = ic("x", 11);
+  del.title = "Delete arrow";
+  del.style.left = (((sh.x || 0) + (sh.x2 || 0)) / 2) + "%";
+  del.style.top = (((sh.y || 0) + (sh.y2 || 0)) / 2) + "%";
+  del.addEventListener("click", () => { slide.shapes.splice(idx, 1); renderDiagramEditor(canvas, slide); markDirty(); });
+  canvas.appendChild(del);
 }
 
 function syncDeckFromDom() {
