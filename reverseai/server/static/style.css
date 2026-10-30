@@ -2343,3 +2343,14 @@ body {
   body.canvas-resizing #canvas { transition: none !important; }
   body.canvas-resizing #pvFrame { pointer-events: none; }
 }
+
+/* rendered-page thumbnails (visual self-check) */
+.renders { margin-top: 14px; }
+.renders-label { font-size: 12px; color: var(--faint); text-transform: uppercase;
+  letter-spacing: .04em; margin-bottom: 7px; }
+.renders-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.render-thumb { padding: 0; border: 1px solid var(--border); background: var(--elev);
+  border-radius: 8px; overflow: hidden; cursor: pointer; transition: .12s; line-height: 0; }
+.render-thumb:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.render-thumb img { width: 150px; height: auto; max-height: 120px; object-fit: cover; display: block; }
+@media (max-width: 680px) { .render-thumb img { width: 120px; } }

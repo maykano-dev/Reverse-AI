@@ -297,6 +297,7 @@ class Conversation:
               "test_strength": job.test_strength, "surfaces": job.surfaces,
               "preview": job.preview,
               "preview_fresh": getattr(self, "_preview_fresh", False),
+              "renders": list(self.ctx.extra.get("renders") or []),
               "awaiting_surface": job.awaiting_surface,
               "template": self.template, "plan": plan})
         return job

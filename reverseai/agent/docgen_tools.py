@@ -54,7 +54,8 @@ class CreateDocumentTool(Tool):
         "updated spec: it regenerates and re-delivers the file with a download "
         "link. Never hand-edit the packaged file with shell or write_file - always "
         "regenerate through this tool so the user gets a clickable, downloadable "
-        "result."
+        "result. After making a visual file (deck/pdf/docx), call render_document "
+        "to see how it actually looks and fix any layout problems before finishing."
     )
     parameters = {
         "type": "object",

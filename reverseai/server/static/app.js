@@ -1451,6 +1451,7 @@ function finishFinal(ui, ev, jobId) {
   } else {
     renderArtifact(ui.body, ev.artifact_meta, ev.artifact, jobId, conversationId);
   }
+  renderRenders(ui.body, ev.renders);
   renderAnswerActions(ui.body, ev.answer || "", jobId);
   if (ev.preview && conversationId) {
     renderPreviewCard(ui.body, conversationId, ev.preview);
@@ -1770,6 +1771,26 @@ function renderArtifact(container, meta, name, jobId, convId) {
     updateArtCount();
   }
 }
+function renderRenders(container, renders) {
+  if (!container || !Array.isArray(renders) || !renders.length) return;
+  const wrap = el("div", "renders");
+  wrap.appendChild(el("div", "renders-label", "How it looks"));
+  const grid = el("div", "renders-grid");
+  renders.slice(0, 12).forEach((url) => {
+    const src = withToken(url);
+    const fig = el("button", "render-thumb");
+    fig.title = "Open full size";
+    const img = el("img");
+    img.loading = "lazy";
+    img.src = src;
+    img.alt = "rendered page";
+    fig.appendChild(img);
+    fig.addEventListener("click", () => showPreview(src, { local: true, title: "Rendered page", newTab: true }));
+    grid.appendChild(fig);
+  });
+  wrap.appendChild(grid);
+  container.appendChild(wrap);
+}
 function renderFeedback(container, jobId) {
   const wrap = el("div", "feedback");
   wrap.innerHTML = `<span class="fb-q">Was this helpful?</span>
@@ -1839,6 +1860,7 @@ const TOOL_LABELS = {
   forge_tool: "Forging a tool",
   run_forged_tool: "Using a tool it built",
   create_document: "Creating a document",
+  render_document: "Checking how it looks",
   export_tool_manifests: "Describing tools",
   capability_map: "Measuring capabilities",
   trust_check: "Checking the consequence",
