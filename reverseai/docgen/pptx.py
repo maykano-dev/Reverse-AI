@@ -103,6 +103,7 @@ class Slide:
     image_h: int = 0
     shapes: list = field(default_factory=list)   # diagram primitives
     animate: bool = False
+    idx: int = 0                     # position in the deck (for varied decor)
 
     def effective_layout(self) -> str:
         if self.layout:
@@ -266,6 +267,18 @@ def _decor_corner(t, sid):
                  t["accent"], alpha=9000, geom="ellipse")
 
 
+def _auto_decor(t, idx, accent, sid):
+    """A faint accent shape bleeding off a corner, varied per slide."""
+    variants = [
+        # (x, y, w, h, geom) - large soft shapes off a corner
+        (_W - 2600000, _H - 2300000, 3600000, 3600000, "ellipse"),   # bottom-right circle
+        (-1400000, _H - 2000000, 3200000, 3200000, "ellipse"),       # bottom-left circle
+        (_W - 1700000, _H - 1500000, 2400000, 2400000, "ellipse"),   # smaller bottom-right
+    ]
+    x, y, w, h, geom = variants[idx % len(variants)]
+    return _rect(sid, "decor", x, y, w, h, accent, alpha=6000, geom=geom)
+
+
 def _img_ext(data: bytes) -> str:
     return "png" if data[:4] == b"\x89PNG" else "jpg"
 
@@ -340,6 +353,10 @@ def _slide_shapes(slide: Slide, t: dict):
         return bg, "".join(sp), media, anim
 
     # ---- title header shared by content / two-column / image / diagram ----
+    # Subtle, cohesive decoration so slides aren't flat text: a faint accent
+    # shape bleeding off a corner, alternating per slide for variety.
+    if layout in ("content", "two-column"):
+        sp.append(_auto_decor(t, slide.idx, accent, next(sid)))
     sp.append(_rect(next(sid), "dot", _MARGIN, 620000, 150000, 150000, accent,
                     geom="ellipse"))
     sp.append(_textbox(next(sid), "title", _MARGIN + 260000, 470000,
@@ -590,6 +607,7 @@ def render_pptx(slides: list, theme=None) -> bytes:
                    _SLIDE_LAYOUT_RELS)
         media_n = 0
         for i, slide in enumerate(slides):
+            slide.idx = i
             xml, media = _slide_xml(slide, t)
             z.writestr(f"ppt/slides/slide{i + 1}.xml", xml)
             indexed = []

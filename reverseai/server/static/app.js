@@ -1777,15 +1777,15 @@ function renderRenders(container, renders) {
   wrap.appendChild(el("div", "renders-label", "How it looks"));
   const grid = el("div", "renders-grid");
   renders.slice(0, 12).forEach((url) => {
-    const src = withToken(url);
     const fig = el("button", "render-thumb");
     fig.title = "Open full size";
     const img = el("img");
     img.loading = "lazy";
-    img.src = src;
+    img.src = withToken(url);           // <img> needs the token in the URL
     img.alt = "rendered page";
     fig.appendChild(img);
-    fig.addEventListener("click", () => showPreview(src, { local: true, title: "Rendered page", newTab: true }));
+    // showPreview tokenizes local URLs itself, so pass the raw url (no double token).
+    fig.addEventListener("click", () => showPreview(url, { local: true, title: "Rendered page", newTab: true }));
     grid.appendChild(fig);
   });
   wrap.appendChild(grid);
