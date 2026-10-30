@@ -102,3 +102,16 @@ class LLMProvider(abc.ABC):
         max_tokens: int = 8192,
     ) -> LLMResponse:
         ...
+
+    def chat_stream(
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float = 0.0,
+        max_tokens: int = 8192,
+    ):
+        """Yield content-delta strings; the generator's return value is the full
+        LLMResponse. Default: no streaming (yields nothing, returns chat())."""
+        yield from ()
+        return self.chat(messages, tools=tools, temperature=temperature,
+                         max_tokens=max_tokens)

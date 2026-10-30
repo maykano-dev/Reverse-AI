@@ -62,3 +62,33 @@ class ResilienceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StreamingTests(unittest.TestCase):
+    def test_streaming_emits_deltas(self):
+        from reverseai.agent.providers.base import LLMResponse
+
+        class _Stream:
+            name = "sp"
+            def chat_stream(self, messages, tools=None, temperature=0, max_tokens=0):
+                for w in ["Hel", "lo ", "there"]:
+                    yield w
+                return LLMResponse(content="Hello there", tool_calls=[])
+            def chat(self, *a, **k):
+                return LLMResponse(content="fallback")
+
+        os.environ["REVERSEAI_STREAM"] = "1"
+        deltas = []
+        resp, _ = _resilient_chat(_Agent(_Stream()), [], [],
+                                  lambda e: deltas.append(e["text"]) if e.get("type") == "delta" else None)
+        self.assertEqual("".join(deltas), "Hello there")
+        self.assertEqual(resp.content, "Hello there")
+
+    def test_streaming_disabled_uses_chat(self):
+        os.environ["REVERSEAI_STREAM"] = "0"
+        try:
+            p = _Prov("primary")
+            resp, _ = _resilient_chat(_Agent(p), [], [], lambda e: None)
+            self.assertEqual(resp.content, "ok from primary")
+        finally:
+            os.environ["REVERSEAI_STREAM"] = "1"

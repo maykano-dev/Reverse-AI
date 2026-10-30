@@ -2368,3 +2368,10 @@ body {
   place-items: center; border-radius: 10px; border: 1px solid rgba(255,255,255,.18);
   background: rgba(255,255,255,.08); color: #fff; cursor: pointer; }
 .lb-close:hover { background: rgba(255,255,255,.16); }
+
+/* live token streaming */
+.stream-live { font-size: 15px; line-height: 1.6; color: var(--text); white-space: pre-wrap;
+  margin-top: 4px; }
+.stream-live::after { content: "▋"; color: var(--accent); margin-left: 1px;
+  animation: blink 1s steps(2) infinite; }
+@keyframes blink { 0%,50% { opacity: 1; } 50.01%,100% { opacity: 0; } }

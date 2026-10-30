@@ -59,14 +59,32 @@ def _resilient_chat(agent, messages, specs, emit):
                 providers.append(get_provider(name))
             except Exception:
                 pass
+    stream_on = os.environ.get("REVERSEAI_STREAM", "1").lower() not in ("0", "false", "no")
     last = None
     for pi, prov in enumerate(providers):
         for attempt in range(retries + 1):
             try:
-                resp = prov.chat(messages, tools=specs,
-                                 temperature=agent.temperature,
-                                 max_tokens=getattr(agent, "max_tokens", 8192))
-                return resp, prov
+                mx = getattr(agent, "max_tokens", 8192)
+                # Stream only on the first clean attempt of the primary provider,
+                # so a retry/fallback never replays partial tokens.
+                if stream_on and pi == 0 and attempt == 0 and hasattr(prov, "chat_stream"):
+                    gen = prov.chat_stream(messages, tools=specs,
+                                           temperature=agent.temperature, max_tokens=mx)
+                    resp = None
+                    while True:
+                        try:
+                            chunk = next(gen)
+                        except StopIteration as si:
+                            resp = si.value
+                            break
+                        if chunk:
+                            emit({"type": "delta", "text": chunk})
+                    if resp is None:
+                        resp = prov.chat(messages, tools=specs,
+                                         temperature=agent.temperature, max_tokens=mx)
+                    return resp, prov
+                return (prov.chat(messages, tools=specs,
+                                  temperature=agent.temperature, max_tokens=mx), prov)
             except Exception as exc:  # noqa: BLE001 - provider errors are opaque
                 last = exc
                 if attempt < retries:

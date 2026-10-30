@@ -804,6 +804,24 @@ function addPlan(ui, steps) {
   box.appendChild(body);
   ui.plan.appendChild(box);
 }
+function appendDelta(ui, text) {
+  if (!ui || !text || ui.finished) return;
+  if (!ui.streamEl) {
+    ui.streamEl = el("div", "stream-live");
+    ui.body.appendChild(ui.streamEl);
+    ui.streamBuf = "";
+  }
+  ui.streamBuf += text;
+  ui.streamEl.textContent = ui.streamBuf;
+  scrollDown();
+}
+function clearStream(ui) {
+  if (ui && ui.streamEl) {
+    ui.streamEl.remove();
+    ui.streamEl = null;
+    ui.streamBuf = "";
+  }
+}
 function addReason(ui, ev) {
   if (!ui) return;
   if (ui.current) ui.current.classList.remove("open");
@@ -1411,6 +1429,7 @@ function renderSurfaces(container, surfaces, jobId, ui) {
 function finishFinal(ui, ev, jobId) {
   if (!ui || ui.finished) return;
   ui.finished = true;
+  clearStream(ui);
   clearInterval(ui.timer);
   if (ui.current) ui.current.classList.remove("live", "open");
   $$(".cot-step", ui.cot).forEach((s) => s.classList.remove("open"));
@@ -1609,12 +1628,17 @@ function handleEvent(ui, ev, jobId) {
     case "step":
       if (ev.step) ui.modelStep = ev.step;
       break;
+    case "delta":
+      appendDelta(ui, ev.text);
+      break;
     case "reason":
+      clearStream(ui);
       addReason(ui, ev);
       break;
     case "assistant":
-      // The model's in-the-moment narration is now the headline of the next
-      // "reason" step, so it is not repeated here as a separate note.
+      // The streamed text has served its purpose (it becomes the step headline
+      // or the final answer), so clear the live buffer here.
+      clearStream(ui);
       break;
     case "tool_result":
       addToolResult(ui, ev);
