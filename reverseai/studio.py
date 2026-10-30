@@ -103,12 +103,36 @@ def _raster_svg(svg):
         return None
 
 
+def _chart_colors(spec):
+    try:
+        from .docgen.pptx import resolve_theme
+        t = resolve_theme(spec.get("theme"))
+        return {"bg": t["bg"], "ink": t["ink"], "muted": t["muted"],
+                "accent": t["accent"], "accent2": t["accent2"],
+                "font": t["fonts"]["body"]}
+    except Exception:
+        return {}
+
+
 def embed_images(spec: dict[str, Any], workspace: str | Path) -> None:
-    """Resolve image src references and inline SVG to embedded bytes in place.
+    """Resolve image src references, charts, and inline SVG to embedded bytes.
 
     Keeps the pure renderer off the filesystem: paths are read and validated
-    here, and the model's SVG art is rasterized. Safe to call repeatedly.
+    here, charts are drawn as SVG, and the model's SVG art is rasterized.
     """
+    from .docgen.charts import render_chart
+    colors = _chart_colors(spec)
+    # Turn chart specs into SVG first; the SVG path below rasterizes them.
+    for s in spec.get("slides") or []:
+        if isinstance(s, dict) and s.get("chart") and not s.get("svg") and not s.get("image_data"):
+            svg = render_chart({**s["chart"], "background": True}, colors)
+            if svg:
+                s["svg"] = svg
+    for b in spec.get("blocks") or []:
+        if isinstance(b, dict) and b.get("chart") and not b.get("svg") and not b.get("data"):
+            svg = render_chart({**b["chart"], "background": True}, colors)
+            if svg:
+                b["svg"] = svg
     for b in spec.get("blocks") or []:
         if not isinstance(b, dict) or b.get("data"):
             continue
