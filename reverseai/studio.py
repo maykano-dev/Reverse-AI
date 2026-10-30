@@ -181,14 +181,21 @@ def _deck_to_pdf_spec(spec: dict[str, Any]) -> dict[str, Any]:
     for i, s in enumerate(slides):
         if not isinstance(s, dict):
             continue
-        head = str(s.get("title") or f"Slide {i + 1}")
+        head = str(s.get("title") or s.get("quote") or f"Slide {i + 1}")
         if i == 0 and not title:
             title = head
         blocks.append({"type": "heading", "text": head})
         if s.get("subtitle"):
             blocks.append({"type": "paragraph", "text": str(s["subtitle"])})
+        if s.get("quote"):
+            blocks.append({"type": "paragraph", "text": str(s["quote"])})
+        if s.get("attribution"):
+            blocks.append({"type": "paragraph", "text": "- " + str(s["attribution"])})
         for b in s.get("bullets") or []:
             blocks.append({"type": "bullet", "text": str(b)})
+        for col in s.get("columns") or []:
+            for b in col or []:
+                blocks.append({"type": "bullet", "text": str(b)})
     return {"title": title or str(spec.get("title") or "Presentation"),
             "blocks": blocks}
 

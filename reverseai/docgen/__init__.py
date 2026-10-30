@@ -131,14 +131,24 @@ def _docx(spec):
 def _pptx(spec):
     slides = []
     for s in spec.get("slides") or []:
-        if isinstance(s, dict):
-            slides.append(Slide(
-                title=str(s.get("title") or ""),
-                subtitle=str(s.get("subtitle") or ""),
-                bullets=[str(x) for x in (s.get("bullets") or [])]))
+        if not isinstance(s, dict):
+            continue
+        cols = s.get("columns") or []
+        columns = [[str(x) for x in (c or [])] for c in cols] if cols else []
+        slides.append(Slide(
+            title=str(s.get("title") or ""),
+            subtitle=str(s.get("subtitle") or ""),
+            bullets=[str(x) for x in (s.get("bullets") or [])],
+            layout=str(s.get("layout") or ""),
+            columns=columns,
+            quote=str(s.get("quote") or ""),
+            attribution=str(s.get("attribution") or ""),
+            bg=str(s.get("bg") or ""),
+            accent=str(s.get("accent") or ""),
+            notes=str(s.get("notes") or "")))
     if not slides and spec.get("title"):
         slides.append(Slide(title=str(spec["title"])))
-    return render_pptx(slides)
+    return render_pptx(slides, theme=spec.get("theme"))
 
 
 def _xlsx(spec):
