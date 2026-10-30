@@ -87,19 +87,48 @@ def _read_image(workspace, src):
     return None
 
 
+def _raster_svg(svg):
+    """Rasterize an SVG string to (png_bytes, w, h), or None."""
+    from .docgen.images import ImageError, decode_image
+    from .docgen.svgraster import svg_to_png
+    if not isinstance(svg, str) or "<svg" not in svg.lower():
+        return None
+    png = svg_to_png(svg)
+    if not png:
+        return None
+    try:
+        img = decode_image(png)
+        return png, img.width, img.height
+    except ImageError:
+        return None
+
+
 def embed_images(spec: dict[str, Any], workspace: str | Path) -> None:
-    """Resolve image src references to embedded bytes in place (blocks + slides).
+    """Resolve image src references and inline SVG to embedded bytes in place.
 
     Keeps the pure renderer off the filesystem: paths are read and validated
-    here. Safe to call repeatedly; already-embedded items are left alone.
+    here, and the model's SVG art is rasterized. Safe to call repeatedly.
     """
     for b in spec.get("blocks") or []:
-        if (isinstance(b, dict) and b.get("type") == "image" and not b.get("data")):
+        if not isinstance(b, dict) or b.get("data"):
+            continue
+        if b.get("svg"):
+            got = _raster_svg(b.get("svg"))
+            if got:
+                b["type"] = "image"
+                b["data"], b["img_w"], b["img_h"] = got
+        elif b.get("type") == "image":
             got = _read_image(workspace, b.get("src") or b.get("path"))
             if got:
                 b["data"], b["img_w"], b["img_h"] = got
     for s in spec.get("slides") or []:
-        if isinstance(s, dict) and s.get("image") and not s.get("image_data"):
+        if not isinstance(s, dict) or s.get("image_data"):
+            continue
+        if s.get("svg"):
+            got = _raster_svg(s.get("svg"))
+            if got:
+                s["image_data"], s["image_w"], s["image_h"] = got
+        elif s.get("image"):
             got = _read_image(workspace, s.get("image"))
             if got:
                 s["image_data"], s["image_w"], s["image_h"] = got

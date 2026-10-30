@@ -41,3 +41,32 @@ class RenderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SvgRasterTests(unittest.TestCase):
+    def test_svg_to_png(self):
+        from reverseai.docgen.svgraster import available, svg_to_png
+        if not available():
+            self.skipTest("no SVG rasterizer on host")
+        svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120">'
+               '<circle cx="60" cy="60" r="40" fill="#2D6CDF"/>'
+               '<text x="10" y="20" font-size="14">Hi</text></svg>')
+        png = svg_to_png(svg, target_w=800)
+        self.assertTrue(png and png[:4] == b"\x89PNG")
+
+    def test_svg_embeds_in_deck(self):
+        from reverseai.docgen import generate
+        from reverseai.docgen.svgraster import available
+        from reverseai.studio import embed_images
+        if not available():
+            self.skipTest("no SVG rasterizer on host")
+        svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 180">'
+               '<rect width="300" height="180" fill="#101010"/>'
+               '<circle cx="90" cy="90" r="50" fill="#FF9F0A"/></svg>')
+        spec = {"slides": [{"title": "Art", "svg": svg, "bullets": ["x"]}]}
+        embed_images(spec, tempfile.mkdtemp())
+        self.assertIsInstance(spec["slides"][0].get("image_data"), (bytes, bytearray))
+        import zipfile
+        from io import BytesIO
+        z = zipfile.ZipFile(BytesIO(generate("pptx", spec).data))
+        self.assertTrue(any("media/image" in n for n in z.namelist()))
