@@ -121,6 +121,17 @@ def embed_images(spec: dict[str, Any], workspace: str | Path) -> None:
     here, charts are drawn as SVG, and the model's SVG art is rasterized.
     """
     from .docgen.charts import render_chart
+    # If a deck has no theme, pick a varied one now (deterministic by title) so
+    # the whole deck - slides AND charts/art colors - shares one look, instead
+    # of charts defaulting to the light-blue palette while the deck renders dark.
+    if not spec.get("theme") and spec.get("slides"):
+        try:
+            from .docgen.pptx import auto_theme
+            title = next((s.get("title") for s in spec["slides"]
+                          if isinstance(s, dict) and s.get("title")), "deck")
+            spec["theme"] = auto_theme(title)
+        except Exception:  # pragma: no cover - best-effort
+            pass
     colors = _chart_colors(spec)
     # Turn chart specs into SVG first; the SVG path below rasterizes them.
     for s in spec.get("slides") or []:

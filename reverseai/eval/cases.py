@@ -99,6 +99,32 @@ def _pptx_advanced_diagrams():
         assert z.testzip() is None, st
 
 
+def _pptx_theme_variety():
+    from reverseai.docgen.pptx import PRESETS, auto_theme, resolve_theme
+    # Plenty of distinct presets, each with its own color + font pairing.
+    assert len(PRESETS) >= 12, f"too few themes: {len(PRESETS)}"
+    bgs = {resolve_theme(n)["bg"] for n in PRESETS}
+    assert len(bgs) >= 10, "themes share too many backgrounds"
+    fonts = {resolve_theme(n)["fonts"]["title"] for n in PRESETS}
+    assert len(fonts) >= 3, "no font variety across themes"
+    # auto_theme is deterministic and spreads across seeds.
+    seeds = ["History of Rome", "Quantum Computing", "Climate Report",
+             "Marketing Plan", "Neural Networks", "Supply Chain"]
+    picks = [auto_theme(s) for s in seeds]
+    assert auto_theme("History of Rome") == picks[0], "auto_theme not deterministic"
+    assert len(set(picks)) >= 3, f"auto_theme not varied: {picks}"
+
+
+def _pptx_cards_layout():
+    from reverseai.docgen import generate
+    spec = {"slides": [{"layout": "cards", "title": "Roadmap", "cards": [
+        {"num": 1, "title": "Research", "text": "scope"},
+        {"num": 2, "title": "Build", "text": "ship"},
+        {"label": "Q3", "title": "Launch"}]}]}
+    s = zipfile.ZipFile(BytesIO(generate("pptx", spec).data)).read("ppt/slides/slide1.xml")
+    assert b"Research" in s and b"Launch" in s, "card content missing"
+
+
 def _pptx_diagram():
     from reverseai.docgen import generate
     spec = {"slides": [{"layout": "diagram", "title": "f", "shapes": [
@@ -221,6 +247,8 @@ CASES = [
     Case("pdf_valid", "docgen", _pdf_valid),
     Case("pptx_valid", "docgen", _pptx_valid),
     Case("pptx_theme_dark", "docgen", _pptx_theme_dark),
+    Case("pptx_theme_variety", "docgen", _pptx_theme_variety),
+    Case("pptx_cards_layout", "docgen", _pptx_cards_layout),
     Case("pptx_all_layouts", "docgen", _pptx_all_layouts),
     Case("pptx_image_embed", "docgen", _pptx_image_embed),
     Case("pptx_diagram", "docgen", _pptx_diagram),

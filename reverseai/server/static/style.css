@@ -2275,6 +2275,19 @@ body {
   text-align: center; font-size: clamp(12px, 1.5vw, 20px); padding: 6px; box-sizing: border-box;
   box-shadow: 0 6px 20px rgba(0,0,0,.25); }
 .pz-shape-text { background: none !important; box-shadow: none; justify-content: flex-start; }
+.pz-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 2.2vw; flex: 1; align-content: start; margin-top: 1vh; }
+.pz-card { border-radius: 16px; padding: clamp(16px, 2.2vw, 30px); box-sizing: border-box;
+  box-shadow: 0 10px 34px rgba(0,0,0,.22); display: flex; flex-direction: column; gap: 10px; }
+.pz-card-tag { font-family: var(--font-display); font-size: clamp(22px, 3vw, 40px); font-weight: 700; }
+.pz-card-title { font-size: clamp(17px, 2vw, 26px); font-weight: 600; }
+.pz-card-text { font-size: clamp(14px, 1.5vw, 20px); line-height: 1.45; }
+.pz-flow { display: flex; align-items: center; justify-content: center; flex-wrap: wrap;
+  gap: clamp(8px, 1.4vw, 20px); flex: 1; }
+.pz-flow-box { border-radius: 14px; padding: clamp(14px, 1.8vw, 26px) clamp(16px, 2vw, 30px);
+  font-size: clamp(15px, 1.8vw, 24px); font-weight: 600; text-align: center; min-width: 120px;
+  box-shadow: 0 8px 26px rgba(0,0,0,.2); }
+.pz-flow-arrow { font-size: clamp(22px, 3vw, 40px); font-weight: 700; }
 .present-bar {
   display: flex; align-items: center; gap: 14px; padding: 14px 22px;
   background: rgba(255, 255, 255, .04); border-top: 1px solid rgba(255, 255, 255, .08);

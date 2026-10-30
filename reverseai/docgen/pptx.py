@@ -35,21 +35,61 @@ _MARGIN = 823912          # ~0.9in
 # --------------------------------------------------------------------------- #
 PRESETS = {
     "light":    dict(bg="FFFFFF", surface="F3F5F9", ink="16181D", muted="5C6672",
-                     accent="2D6CDF", accent2="7C5CFF", on_accent="FFFFFF"),
+                     accent="2D6CDF", accent2="7C5CFF", on_accent="FFFFFF",
+                     fonts={"title": "Georgia", "body": "Helvetica Neue"}),
     "midnight": dict(bg="0E1526", surface="18233E", ink="EEF3FF", muted="9DB2D6",
-                     accent="4F8CFF", accent2="C98BFF", on_accent="FFFFFF"),
+                     accent="4F8CFF", accent2="C98BFF", on_accent="FFFFFF",
+                     fonts={"title": "Georgia", "body": "Helvetica Neue"}),
     "aurora":   dict(bg="07121A", surface="0E2230", ink="EAFBFF", muted="8FC7D6",
-                     accent="2AD6B5", accent2="4FA6FF", on_accent="04221C"),
+                     accent="2AD6B5", accent2="4FA6FF", on_accent="04221C",
+                     fonts={"title": "Trebuchet MS", "body": "Trebuchet MS"}),
     "sunset":   dict(bg="1C1020", surface="2C1630", ink="FFF0EC", muted="E3A6B8",
-                     accent="FF6B4A", accent2="FFB24A", on_accent="2A0C08"),
+                     accent="FF6B4A", accent2="FFB24A", on_accent="2A0C08",
+                     fonts={"title": "Palatino Linotype", "body": "Helvetica Neue"}),
     "forest":   dict(bg="0C1A12", surface="12271B", ink="ECFBEF", muted="97C4A6",
-                     accent="35C06A", accent2="9BD94F", on_accent="05240F"),
+                     accent="35C06A", accent2="9BD94F", on_accent="05240F",
+                     fonts={"title": "Georgia", "body": "Verdana"}),
     "mono":     dict(bg="121316", surface="1D1F24", ink="F4F5F7", muted="A2A7B0",
-                     accent="E8EAED", accent2="9AA0AA", on_accent="121316"),
+                     accent="E8EAED", accent2="9AA0AA", on_accent="121316",
+                     fonts={"title": "Helvetica Neue", "body": "Helvetica Neue"}),
     "slate":    dict(bg="F7F8FA", surface="FFFFFF", ink="1B2230", muted="5A6676",
-                     accent="4457F2", accent2="12B5A5", on_accent="FFFFFF"),
+                     accent="4457F2", accent2="12B5A5", on_accent="FFFFFF",
+                     fonts={"title": "Trebuchet MS", "body": "Trebuchet MS"}),
+    # --- added for variety: different hue families, light & dark ---------
+    "ocean":    dict(bg="F4F8FB", surface="FFFFFF", ink="0B2B3A", muted="4A7084",
+                     accent="0E7FB5", accent2="12B5A5", on_accent="FFFFFF",
+                     fonts={"title": "Trebuchet MS", "body": "Segoe UI"}),
+    "coral":    dict(bg="FFF7F3", surface="FFFFFF", ink="3A1A14", muted="8A5A4E",
+                     accent="E8553B", accent2="F2A03D", on_accent="FFFFFF",
+                     fonts={"title": "Georgia", "body": "Verdana"}),
+    "paper":    dict(bg="F6F1E7", surface="FFFDF8", ink="2A2114", muted="6B5E49",
+                     accent="9A5B2E", accent2="4E7A4C", on_accent="FFFDF8",
+                     fonts={"title": "Palatino Linotype", "body": "Palatino Linotype"}),
+    "grape":    dict(bg="150E24", surface="241A3C", ink="F3EEFF", muted="B4A3D6",
+                     accent="A06BFF", accent2="FF7AC2", on_accent="FFFFFF",
+                     fonts={"title": "Century Gothic", "body": "Century Gothic"}),
+    "ember":    dict(bg="1A1310", surface="2A1E18", ink="FFF2EC", muted="D0A694",
+                     accent="FF7A2F", accent2="FFC24A", on_accent="2A0C04",
+                     fonts={"title": "Palatino Linotype", "body": "Helvetica Neue"}),
+    "steel":    dict(bg="0F1620", surface="1A2531", ink="EAF1F8", muted="9BB0C2",
+                     accent="5BA3D0", accent2="7FD1C1", on_accent="051018",
+                     fonts={"title": "Trebuchet MS", "body": "Helvetica Neue"}),
+    "rose":     dict(bg="FBF4F6", surface="FFFFFF", ink="34121E", muted="8A5566",
+                     accent="D23D74", accent2="8A5BF2", on_accent="FFFFFF",
+                     fonts={"title": "Georgia", "body": "Segoe UI"}),
 }
 _DEFAULT_FONTS = {"title": "Georgia", "body": "Helvetica Neue"}
+# Decks look varied when the theme is chosen for the deck instead of always
+# defaulting to one preset. auto_theme() picks deterministically from the title.
+_THEME_CYCLE = ["midnight", "slate", "aurora", "ocean", "sunset", "forest",
+                "grape", "paper", "coral", "steel", "ember", "mono", "rose"]
+
+
+def auto_theme(seed: str) -> str:
+    """Pick a varied preset name from a seed string (e.g. the deck title)."""
+    import hashlib
+    h = hashlib.sha256((seed or "deck").strip().lower().encode("utf-8")).digest()
+    return _THEME_CYCLE[h[0] % len(_THEME_CYCLE)]
 
 
 def _hex(c: str, fallback: str) -> str:
@@ -66,19 +106,22 @@ def resolve_theme(theme) -> dict:
     base = dict(PRESETS["light"])
     base["fonts"] = dict(_DEFAULT_FONTS)
     if isinstance(theme, str):
-        base.update(PRESETS.get(theme.lower(), {}))
-        base["fonts"] = dict(_DEFAULT_FONTS)
+        preset = PRESETS.get(theme.lower(), {})
+        base.update(preset)
+        base["fonts"] = dict(preset.get("fonts") or _DEFAULT_FONTS)
     elif isinstance(theme, dict):
         preset = theme.get("preset")
         if isinstance(preset, str) and preset.lower() in PRESETS:
             base.update(PRESETS[preset.lower()])
+            base["fonts"] = dict(PRESETS[preset.lower()].get("fonts") or _DEFAULT_FONTS)
         for k in ("bg", "surface", "ink", "muted", "accent", "accent2", "on_accent"):
             if theme.get(k):
                 base[k] = _hex(theme[k], base[k])
         fonts = theme.get("fonts") or {}
+        cur = base.get("fonts") or _DEFAULT_FONTS
         base["fonts"] = {
-            "title": str(fonts.get("title") or _DEFAULT_FONTS["title"]),
-            "body": str(fonts.get("body") or _DEFAULT_FONTS["body"]),
+            "title": str(fonts.get("title") or cur["title"]),
+            "body": str(fonts.get("body") or cur["body"]),
         }
     # normalize all colors
     for k in ("bg", "surface", "ink", "muted", "accent", "accent2", "on_accent"):
@@ -1150,9 +1193,14 @@ def _presentation_rels(n: int) -> str:
 
 
 def render_pptx(slides: list, theme=None) -> bytes:
-    t = resolve_theme(theme)
     if not slides:
         slides = [Slide(title="Untitled")]
+    # No theme chosen: vary it per deck instead of always defaulting to one
+    # preset, so different decks don't all look identical.
+    if theme is None or (isinstance(theme, str) and not theme.strip()):
+        seed = next((s.title for s in slides if getattr(s, "title", "")), "deck")
+        theme = auto_theme(seed)
+    t = resolve_theme(theme)
     overrides = "\n".join(
         f'<Override PartName="/ppt/slides/slide{i + 1}.xml" '
         f'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>'

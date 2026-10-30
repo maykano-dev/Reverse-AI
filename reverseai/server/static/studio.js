@@ -135,16 +135,24 @@ function markSaved() {
 // --- deck editor ----------------------------------------------------------
 // Mirror of the server-side theme presets so the editor previews real colors.
 const STUDIO_PALETTE = {
-  light:    { bg: "FFFFFF", surface: "F3F5F9", ink: "16181D", muted: "5C6672", accent: "2D6CDF", on_accent: "FFFFFF" },
-  slate:    { bg: "F7F8FA", surface: "FFFFFF", ink: "1B2230", muted: "5A6676", accent: "4457F2", on_accent: "FFFFFF" },
-  midnight: { bg: "0E1526", surface: "18233E", ink: "EEF3FF", muted: "9DB2D6", accent: "4F8CFF", on_accent: "FFFFFF" },
-  aurora:   { bg: "07121A", surface: "0E2230", ink: "EAFBFF", muted: "8FC7D6", accent: "2AD6B5", on_accent: "04221C" },
-  sunset:   { bg: "1C1020", surface: "2C1630", ink: "FFF0EC", muted: "E3A6B8", accent: "FF6B4A", on_accent: "2A0C08" },
-  forest:   { bg: "0C1A12", surface: "12271B", ink: "ECFBEF", muted: "97C4A6", accent: "35C06A", on_accent: "05240F" },
-  mono:     { bg: "121316", surface: "1D1F24", ink: "F4F5F7", muted: "A2A7B0", accent: "E8EAED", on_accent: "121316" },
+  light:    { bg: "FFFFFF", surface: "F3F5F9", ink: "16181D", muted: "5C6672", accent: "2D6CDF", accent2: "7C5CFF", on_accent: "FFFFFF" },
+  slate:    { bg: "F7F8FA", surface: "FFFFFF", ink: "1B2230", muted: "5A6676", accent: "4457F2", accent2: "12B5A5", on_accent: "FFFFFF" },
+  midnight: { bg: "0E1526", surface: "18233E", ink: "EEF3FF", muted: "9DB2D6", accent: "4F8CFF", accent2: "C98BFF", on_accent: "FFFFFF" },
+  aurora:   { bg: "07121A", surface: "0E2230", ink: "EAFBFF", muted: "8FC7D6", accent: "2AD6B5", accent2: "4FA6FF", on_accent: "04221C" },
+  sunset:   { bg: "1C1020", surface: "2C1630", ink: "FFF0EC", muted: "E3A6B8", accent: "FF6B4A", accent2: "FFB24A", on_accent: "2A0C08" },
+  forest:   { bg: "0C1A12", surface: "12271B", ink: "ECFBEF", muted: "97C4A6", accent: "35C06A", accent2: "9BD94F", on_accent: "05240F" },
+  mono:     { bg: "121316", surface: "1D1F24", ink: "F4F5F7", muted: "A2A7B0", accent: "E8EAED", accent2: "9AA0AA", on_accent: "121316" },
+  ocean:    { bg: "F4F8FB", surface: "FFFFFF", ink: "0B2B3A", muted: "4A7084", accent: "0E7FB5", accent2: "12B5A5", on_accent: "FFFFFF" },
+  coral:    { bg: "FFF7F3", surface: "FFFFFF", ink: "3A1A14", muted: "8A5A4E", accent: "E8553B", accent2: "F2A03D", on_accent: "FFFFFF" },
+  paper:    { bg: "F6F1E7", surface: "FFFDF8", ink: "2A2114", muted: "6B5E49", accent: "9A5B2E", accent2: "4E7A4C", on_accent: "FFFDF8" },
+  grape:    { bg: "150E24", surface: "241A3C", ink: "F3EEFF", muted: "B4A3D6", accent: "A06BFF", accent2: "FF7AC2", on_accent: "FFFFFF" },
+  ember:    { bg: "1A1310", surface: "2A1E18", ink: "FFF2EC", muted: "D0A694", accent: "FF7A2F", accent2: "FFC24A", on_accent: "2A0C04" },
+  steel:    { bg: "0F1620", surface: "1A2531", ink: "EAF1F8", muted: "9BB0C2", accent: "5BA3D0", accent2: "7FD1C1", on_accent: "051018" },
+  rose:     { bg: "FBF4F6", surface: "FFFFFF", ink: "34121E", muted: "8A5566", accent: "D23D74", accent2: "8A5BF2", on_accent: "FFFFFF" },
 };
-const STUDIO_THEMES = ["light", "slate", "midnight", "aurora", "sunset", "forest", "mono"];
-const STUDIO_LAYOUTS = ["cover", "content", "two-column", "section", "quote", "statement", "image", "diagram"];
+const STUDIO_THEMES = ["light", "slate", "midnight", "aurora", "sunset", "forest", "mono",
+  "ocean", "coral", "paper", "grape", "ember", "steel", "rose"];
+const STUDIO_LAYOUTS = ["cover", "content", "two-column", "section", "quote", "statement", "image", "diagram", "cards"];
 
 function normHex(c) { return String(c || "").replace(/^#/, "").toUpperCase(); }
 function deckTheme() {
@@ -167,9 +175,10 @@ function currentThemeName() {
 }
 function slideLayout(s) {
   if (s.layout) return s.layout.toLowerCase();
-  if (s.shapes && s.shapes.length) return "diagram";
+  if (s.cards && s.cards.length) return "cards";
+  if ((s.shapes && s.shapes.length) || (s.steps && s.steps.length)) return "diagram";
   if (s.quote) return "quote";
-  if ((s.image || s.image_data) && !(s.bullets && s.bullets.length)) return "image";
+  if ((s.svg || s.chart || s.image || s.image_data) && !(s.bullets && s.bullets.length)) return "image";
   if (s.columns && s.columns.length) return "two-column";
   if (!(s.bullets && s.bullets.length) && s.subtitle) return "cover";
   return "content";
@@ -902,6 +911,38 @@ function presentDiagram(shapes, accent, ink) {
   return `<div class="pz-diagram">${svg}${boxes}</div>`;
 }
 
+function svgDataUri(svg) {
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(String(svg || ""));
+}
+// A visual tag for a slide: inline SVG (chart/art) or an embedded image path.
+function presentVisual(s) {
+  if (s.svg) return `<img class="pz-img" src="${svgDataUri(s.svg)}" alt="">`;
+  if (s.image) return `<img class="pz-img" src="${withToken(`/preview/${studio.cid}/${s.image}`)}" alt="">`;
+  return "";
+}
+function presentCards(cards, pal) {
+  const list = (cards || []).slice(0, 8);
+  return `<div class="pz-cards">` + list.map((c) => {
+    c = c || {};
+    const tag = (c.num != null && c.num !== "") ? esc(String(c.num)) : (c.label ? esc(c.label) : "");
+    return `<div class="pz-card" style="background:#${pal.surface}">` +
+      (tag ? `<div class="pz-card-tag" style="color:#${pal.accent}">${tag}</div>` : "") +
+      (c.title ? `<div class="pz-card-title" style="color:#${pal.ink}">${esc(c.title)}</div>` : "") +
+      (c.text ? `<div class="pz-card-text" style="color:#${pal.muted}">${esc(c.text)}</div>` : "") +
+      `</div>`;
+  }).join("") + `</div>`;
+}
+function presentFlow(steps, pal) {
+  const list = (steps || []).map((st) => (typeof st === "string" ? { label: st } : (st || {})));
+  return `<div class="pz-flow">` + list.map((n, i) => {
+    const label = n.label || n.title || n.value || n.name || n.text || "";
+    const arrow = i < list.length - 1
+      ? `<div class="pz-flow-arrow" style="color:#${pal.accent}">&#8594;</div>` : "";
+    return `<div class="pz-flow-box" style="background:#${pal.surface};color:#${pal.ink};` +
+      `border:1px solid #${pal.accent}55">${esc(label)}</div>${arrow}`;
+  }).join("") + `</div>`;
+}
+
 function presentSlideHTML(s, pal) {
   const layout = slideLayout(s);
   const isSection = layout === "section";
@@ -912,7 +953,7 @@ function presentSlideHTML(s, pal) {
   const sub = s.subtitle ? `<div class="pz-sub" style="color:#${muted}">${esc(s.subtitle)}</div>` : "";
   const head = (tag) => `<div class="pz-head"><div class="pz-rule" style="background:#${accent}"></div>` +
     `<${tag} style="color:#${ink}">${esc(s.title || "")}</${tag}></div>`;
-  const imgTag = s.image ? `<img class="pz-img" src="${withToken(`/preview/${studio.cid}/${s.image}`)}" alt="">` : "";
+  const imgTag = presentVisual(s);
   let inner;
   if (layout === "cover") {
     inner = `<div class="pz-center"><div class="pz-bar" style="background:#${accent}"></div>` +
@@ -930,13 +971,19 @@ function presentSlideHTML(s, pal) {
     const cols = (s.columns || []).slice(0, 2);
     inner = head("h2") + `<div class="pz-cols">${cols.map((c) =>
       `<div class="pz-col">${presentBullets(c, ink, accent)}</div>`).join("")}</div>`;
+  } else if (layout === "cards") {
+    inner = head("h2") + sub + presentCards(s.cards, pal);
   } else if (layout === "image") {
-    inner = head("h2") + `<div class="pz-imgwrap">${imgTag}</div>`;
+    inner = (s.title ? head("h2") : "") + `<div class="pz-imgwrap">${imgTag}</div>`;
   } else if (layout === "diagram") {
-    inner = head("h2") + presentDiagram(s.shapes || [], accent, ink);
+    let fig;
+    if (s.svg) fig = `<div class="pz-imgwrap">${imgTag}</div>`;
+    else if (s.steps && s.steps.length) fig = presentFlow(s.steps, pal);
+    else fig = presentDiagram(s.shapes || [], accent, ink);
+    inner = head("h2") + fig;
   } else {
     const body = `<div class="pz-body">${head("h2")}${sub}${presentBullets(s.bullets, ink, accent)}</div>`;
-    inner = s.image
+    inner = (s.image || s.svg)
       ? `<div class="pz-split">${body}<div class="pz-imgwrap half">${imgTag}</div></div>`
       : body;
   }
