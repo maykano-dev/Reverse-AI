@@ -18,6 +18,7 @@ design, while the master/layout stay minimal and valid. No third-party packages.
 
 from __future__ import annotations
 
+import math
 import zipfile
 from dataclasses import dataclass, field
 from io import BytesIO
@@ -263,16 +264,77 @@ def _arrow_h(sid, x1, cy, x2, color):
             f'<a:tailEnd type="triangle" w="med" len="med"/></a:ln></p:spPr></p:cxnSp>')
 
 
-def _flow_diagram(steps, t, sid, area, style="flow"):
-    """Auto-lay-out a clean flow/pillars diagram from step labels only.
+def _diag_timeline(steps, t, sid, area):
+    left, top, w, h = area
+    n = len(steps)
+    accent, muted, ink, fb = t["accent"], t["muted"], t["ink"], t["fonts"]["body"]
+    ly = top + h * 0.45
+    xs = [left + w * (i + 0.5) / n for i in range(n)]
+    out = [_arrow_h(sid, xs[0], ly, xs[-1], muted) if n > 1 else ""]
+    for i, s in enumerate(steps):
+        x = xs[i]
+        r = 85000
+        out.append(_shp(sid, x - r, ly - r, 2 * r, 2 * r, fill=accent, geom="ellipse"))
+        out.append(_textbox(next(sid), "tnum", x - w / (2 * n), ly - 760000, w / n, 500000,
+                            [_para(_run(f"{i + 1:02d}", 16, accent, t["fonts"]["title"],
+                                        bold=True), algn="ctr", space_after=0)], anchor="b"))
+        out.append(_textbox(next(sid), "tlbl", x - w / (2 * n) + 40000, ly + 230000,
+                            w / n - 80000, 1200000,
+                            [_para(_run(str(s), 13, ink, fb), algn="ctr", space_after=0)]))
+    return "".join(out)
 
-    The engine owns sizing, spacing, alignment and color so the result is tidy
-    regardless of what the model would have picked for raw coordinates.
+
+def _diag_pyramid(steps, t, sid, area):
+    left, top, w, h = area
+    n = len(steps)
+    accent, accent2, on_acc, fb = t["accent"], t["accent2"], t["on_accent"], t["fonts"]["body"]
+    gap = h * 0.04
+    bar_h = (h - (n - 1) * gap) / n
+    min_w, max_w = w * 0.34, w * 0.92
+    out = []
+    for i, s in enumerate(steps):
+        frac = (i + 1) / n
+        bw = min_w + (max_w - min_w) * frac
+        x = left + (w - bw) / 2
+        y = top + i * (bar_h + gap)
+        col = _shade(accent, 0.18 - 0.30 * frac)   # lighter at top, deeper at base
+        out.append(_flow_box(sid, x, y, bw, bar_h, col, str(s), on_acc, fb))
+    return "".join(out)
+
+
+def _diag_cycle(steps, t, sid, area):
+    left, top, w, h = area
+    n = len(steps)
+    accent, accent2, on_acc, fb = t["accent"], t["accent2"], t["on_accent"], t["fonts"]["body"]
+    cx, cy = left + w / 2, top + h / 2
+    R = min(w, h) * 0.36
+    bw, bh = min(w * 0.26, 2200000), min(h * 0.26, 1050000)
+    out = [_shp(sid, cx - R, cy - R, 2 * R, 2 * R, geom="ellipse",
+                line=t["muted"], line_alpha=35000, line_w=19050)]
+    for i, s in enumerate(steps):
+        ang = -math.pi / 2 + 2 * math.pi * i / n
+        bxc, byc = cx + R * math.cos(ang), cy + R * math.sin(ang)
+        out.append(_flow_box(sid, bxc - bw / 2, byc - bh / 2, bw, bh,
+                             (accent, accent2)[i % 2], str(s), on_acc, fb))
+    return "".join(out)
+
+
+def _flow_diagram(steps, t, sid, area, style="flow"):
+    """Auto-lay-out a clean diagram from step labels only: flow, pillars,
+    timeline, pyramid, or cycle. The engine owns sizing, spacing, alignment and
+    color, so the result is tidy regardless of model-chosen coordinates.
     """
     left, top, w, h = area
     steps = [str(s) for s in steps if str(s).strip()][:6]
     if not steps:
         return ""
+    style = (style or "flow").lower()
+    if style == "timeline":
+        return _diag_timeline(steps, t, sid, area)
+    if style == "pyramid":
+        return _diag_pyramid(steps, t, sid, area)
+    if style == "cycle":
+        return _diag_cycle(steps, t, sid, area)
     n = len(steps)
     accent, accent2 = t["accent"], t["accent2"]
     on_acc = t["on_accent"]
