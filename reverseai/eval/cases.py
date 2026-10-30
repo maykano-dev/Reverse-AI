@@ -96,6 +96,15 @@ def _pptx_diagram():
     assert b'prst="line"' in s and b"tailEnd" in s, "arrow not drawn"
 
 
+def _pptx_flow_autolayout():
+    from reverseai.docgen import generate
+    spec = {"slides": [{"layout": "diagram", "title": "f",
+                        "steps": ["One", "Two", "Three"]}]}
+    s = zipfile.ZipFile(BytesIO(generate("pptx", spec).data)).read("ppt/slides/slide1.xml")
+    assert b"roundRect" in s and b"tailEnd" in s, "flow not laid out"
+    assert s.count(b"roundRect") == 3, "expected 3 equal boxes"
+
+
 def _pdf_image_embed():
     from reverseai.docgen import generate
     from reverseai.studio import embed_images
@@ -203,6 +212,7 @@ CASES = [
     Case("pptx_all_layouts", "docgen", _pptx_all_layouts),
     Case("pptx_image_embed", "docgen", _pptx_image_embed),
     Case("pptx_diagram", "docgen", _pptx_diagram),
+    Case("pptx_flow_autolayout", "docgen", _pptx_flow_autolayout),
     Case("pdf_image_embed", "docgen", _pdf_image_embed),
     Case("pdf_diagram", "docgen", _pdf_diagram),
     Case("docx_valid", "docgen", _docx_valid),

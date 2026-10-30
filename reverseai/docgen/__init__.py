@@ -70,6 +70,40 @@ def _blocks(spec: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def flow_shapes(steps, style="flow", colors=("2D6CDF", "7C5CFF")):
+    """Auto-lay-out step labels into tidy 0-100 shapes (boxes + arrows).
+
+    Shared by the PDF diagram renderer so documents get the same clean flow as
+    decks, without the model picking coordinates.
+    """
+    steps = [str(s) for s in (steps or []) if str(s).strip()][:6]
+    if not steps:
+        return []
+    n = len(steps)
+    shapes = []
+    if style == "pillars" or n > 4:
+        gap = 4
+        bw = (100 - (n - 1) * gap) / n
+        for i, s in enumerate(steps):
+            shapes.append({"type": "roundrect", "x": i * (bw + gap), "y": 12,
+                           "w": bw, "h": 70, "color": colors[i % len(colors)],
+                           "text": s, "text_color": "FFFFFF"})
+        return shapes
+    gap = 7
+    bw = (100 - (n - 1) * gap) / n
+    y, bh = 38, 26
+    cy = y + bh / 2
+    for i, s in enumerate(steps):
+        x = i * (bw + gap)
+        shapes.append({"type": "roundrect", "x": x, "y": y, "w": bw, "h": bh,
+                       "color": colors[i % len(colors)], "text": s,
+                       "text_color": "FFFFFF"})
+        if i < n - 1:
+            shapes.append({"type": "arrow", "x": x + bw + gap * 0.15, "y": cy,
+                           "x2": x + bw + gap * 0.85, "y2": cy, "color": "5A6676"})
+    return shapes
+
+
 def _slug(name: str) -> str:
     keep = "".join(c if c.isalnum() or c in "-_ " else "" for c in name)
     slug = "-".join(keep.lower().split()) or "document"
@@ -98,7 +132,10 @@ def _pdf(spec):
                     pass
             continue
         if t == "diagram":
-            d.diagram(b.get("shapes") or [], height=float(b.get("height") or 240))
+            shapes = b.get("shapes") or []
+            if b.get("steps"):
+                shapes = flow_shapes(b["steps"], str(b.get("style") or b.get("diagram_style") or "flow"))
+            d.diagram(shapes, height=float(b.get("height") or 240))
             continue
         if t == "subtitle":
             d.subtitle = str(b.get("text") or "")
@@ -158,6 +195,8 @@ def _pptx(spec):
             image_w=int(s.get("image_w") or 0),
             image_h=int(s.get("image_h") or 0),
             shapes=s.get("shapes") or [],
+            steps=[str(x) for x in (s.get("steps") or [])],
+            diagram_style=str(s.get("diagram_style") or s.get("style") or "flow"),
             animate=bool(s.get("animate") or spec.get("animate"))))
     if not slides and spec.get("title"):
         slides.append(Slide(title=str(spec["title"])))

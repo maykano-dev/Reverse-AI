@@ -101,14 +101,16 @@ class Slide:
     image_data: bytes = b""          # embedded image bytes (png/jpeg)
     image_w: int = 0
     image_h: int = 0
-    shapes: list = field(default_factory=list)   # diagram primitives
+    shapes: list = field(default_factory=list)   # diagram primitives (low-level)
+    steps: list = field(default_factory=list)    # auto-laid-out flow/cycle labels
+    diagram_style: str = "flow"      # flow | cycle | pillars
     animate: bool = False
     idx: int = 0                     # position in the deck (for varied decor)
 
     def effective_layout(self) -> str:
         if self.layout:
             return self.layout.lower()
-        if self.shapes:
+        if self.shapes or self.steps:
             return "diagram"
         if self.quote:
             return "quote"
@@ -197,6 +199,106 @@ def _fit(iw, ih, bx, by, bw, bh):
     scale = min(bw / iw, bh / ih)
     cx, cy = iw * scale, ih * scale
     return bx + (bw - cx) / 2, by + (bh - cy) / 2, cx, cy
+
+
+def _shade(hexv, factor):
+    """Lighten (factor>0, toward white) or darken (factor<0) a hex color."""
+    hexv = _hex(hexv, "2D6CDF")
+    r, g, b = int(hexv[0:2], 16), int(hexv[2:4], 16), int(hexv[4:6], 16)
+    if factor >= 0:
+        r, g, b = (int(c + (255 - c) * factor) for c in (r, g, b))
+    else:
+        f = 1 + factor
+        r, g, b = (int(c * f) for c in (r, g, b))
+    return f"{max(0, min(255, r)):02X}{max(0, min(255, g)):02X}{max(0, min(255, b)):02X}"
+
+
+_SHADOW = ('<a:effectLst><a:outerShdw blurRad="90000" dist="30000" dir="5400000" '
+           'rotWithShape="0"><a:srgbClr val="000000"><a:alpha val="20000"/>'
+           '</a:srgbClr></a:outerShdw></a:effectLst>')
+
+
+def _grad_fill(hexv):
+    top, bot = _shade(hexv, 0.14), _shade(hexv, -0.12)
+    return (f'<a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="{top}"/></a:gs>'
+            f'<a:gs pos="100000"><a:srgbClr val="{bot}"/></a:gs></a:gsLst>'
+            f'<a:lin ang="5400000" scaled="1"/></a:gradFill>')
+
+
+def _flow_box(sid, x, y, w, h, fill, text, text_color, font):
+    """A gradient-filled, soft-shadowed rounded card with centered, autosized text."""
+    n = len(str(text))
+    size = 18 if n <= 16 else 15 if n <= 34 else 12.5
+    shape = (f'<p:sp><p:nvSpPr><p:cNvPr id="{next(sid)}" name="node"/><p:cNvSpPr/>'
+             f'<p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="{int(x)}" y="{int(y)}"/>'
+             f'<a:ext cx="{int(w)}" cy="{int(h)}"/></a:xfrm>'
+             f'<a:prstGeom prst="roundRect"><a:avLst>'
+             f'<a:gd name="adj" fmla="val 12000"/></a:avLst></a:prstGeom>'
+             f'{_grad_fill(fill)}<a:ln><a:noFill/></a:ln>{_SHADOW}</p:spPr>'
+             f'<p:txBody><a:bodyPr wrap="square" lIns="54000" rIns="54000" '
+             f'tIns="20000" bIns="20000" anchor="ctr"><a:normAutofit/></a:bodyPr>'
+             f'<a:lstStyle/>'
+             + _para(_run(str(text), size, text_color, font, bold=True), algn="ctr",
+                     space_after=0) + '</p:txBody></p:sp>')
+    return shape
+
+
+def _arrow_h(sid, x1, cy, x2, color):
+    return (f'<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="{next(sid)}" name="arrow"/>'
+            f'<p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr><p:spPr>'
+            f'<a:xfrm><a:off x="{int(x1)}" y="{int(cy)}"/>'
+            f'<a:ext cx="{int(x2 - x1)}" cy="1"/></a:xfrm>'
+            f'<a:prstGeom prst="line"><a:avLst/></a:prstGeom>'
+            f'<a:ln w="22225"><a:solidFill><a:srgbClr val="{color}"/></a:solidFill>'
+            f'<a:tailEnd type="triangle" w="med" len="med"/></a:ln></p:spPr></p:cxnSp>')
+
+
+def _flow_diagram(steps, t, sid, area, style="flow"):
+    """Auto-lay-out a clean flow/pillars diagram from step labels only.
+
+    The engine owns sizing, spacing, alignment and color so the result is tidy
+    regardless of what the model would have picked for raw coordinates.
+    """
+    left, top, w, h = area
+    steps = [str(s) for s in steps if str(s).strip()][:6]
+    if not steps:
+        return ""
+    n = len(steps)
+    accent, accent2 = t["accent"], t["accent2"]
+    on_acc = t["on_accent"]
+    font_b = t["fonts"]["body"]
+    colors = [accent, accent2]
+    out = []
+
+    # Tighter labels tend to be short; keep boxes proportional, not oversized.
+    longest = max((len(s) for s in steps), default=8)
+    two_line = longest > 18
+
+    if style == "pillars" or (style == "flow" and n > 4):
+        # Columns of equal cards, no arrows (good for 4+ parallel items).
+        gap = int(w * 0.04)
+        card_w = (w - (n - 1) * gap) / n
+        card_h = min(h * 0.6, 2300000)
+        cy = top + (h - card_h) / 2
+        for i, s in enumerate(steps):
+            x = left + i * (card_w + gap)
+            out.append(_flow_box(sid, x, cy, card_w, card_h, colors[i % 2], s, on_acc, font_b))
+        return "".join(out)
+
+    # Horizontal flow with arrows between equal, proportionally sized boxes.
+    arrow_gap = int(w * 0.075)
+    box_w = (w - (n - 1) * arrow_gap) / n
+    box_h = min(box_w * 0.62, 1250000 if two_line else 980000)
+    by = top + (h - box_h) / 2
+    cy = by + box_h / 2
+    for i, s in enumerate(steps):
+        x = left + i * (box_w + arrow_gap)
+        out.append(_flow_box(sid, x, by, box_w, box_h, colors[i % 2], s, on_acc, font_b))
+        if i < n - 1:
+            ax1 = x + box_w + arrow_gap * 0.18
+            ax2 = x + box_w + arrow_gap * 0.82
+            out.append(_arrow_h(sid, ax1, cy, ax2, t["muted"]))
+    return "".join(out)
 
 
 def _diagram_shapes(shapes, t, sid, area):
@@ -372,7 +474,10 @@ def _slide_shapes(slide: Slide, t: dict):
 
     if layout == "diagram":
         area = (_MARGIN, body_top, _W - 2 * _MARGIN, body_h)
-        sp.append(_diagram_shapes(slide.shapes, t, sid, area))
+        if slide.steps:
+            sp.append(_flow_diagram(slide.steps, t, sid, area, slide.diagram_style))
+        else:
+            sp.append(_diagram_shapes(slide.shapes, t, sid, area))
         return bg, "".join(sp), media, anim
 
     def bullet_paras(items):
@@ -452,6 +557,13 @@ def _timing_fade(anim_ids: list) -> str:
         '</p:cond></p:nextCondLst></p:seq></p:childTnLst></p:cTn></p:par></p:tnLst></p:timing>')
 
 
+def _bg_fill(bg: str) -> str:
+    """A subtle vertical gradient for depth (bg -> slightly darker at the base)."""
+    return (f'<a:gradFill><a:gsLst><a:gs pos="0"><a:srgbClr val="{bg}"/></a:gs>'
+            f'<a:gs pos="100000"><a:srgbClr val="{_shade(bg, -0.05)}"/></a:gs></a:gsLst>'
+            f'<a:lin ang="5400000" scaled="1"/></a:gradFill>')
+
+
 def _slide_xml(slide: Slide, t: dict):
     bg, shapes, media, anim = _slide_shapes(slide, t)
     timing = _timing_fade(anim) if slide.animate else ""
@@ -461,8 +573,7 @@ def _slide_xml(slide: Slide, t: dict):
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
         'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
         '<p:cSld>'
-        f'<p:bg><p:bgPr><a:solidFill><a:srgbClr val="{bg}"/></a:solidFill>'
-        '<a:effectLst/></p:bgPr></p:bg>'
+        f'<p:bg><p:bgPr>{_bg_fill(bg)}<a:effectLst/></p:bgPr></p:bg>'
         '<p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/>'
         '<p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/>'
         '<a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/>'
