@@ -1771,6 +1771,18 @@ function renderArtifact(container, meta, name, jobId, convId) {
     updateArtCount();
   }
 }
+function openLightbox(src) {
+  let box = $("#lightbox");
+  if (!box) {
+    box = el("div", "lightbox");
+    box.id = "lightbox";
+    box.innerHTML = `<img alt="rendered page"><button class="lb-close" aria-label="Close">${ic("x", 20)}</button>`;
+    box.addEventListener("click", () => box.classList.remove("show"));
+    document.body.appendChild(box);
+  }
+  box.querySelector("img").src = src;
+  box.classList.add("show");
+}
 function renderRenders(container, renders) {
   if (!container || !Array.isArray(renders) || !renders.length) return;
   const wrap = el("div", "renders");
@@ -1784,8 +1796,9 @@ function renderRenders(container, renders) {
     img.src = withToken(url);           // <img> needs the token in the URL
     img.alt = "rendered page";
     fig.appendChild(img);
-    // showPreview tokenizes local URLs itself, so pass the raw url (no double token).
-    fig.addEventListener("click", () => showPreview(url, { local: true, title: "Rendered page", newTab: true }));
+    // The preview iframe is sandboxed and blocks a raw image; show it in a
+    // lightbox (a same-origin <img>) instead.
+    fig.addEventListener("click", () => openLightbox(withToken(url)));
     grid.appendChild(fig);
   });
   wrap.appendChild(grid);

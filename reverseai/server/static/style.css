@@ -2354,3 +2354,13 @@ body {
 .render-thumb:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .render-thumb img { width: 150px; height: auto; max-height: 120px; object-fit: cover; display: block; }
 @media (max-width: 680px) { .render-thumb img { width: 120px; } }
+
+/* lightbox for rendered pages */
+.lightbox { position: fixed; inset: 0; z-index: 5000; background: rgba(10,10,14,.88);
+  display: none; align-items: center; justify-content: center; padding: 4vh 4vw; cursor: zoom-out; }
+.lightbox.show { display: flex; }
+.lightbox img { max-width: 100%; max-height: 92vh; border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.lb-close { position: fixed; top: 18px; right: 20px; width: 40px; height: 40px; display: grid;
+  place-items: center; border-radius: 10px; border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.08); color: #fff; cursor: pointer; }
+.lb-close:hover { background: rgba(255,255,255,.16); }
