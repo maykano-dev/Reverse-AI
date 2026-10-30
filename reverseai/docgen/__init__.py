@@ -77,13 +77,31 @@ def _slug(name: str) -> str:
 
 
 def _pdf(spec):
+    from .images import ImageError, decode_image
     d = PdfDoc(title=str(spec.get("title") or ""),
                subtitle=str(spec.get("subtitle") or ""))
-    for b in _blocks(spec):
-        if b["type"] == "subtitle":
-            d.subtitle = b["text"]
+    for b in spec.get("blocks") or []:
+        if isinstance(b, str):
+            d.paragraph(b)
+            continue
+        if not isinstance(b, dict):
+            continue
+        t = str(b.get("type") or "paragraph")
+        if t == "image":
+            data = b.get("data")
+            if isinstance(data, (bytes, bytearray)):
+                try:
+                    d.image(decode_image(bytes(data)),
+                            caption=str(b.get("caption") or b.get("text") or ""),
+                            width=float(b.get("width") or 0) or 0.0)
+                except ImageError:
+                    pass
+            continue
+        if t == "subtitle":
+            d.subtitle = str(b.get("text") or "")
         else:
-            {"heading": d.heading, "bullet": d.bullet}.get(b["type"], d.paragraph)(b["text"])
+            {"heading": d.heading, "bullet": d.bullet}.get(t, d.paragraph)(
+                str(b.get("text") or ""))
     return render_pdf(d)
 
 

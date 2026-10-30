@@ -10,6 +10,7 @@ third-party packages; the xref/offsets are written correctly.
 
 from __future__ import annotations
 
+import zlib
 from dataclasses import dataclass, field
 
 _PAGE_W = 612
@@ -45,6 +46,18 @@ class _Line:
 class _Block:
     kind: str
     text: str = ""
+    image: object = None          # DecodedImage for kind == "image"
+    width: float = 0.0            # requested image width in points (0 = auto)
+
+
+@dataclass
+class _Img:
+    """A laid-out image in the content flow."""
+    image: object
+    w: float
+    h: float
+    caption: str = ""
+    gap: float = 14.0
 
 
 @dataclass
@@ -63,6 +76,10 @@ class PdfDoc:
 
     def bullet(self, text: str) -> "PdfDoc":
         self.blocks.append(_Block("bullet", text))
+        return self
+
+    def image(self, decoded, caption: str = "", width: float = 0.0) -> "PdfDoc":
+        self.blocks.append(_Block("image", text=caption, image=decoded, width=width))
         return self
 
     def space(self) -> "PdfDoc":
@@ -105,9 +122,20 @@ def _lines(doc: PdfDoc) -> list[_Line]:
         for i, ln in enumerate(_wrap(doc.subtitle, 70)):
             out.append(_Line(ln, _SUBTITLE_SIZE, 16 if i == 0 else 2, color=_DIM))
     out.append(_Line("", _BODY_SIZE, 10))
+    content_w = _PAGE_W - 2 * _MARGIN
+    max_h = _PAGE_H - 2 * _MARGIN - 40
     for b in doc.blocks:
         if b.kind == "space":
             out.append(_Line("", _BODY_SIZE, 8))
+        elif b.kind == "image" and b.image is not None:
+            iw, ih = float(b.image.width), float(b.image.height)
+            w = b.width or content_w
+            w = min(w, content_w)
+            h = w * (ih / iw) if iw else 0
+            if h > max_h:  # keep it on one page
+                h = max_h
+                w = h * (iw / ih) if ih else w
+            out.append(_Img(image=b.image, w=w, h=h, caption=b.text or ""))
         elif b.kind == "heading":
             first = True
             for ln in _wrap(b.text, 60):
@@ -127,16 +155,18 @@ def _lines(doc: PdfDoc) -> list[_Line]:
     return out
 
 
-def _step(ln: _Line) -> float:
+def _step(ln) -> float:
+    if isinstance(ln, _Img):
+        return ln.gap + ln.h + (16 if ln.caption else 0) + 6
     return _LEADING + ln.gap + (ln.size - _BODY_SIZE) * 0.62
 
 
-def _paginate(lines: list[_Line]) -> list[list[_Line]]:
+def _paginate(lines) -> list[list]:
     pages, page = [], []
     y = _PAGE_H - _MARGIN
     for ln in lines:
         step = _step(ln)
-        if y - step < _MARGIN:
+        if y - step < _MARGIN and page:
             pages.append(page)
             page, y = [], _PAGE_H - _MARGIN
         page.append(ln)
@@ -144,6 +174,10 @@ def _paginate(lines: list[_Line]) -> list[list[_Line]]:
     if page:
         pages.append(page)
     return pages or [[]]
+
+
+def _text_w(text: str, size: float) -> float:
+    return len(text) * size * 0.5          # rough Helvetica average advance
 
 
 def _circle(cx: float, cy: float, r: float) -> str:
@@ -155,13 +189,34 @@ def _circle(cx: float, cy: float, r: float) -> str:
             f"{cx - k:.2f} {cy - r:.2f} {cx - r:.2f} {cy - k:.2f} {cx - r:.2f} {cy:.2f} c f")
 
 
-def _page_stream(lines: list[_Line]) -> bytes:
+def _page_stream(lines) -> tuple[bytes, list]:
     text_parts = ["BT"]
     vec_parts: list[str] = []
+    img_parts: list[str] = []
+    imgs: list = []            # DecodedImage in draw order -> Im0, Im1, ...
+    content_w = _PAGE_W - 2 * _MARGIN
     y = _PAGE_H - _MARGIN
     last_color = None
     a = _ACCENT
     for ln in lines:
+        if isinstance(ln, _Img):
+            y -= ln.gap
+            top = y
+            x = _MARGIN + (content_w - ln.w) / 2
+            ybl = top - ln.h
+            name = f"Im{len(imgs)}"
+            imgs.append(ln.image)
+            img_parts.append(f"q {ln.w:.2f} 0 0 {ln.h:.2f} {x:.2f} {ybl:.2f} cm /{name} Do Q")
+            if ln.caption:
+                cap_base = ybl - 12
+                cx = _MARGIN + (content_w - _text_w(ln.caption, 9.5)) / 2
+                text_parts.append(f"{_DIM[0]} {_DIM[1]} {_DIM[2]} rg")
+                last_color = _DIM
+                text_parts.append(f"/F1 9.5 Tf")
+                text_parts.append(f"1 0 0 1 {max(_MARGIN, cx):.1f} {cap_base:.1f} Tm")
+                text_parts.append(f"({_esc(ln.caption)}) Tj")
+            y = ybl - (16 if ln.caption else 0) - 6
+            continue
         y -= ln.gap
         baseline = y - ln.size * 0.80
         if ln.text:
@@ -186,8 +241,8 @@ def _page_stream(lines: list[_Line]) -> bytes:
                              f"{_MARGIN} {ry:.1f} m {_PAGE_W - _MARGIN} {ry:.1f} l S")
         y -= _LEADING + (ln.size - _BODY_SIZE) * 0.62
     text_parts.append("ET")
-    # Draw vector marks first, then text on top.
-    body = "\n".join(vec_parts + text_parts)
+    # Images and vector marks first, then text on top.
+    body = "\n".join(img_parts + vec_parts + text_parts)
     out = bytearray()
     for part in body.split("\n"):
         if part.endswith(" Tj") and "(" in part:
@@ -196,7 +251,22 @@ def _page_stream(lines: list[_Line]) -> bytes:
             out += head.encode("ascii") + b"(" + inner.encode("cp1252", "replace") + b") Tj\n"
         else:
             out += part.encode("ascii", "replace") + b"\n"
-    return bytes(out)
+    return bytes(out), imgs
+
+
+def _image_object(decoded) -> bytes:
+    """Build an Image XObject stream for a DecodedImage."""
+    w, h = int(decoded.width), int(decoded.height)
+    if decoded.fmt == "jpeg":
+        body = decoded.data
+        filt = b"/DCTDecode"
+    else:  # raw RGB -> Flate-compress
+        body = zlib.compress(decoded.data, 6)
+        filt = b"/FlateDecode"
+    header = (f"<< /Type /XObject /Subtype /Image /Width {w} /Height {h} "
+              f"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter ".encode()
+              + filt + f" /Length {len(body)} >>".encode())
+    return header + b"\nstream\n" + body + b"\nendstream"
 
 
 def render_pdf(doc: PdfDoc) -> bytes:
@@ -210,13 +280,18 @@ def render_pdf(doc: PdfDoc) -> bytes:
 
     page_nums = []
     for pg in pages:
-        content = _page_stream(pg)
+        content, imgs = _page_stream(pg)
         stream = (b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n"
                   + content + b"\nendstream")
         content_num = add(stream)
+        xobj_entries = []
+        for k, decoded in enumerate(imgs):
+            img_num = add(_image_object(decoded))
+            xobj_entries.append(f"/Im{k} {img_num} 0 R")
+        xobj_res = (" /XObject << " + " ".join(xobj_entries) + " >>") if xobj_entries else ""
         page_obj = (f"<< /Type /Page /Parent {pages_num} 0 R "
                     f"/MediaBox [0 0 {_PAGE_W} {_PAGE_H}] "
-                    f"/Resources << /Font << /F1 {f1_num} 0 R /F2 {f2_num} 0 R >> >> "
+                    f"/Resources << /Font << /F1 {f1_num} 0 R /F2 {f2_num} 0 R >>{xobj_res} >> "
                     f"/Contents {content_num} 0 R >>").encode()
         page_nums.append(add(page_obj))
 

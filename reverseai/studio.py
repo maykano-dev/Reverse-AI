@@ -51,13 +51,61 @@ def _sidecar(workspace: str | Path, filename: str) -> Path:
     return studio_dir(workspace) / (_safe_name(filename) + ".json")
 
 
+def _strip_bytes(spec: dict[str, Any]) -> dict[str, Any]:
+    """Return a JSON-safe copy of a spec: drop embedded image bytes, keep src."""
+    import copy
+
+    clean = copy.deepcopy({k: v for k, v in spec.items() if k != "blocks"})
+    blocks = []
+    for b in spec.get("blocks") or []:
+        if isinstance(b, dict):
+            blocks.append({k: v for k, v in b.items()
+                           if k != "data" and not isinstance(v, (bytes, bytearray))})
+        else:
+            blocks.append(b)
+    if "blocks" in spec:
+        clean["blocks"] = blocks
+    return clean
+
+
+def embed_images(spec: dict[str, Any], workspace: str | Path) -> None:
+    """Resolve {type:'image', src:'assets/x.png'} to embedded bytes in place.
+
+    Keeps the pure renderer off the filesystem: the path is read and validated
+    here. Safe to call repeatedly; already-embedded blocks are left alone.
+    """
+    from .docgen.images import ImageError, decode_image
+
+    blocks = spec.get("blocks")
+    if not isinstance(blocks, list):
+        return
+    for b in blocks:
+        if not isinstance(b, dict) or b.get("type") != "image" or b.get("data"):
+            continue
+        src = b.get("src") or b.get("path")
+        if not isinstance(src, str) or not src:
+            continue
+        try:
+            p = _safe_join_ws(workspace, src)
+            if p.is_file() and p.stat().st_size <= 12 * 1024 * 1024:
+                decode_image(p.read_bytes())  # validate it is a real image
+                b["data"] = p.read_bytes()
+        except (OSError, ValueError, ImageError):
+            continue
+
+
+def _safe_join_ws(workspace: str | Path, rel: str) -> Path:
+    from .security.validate import safe_join
+    return safe_join(Path(workspace), rel)
+
+
 def save_spec(workspace: str | Path, filename: str, kind: str,
               spec: dict[str, Any], name: str | None = None) -> None:
     """Persist the spec that produced ``filename`` so it can be edited later."""
     d = studio_dir(workspace)
     try:
         d.mkdir(parents=True, exist_ok=True)
-        record = {"kind": kind, "name": name or filename, "spec": spec}
+        record = {"kind": kind, "name": name or filename, "spec": _strip_bytes(spec)}
         _sidecar(workspace, filename).write_text(
             json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError:
@@ -110,6 +158,7 @@ def regenerate(workspace: str | Path, filename: str,
     kind = record["kind"]
     if not isinstance(spec, dict):
         raise StudioError("spec must be an object")
+    embed_images(spec, workspace)
     try:
         out = generate(kind, spec, name=_base(filename))
     except DocGenError as exc:
@@ -159,6 +208,7 @@ def export(workspace: str | Path, filename: str, fmt: str) -> Rendered:
     base = _base(filename)
     if fmt == "pdf" and kind == "pptx":
         spec = _deck_to_pdf_spec(spec)
+    embed_images(spec, workspace)
     try:
         out = generate(fmt, spec, name=base)
     except DocGenError as exc:

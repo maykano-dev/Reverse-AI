@@ -29,7 +29,10 @@ class CreateDocumentTool(Tool):
         "docx/md/html) take {title, blocks:[{type:'heading'|'paragraph'|'bullet', "
         "text}]}; decks (pptx) take {slides:[{title, subtitle?, bullets:[...]}]}; "
         "sheets (xlsx/csv) take {rows:[[...],[...]], sheet?}; json takes {data}; "
-        "svg/html/txt may take {content}. Give a clear 'name' for the file."
+        "svg/html/txt may take {content}. To place a picture in a pdf, add a "
+        "block {type:'image', src:'assets/photo.png', caption?, width?} where "
+        "'src' is a PNG/JPEG already in the workspace (e.g. installed with "
+        "install_media). Give a clear 'name' for the file."
     )
     parameters = {
         "type": "object",
@@ -50,6 +53,11 @@ class CreateDocumentTool(Tool):
         spec = args.get("spec")
         if not isinstance(spec, dict):
             return ToolResult.failure("'spec' must be an object")
+        try:
+            from ..studio import embed_images
+            embed_images(spec, ctx.workspace)
+        except Exception:  # pragma: no cover - image resolution is best-effort
+            pass
         try:
             doc = generate(kind, spec, name=args.get("name"))
         except DocGenError as exc:
