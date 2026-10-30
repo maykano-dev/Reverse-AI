@@ -133,6 +133,48 @@ function markSaved() {
 }
 
 // --- deck editor ----------------------------------------------------------
+// Mirror of the server-side theme presets so the editor previews real colors.
+const STUDIO_PALETTE = {
+  light:    { bg: "FFFFFF", surface: "F3F5F9", ink: "16181D", muted: "5C6672", accent: "2D6CDF", on_accent: "FFFFFF" },
+  slate:    { bg: "F7F8FA", surface: "FFFFFF", ink: "1B2230", muted: "5A6676", accent: "4457F2", on_accent: "FFFFFF" },
+  midnight: { bg: "0E1526", surface: "18233E", ink: "EEF3FF", muted: "9DB2D6", accent: "4F8CFF", on_accent: "FFFFFF" },
+  aurora:   { bg: "07121A", surface: "0E2230", ink: "EAFBFF", muted: "8FC7D6", accent: "2AD6B5", on_accent: "04221C" },
+  sunset:   { bg: "1C1020", surface: "2C1630", ink: "FFF0EC", muted: "E3A6B8", accent: "FF6B4A", on_accent: "2A0C08" },
+  forest:   { bg: "0C1A12", surface: "12271B", ink: "ECFBEF", muted: "97C4A6", accent: "35C06A", on_accent: "05240F" },
+  mono:     { bg: "121316", surface: "1D1F24", ink: "F4F5F7", muted: "A2A7B0", accent: "E8EAED", on_accent: "121316" },
+};
+const STUDIO_THEMES = ["light", "slate", "midnight", "aurora", "sunset", "forest", "mono"];
+const STUDIO_LAYOUTS = ["cover", "content", "two-column", "section", "quote", "statement", "image", "diagram"];
+
+function normHex(c) { return String(c || "").replace(/^#/, "").toUpperCase(); }
+function deckTheme() {
+  const th = studio.spec.theme;
+  if (typeof th === "string") return STUDIO_PALETTE[th.toLowerCase()] || STUDIO_PALETTE.light;
+  if (th && typeof th === "object") {
+    const base = Object.assign({}, STUDIO_PALETTE[(th.preset || "").toLowerCase()] || STUDIO_PALETTE.light);
+    ["bg", "surface", "ink", "muted", "accent", "on_accent"].forEach((k) => {
+      if (th[k]) base[k] = normHex(th[k]);
+    });
+    return base;
+  }
+  return STUDIO_PALETTE.light;
+}
+function currentThemeName() {
+  const th = studio.spec.theme;
+  if (typeof th === "string") return th.toLowerCase();
+  if (th && typeof th === "object" && th.preset) return String(th.preset).toLowerCase();
+  return "light";
+}
+function slideLayout(s) {
+  if (s.layout) return s.layout.toLowerCase();
+  if (s.shapes && s.shapes.length) return "diagram";
+  if (s.quote) return "quote";
+  if ((s.image || s.image_data) && !(s.bullets && s.bullets.length)) return "image";
+  if (s.columns && s.columns.length) return "two-column";
+  if (!(s.bullets && s.bullets.length) && s.subtitle) return "cover";
+  return "content";
+}
+
 function deckSlides() {
   if (!Array.isArray(studio.spec.slides)) studio.spec.slides = [];
   if (!studio.spec.slides.length) studio.spec.slides.push({ title: "", subtitle: "", bullets: [] });
@@ -145,6 +187,23 @@ function renderDeck(body) {
   rail.id = "stRail";
   const stage = el("div", "st-stage");
   stage.id = "stStage";
+  // theme picker at the top of the rail
+  const themeRow = el("div", "st-theme-row");
+  themeRow.innerHTML = `<span class="st-theme-label">Theme</span>`;
+  const sel = el("select", "st-theme-sel");
+  STUDIO_THEMES.forEach((name) => {
+    const o = el("option", null, name.charAt(0).toUpperCase() + name.slice(1));
+    o.value = name;
+    sel.appendChild(o);
+  });
+  sel.value = currentThemeName();
+  sel.addEventListener("change", () => {
+    syncDeckFromDom();
+    studio.spec.theme = sel.value;
+    renderRail(); renderStage(); markDirty();
+  });
+  themeRow.appendChild(sel);
+  rail.appendChild(themeRow);
   body.appendChild(rail);
   body.appendChild(stage);
   const addBtn = el("button", "st-rail-add");
@@ -165,13 +224,22 @@ function renderRail() {
   if (!rail) return;
   rail.querySelectorAll(".st-thumb").forEach((n) => n.remove());
   const slides = deckSlides();
+  const pal = deckTheme();
   const addBtn = rail.querySelector(".st-rail-add");
   slides.forEach((s, i) => {
+    const layout = slideLayout(s);
+    const isSection = layout === "section";
+    const bg = s.bg ? normHex(s.bg) : (isSection ? pal.accent : pal.bg);
+    const ink = isSection ? pal.on_accent : pal.ink;
+    const accent = s.accent ? normHex(s.accent) : pal.accent;
     const th = el("div", "st-thumb" + (i === studio.active ? " active" : ""));
     const mini = el("div", "st-thumb-mini");
-    mini.innerHTML = `<div class="st-thumb-t">${esc(s.title || "Untitled")}</div>` +
-      (s.bullets && s.bullets.length ? `<div class="st-thumb-lines">${
-        s.bullets.slice(0, 4).map(() => '<i></i>').join("")}</div>` : "");
+    mini.style.background = "#" + bg;
+    const label = s.title || s.quote || (layout.charAt(0).toUpperCase() + layout.slice(1));
+    const lines = (s.bullets || (s.columns || []).flat() || []);
+    mini.innerHTML = `<div class="st-thumb-t" style="color:#${ink}">${esc(label)}</div>` +
+      (lines.length ? `<div class="st-thumb-lines">${
+        lines.slice(0, 4).map(() => `<i style="background:#${accent}"></i>`).join("")}</div>` : "");
     th.appendChild(el("span", "st-thumb-n", String(i + 1)));
     th.appendChild(mini);
     th.addEventListener("click", () => {
@@ -191,15 +259,46 @@ function editable(tag, cls, text, ph) {
   return n;
 }
 
+function addPointBtn(container, label) {
+  const b = el("button", "st-add-bullet");
+  b.innerHTML = `${ic("plus", 13)}<span>${label || "Add point"}</span>`;
+  b.addEventListener("click", () => {
+    const row = bulletRow("");
+    container.appendChild(row);
+    const ed = row.querySelector(".st-bullet-text");
+    if (ed) ed.focus();
+    markDirty();
+  });
+  return b;
+}
+
 function renderStage() {
   const stage = $("#stStage");
   if (!stage) return;
   const slides = deckSlides();
   studio.active = Math.max(0, Math.min(studio.active, slides.length - 1));
   const s = slides[studio.active];
+  const pal = deckTheme();
+  const layout = slideLayout(s);
+  const isSection = layout === "section";
   stage.innerHTML = "";
 
   const tools = el("div", "st-stage-tools");
+  // layout picker
+  const lsel = el("select", "st-layout-sel");
+  lsel.title = "Slide layout";
+  STUDIO_LAYOUTS.forEach((name) => {
+    const o = el("option", null, name.replace("-", " "));
+    o.value = name;
+    lsel.appendChild(o);
+  });
+  lsel.value = layout;
+  lsel.addEventListener("change", () => {
+    syncDeckFromDom();
+    s.layout = lsel.value;
+    renderRail(); renderStage(); markDirty();
+  });
+  tools.appendChild(lsel);
   const mk = (icon, label, fn, danger) => {
     const b = el("button", "st-tool" + (danger ? " danger" : ""));
     b.title = label; b.setAttribute("aria-label", label);
@@ -213,25 +312,64 @@ function renderStage() {
   tools.appendChild(mk("trash", "Delete slide", deleteSlide, true));
   stage.appendChild(tools);
 
-  const card = el("div", "st-slide");
+  const card = el("div", "st-slide st-layout-" + layout);
+  const bg = s.bg ? normHex(s.bg) : (isSection ? pal.accent : pal.bg);
+  const accent = s.accent ? normHex(s.accent) : pal.accent;
+  const ink = isSection ? pal.on_accent : pal.ink;
+  const muted = isSection ? pal.on_accent : pal.muted;
+  card.style.background = "#" + bg;
+  card.style.setProperty("--st-ink", "#" + ink);
+  card.style.setProperty("--st-muted", "#" + muted);
+  card.style.setProperty("--st-accent", "#" + accent);
+
   const title = editable("h2", "st-slide-title", s.title || "", "Slide title");
-  const sub = editable("div", "st-slide-sub", s.subtitle || "", "Subtitle (optional)");
-  const bullets = el("div", "st-slide-bullets");
-  bullets.id = "stBullets";
-  (s.bullets || []).forEach((b) => bullets.appendChild(bulletRow(b)));
-  card.appendChild(title);
-  card.appendChild(sub);
-  card.appendChild(bullets);
-  const addB = el("button", "st-add-bullet");
-  addB.innerHTML = `${ic("plus", 13)}<span>Add point</span>`;
-  addB.addEventListener("click", () => {
-    const row = bulletRow("");
-    bullets.appendChild(row);
-    const ed = row.querySelector(".st-bullet-text");
-    if (ed) ed.focus();
-    markDirty();
-  });
-  card.appendChild(addB);
+
+  if (layout === "quote") {
+    const q = editable("div", "st-slide-quote", s.quote || s.title || "", "Quote");
+    const attr = editable("div", "st-slide-attr", s.attribution || "", "Attribution (optional)");
+    card.appendChild(el("div", "st-quote-mark", "“"));
+    card.appendChild(q);
+    card.appendChild(attr);
+  } else if (layout === "cover" || layout === "section" || layout === "statement") {
+    card.appendChild(title);
+    card.appendChild(editable("div", "st-slide-sub", s.subtitle || "", "Subtitle (optional)"));
+  } else if (layout === "two-column") {
+    card.appendChild(title);
+    const cols = el("div", "st-cols");
+    const data = (s.columns && s.columns.length) ? s.columns.slice(0, 2) : [[], []];
+    while (data.length < 2) data.push([]);
+    data.forEach((col) => {
+      const colEl = el("div", "st-col");
+      const list = el("div", "st-slide-bullets");
+      (col || []).forEach((b) => list.appendChild(bulletRow(b)));
+      colEl.appendChild(list);
+      colEl.appendChild(addPointBtn(list));
+      cols.appendChild(colEl);
+    });
+    card.appendChild(cols);
+  } else if (layout === "image") {
+    card.appendChild(title);
+    const holder = el("div", "st-img-holder");
+    if (studio.file_url || s.image) {
+      holder.innerHTML = `<div class="st-img-note">${ic("file", 15)}<span>${esc(s.image || "image")}</span></div>`;
+    } else {
+      holder.innerHTML = `<div class="st-img-note">${ic("file", 15)}<span>Add an image via the Ask bar below (e.g. "add an ocean photo")</span></div>`;
+    }
+    card.appendChild(holder);
+  } else if (layout === "diagram") {
+    card.appendChild(title);
+    card.appendChild(el("div", "st-diagram-note",
+      "This slide is a diagram. Edit its shapes with the Ask bar below (e.g. \"make the middle box green\")."));
+  } else {
+    // content
+    card.appendChild(title);
+    card.appendChild(editable("div", "st-slide-sub", s.subtitle || "", "Subtitle (optional)"));
+    const bullets = el("div", "st-slide-bullets");
+    bullets.id = "stBullets";
+    (s.bullets || []).forEach((b) => bullets.appendChild(bulletRow(b)));
+    card.appendChild(bullets);
+    card.appendChild(addPointBtn(bullets));
+  }
   stage.appendChild(card);
 }
 
@@ -284,8 +422,23 @@ function syncDeckFromDom() {
   const sub = stage.querySelector(".st-slide-sub");
   if (t) s.title = t.textContent.trim();
   if (sub) s.subtitle = sub.textContent.trim();
-  s.bullets = Array.from(stage.querySelectorAll(".st-bullet-text"))
-    .map((n) => n.textContent.trim()).filter(Boolean);
+  const q = stage.querySelector(".st-slide-quote");
+  const attr = stage.querySelector(".st-slide-attr");
+  if (q) s.quote = q.textContent.trim();
+  if (attr) s.attribution = attr.textContent.trim();
+  const cols = stage.querySelectorAll(".st-col");
+  if (cols.length) {
+    s.columns = Array.from(cols).map((c) =>
+      Array.from(c.querySelectorAll(".st-bullet-text"))
+        .map((n) => n.textContent.trim()).filter(Boolean));
+  } else {
+    // single bullet list (content): read only the main list
+    const list = stage.querySelector("#stBullets");
+    if (list) {
+      s.bullets = Array.from(list.querySelectorAll(".st-bullet-text"))
+        .map((n) => n.textContent.trim()).filter(Boolean);
+    }
+  }
 }
 
 function moveSlide(dir) {
