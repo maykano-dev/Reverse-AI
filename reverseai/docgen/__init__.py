@@ -196,6 +196,7 @@ def _pptx(spec):
             image_h=int(s.get("image_h") or 0),
             shapes=s.get("shapes") or [],
             steps=[str(x) for x in (s.get("steps") or [])],
+            cards=[c for c in (s.get("cards") or []) if isinstance(c, dict)],
             diagram_style=str(s.get("diagram_style") or s.get("style") or "flow"),
             bg_style=str(s.get("bg_style") or s.get("background") or ""),
             bg_spec=s.get("bg_spec") if isinstance(s.get("bg_spec"), dict) else {},

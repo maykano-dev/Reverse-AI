@@ -105,6 +105,7 @@ class Slide:
     image_h: int = 0
     shapes: list = field(default_factory=list)   # diagram primitives (low-level)
     steps: list = field(default_factory=list)    # auto-laid-out flow/cycle labels
+    cards: list = field(default_factory=list)    # [{num?/label?, title, text?}] grid
     diagram_style: str = "flow"      # flow | cycle | pillars
     bg_style: str = ""               # mesh | geometric | glow | rings | diagonal | gradient | plain
     bg_spec: dict = field(default_factory=dict)   # custom generative background
@@ -117,6 +118,8 @@ class Slide:
     def effective_layout(self) -> str:
         if self.layout:
             return self.layout.lower()
+        if self.cards:
+            return "cards"
         if self.shapes or self.steps:
             return "diagram"
         if self.quote:
@@ -305,6 +308,54 @@ def _flow_diagram(steps, t, sid, area, style="flow"):
             ax1 = x + box_w + arrow_gap * 0.18
             ax2 = x + box_w + arrow_gap * 0.82
             out.append(_arrow_h(sid, ax1, cy, ax2, t["muted"]))
+    return "".join(out)
+
+
+def _card(sid, x, y, w, h, t, card):
+    """A surface card with a thin border: an optional number/label, title, text."""
+    surface = t["surface"]
+    border = _shade(surface, 0.14) if _is_dark(surface) else _shade(surface, -0.10)
+    out = [_shp(sid, x, y, w, h, fill=surface, geom="roundRect", round_val=5000,
+                line=border, line_w=12700)]
+    pad = 240000
+    paras = []
+    num, label = card.get("num"), card.get("label")
+    title, text = card.get("title"), card.get("text")
+    if num not in (None, ""):
+        paras.append(_para(_run(str(num), 26, t["accent"], t["fonts"]["title"],
+                                bold=True), space_after=500))
+    elif label:
+        paras.append(_para(_run(str(label).upper(), 11, t["accent"], t["fonts"]["body"],
+                                bold=True, spc=140), space_after=500))
+    if title:
+        paras.append(_para(_run(str(title), 15, t["ink"], t["fonts"]["body"], bold=True),
+                           space_after=(300 if text else 0)))
+    if text:
+        paras.append(_para(_run(str(text), 12, t["muted"], t["fonts"]["body"]),
+                           space_after=0))
+    if not paras:
+        paras = [_para(_run("", 12, t["ink"], t["fonts"]["body"]), space_after=0)]
+    out.append(_textbox(next(sid), "cardtx", x + pad, y + pad, w - 2 * pad, h - 2 * pad,
+                        paras, anchor="t"))
+    return "".join(out)
+
+
+def _cards_layout(cards, t, sid, area):
+    """A tidy responsive grid of cards (2 or 3 columns)."""
+    left, top, w, h = area
+    cards = [c for c in cards if isinstance(c, dict)][:6]
+    n = len(cards)
+    if not n:
+        return ""
+    cols = 1 if n == 1 else (2 if (n <= 4 and n != 3) else 3)
+    rows = -(-n // cols)
+    gx, gy = w * 0.03, h * 0.08
+    cw = (w - (cols - 1) * gx) / cols
+    ch = (h - (rows - 1) * gy) / rows
+    out = []
+    for i, c in enumerate(cards):
+        r, cc = divmod(i, cols)
+        out.append(_card(sid, left + cc * (cw + gx), top + r * (ch + gy), cw, ch, t, c))
     return "".join(out)
 
 
@@ -621,6 +672,11 @@ def _slide_shapes(slide: Slide, t: dict):
                            [_para(_run(slide.subtitle, 17, muted, font_b), space_after=0)]))
     body_top = (2050000 if slide.subtitle else 1760000) + shift
     body_h = _H - body_top - 560000
+
+    if layout == "cards":
+        sp.append(_cards_layout(slide.cards, t, sid,
+                                (_MARGIN, body_top, _W - 2 * _MARGIN, body_h)))
+        return bg, "".join(sp), media, anim
 
     if layout == "diagram":
         area = (_MARGIN, body_top, _W - 2 * _MARGIN, body_h)

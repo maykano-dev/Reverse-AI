@@ -52,6 +52,15 @@ class DesignedDeckTests(unittest.TestCase):
         self.assertEqual(len([n for n in z.namelist()
                               if n.startswith("ppt/slides/slide") and n.endswith(".xml")]), 6)
 
+
+    def test_cards_layout(self):
+        data = generate("pptx", {"slides": [{"layout": "cards", "title": "R", "cards": [
+            {"num": "01", "title": "A"}, {"num": "02", "title": "B"},
+            {"num": "03", "title": "C"}]}]}).data
+        z = self._zip(data)
+        self.assertIsNone(z.testzip())
+        slide = z.read("ppt/slides/slide1.xml")
+        self.assertEqual(slide.count(b"roundRect"), 3)
     def test_per_slide_bg_override(self):
         data = generate("pptx", {"slides": [
             {"title": "x", "bg": "#123456", "bullets": ["y"]}]}).data
