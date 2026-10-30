@@ -686,6 +686,7 @@ let presentIdx = 0;
 function startPresent() {
   if (!isDeck()) return;
   syncDeckFromDom();
+  saveStudio(true);              // persist edits to the file before presenting
   presentIdx = studio.active || 0;
   const overlay = $("#present");
   overlay.classList.add("show");
@@ -694,17 +695,91 @@ function startPresent() {
   document.addEventListener("keydown", presentKeys);
   if (overlay.requestFullscreen) overlay.requestFullscreen().catch(() => {});
 }
+
+function presentBullets(arr, ink, accent) {
+  if (!arr || !arr.length) return "";
+  return `<ul class="pz-bul">${arr.map((b) =>
+    `<li style="color:#${ink}"><span class="pz-dot" style="background:#${accent}"></span>${esc(b)}</li>`).join("")}</ul>`;
+}
+
+function presentDiagram(shapes, accent, ink) {
+  let boxes = "", lines = "";
+  (shapes || []).forEach((sh) => {
+    if (!sh || typeof sh !== "object") return;
+    const kind = String(sh.type || "rect").toLowerCase();
+    const col = sh.color ? normHex(sh.color) : accent;
+    if (kind === "rect" || kind === "roundrect" || kind === "ellipse") {
+      const radius = kind === "ellipse" ? "50%" : (kind === "roundrect" ? "12px" : "3px");
+      const tc = sh.text_color ? normHex(sh.text_color) : "FFFFFF";
+      boxes += `<div class="pz-shape" style="left:${+sh.x || 0}%;top:${+sh.y || 0}%;` +
+        `width:${+sh.w || 20}%;height:${+sh.h || 20}%;background:#${col};border-radius:${radius};` +
+        `color:#${tc}">${sh.text ? esc(sh.text) : ""}</div>`;
+    } else if (kind === "line" || kind === "arrow") {
+      const x1 = +sh.x || 0, y1 = +sh.y || 0;
+      const x2 = (sh.x2 != null ? +sh.x2 : x1), y2 = (sh.y2 != null ? +sh.y2 : y1);
+      const marker = kind === "arrow" ? ' marker-end="url(#pvarrow)"' : "";
+      lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#${col}" stroke-width="0.7"${marker}/>`;
+    } else if (kind === "text") {
+      const tc = sh.color ? normHex(sh.color) : ink;
+      boxes += `<div class="pz-shape pz-shape-text" style="left:${+sh.x || 0}%;top:${+sh.y || 0}%;` +
+        `width:${+sh.w || 30}%;color:#${tc}">${sh.text ? esc(sh.text) : ""}</div>`;
+    }
+  });
+  const svg = `<svg class="pz-diagram-svg" viewBox="0 0 100 100" preserveAspectRatio="none">` +
+    `<defs><marker id="pvarrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">` +
+    `<path d="M0,0 L5,2.5 L0,5 z" fill="#${accent}"/></marker></defs>${lines}</svg>`;
+  return `<div class="pz-diagram">${svg}${boxes}</div>`;
+}
+
+function presentSlideHTML(s, pal) {
+  const layout = slideLayout(s);
+  const isSection = layout === "section";
+  const bg = s.bg ? normHex(s.bg) : (isSection ? pal.accent : pal.bg);
+  const ink = isSection ? pal.on_accent : pal.ink;
+  const muted = isSection ? pal.on_accent : pal.muted;
+  const accent = s.accent ? normHex(s.accent) : pal.accent;
+  const sub = s.subtitle ? `<div class="pz-sub" style="color:#${muted}">${esc(s.subtitle)}</div>` : "";
+  const head = (tag) => `<div class="pz-head"><div class="pz-rule" style="background:#${accent}"></div>` +
+    `<${tag} style="color:#${ink}">${esc(s.title || "")}</${tag}></div>`;
+  const imgTag = s.image ? `<img class="pz-img" src="${withToken(`/preview/${studio.cid}/${s.image}`)}" alt="">` : "";
+  let inner;
+  if (layout === "cover") {
+    inner = `<div class="pz-center"><div class="pz-bar" style="background:#${accent}"></div>` +
+      `<h1 style="color:#${ink}">${esc(s.title || "")}</h1>${sub}</div>`;
+  } else if (layout === "section") {
+    inner = `<div class="pz-center pz-center-mid"><h1 style="color:#${ink}">${esc(s.title || "")}</h1>${sub}</div>`;
+  } else if (layout === "statement") {
+    inner = `<div class="pz-center"><div class="pz-bar" style="background:#${accent}"></div>` +
+      `<h1 class="pz-stmt" style="color:#${ink}">${esc(s.title || s.subtitle || "")}</h1></div>`;
+  } else if (layout === "quote") {
+    inner = `<div class="pz-quote"><div class="pz-mark" style="color:#${accent}">“</div>` +
+      `<div class="pz-qtext" style="color:#${ink}">${esc(s.quote || s.title || "")}</div>` +
+      (s.attribution ? `<div class="pz-attr" style="color:#${muted}">— ${esc(s.attribution)}</div>` : "") + `</div>`;
+  } else if (layout === "two-column") {
+    const cols = (s.columns || []).slice(0, 2);
+    inner = head("h2") + `<div class="pz-cols">${cols.map((c) =>
+      `<div class="pz-col">${presentBullets(c, ink, accent)}</div>`).join("")}</div>`;
+  } else if (layout === "image") {
+    inner = head("h2") + `<div class="pz-imgwrap">${imgTag}</div>`;
+  } else if (layout === "diagram") {
+    inner = head("h2") + presentDiagram(s.shapes || [], accent, ink);
+  } else {
+    const body = `<div class="pz-body">${head("h2")}${sub}${presentBullets(s.bullets, ink, accent)}</div>`;
+    inner = s.image
+      ? `<div class="pz-split">${body}<div class="pz-imgwrap half">${imgTag}</div></div>`
+      : body;
+  }
+  return { bg, html: `<div class="pz-slide pz-layout-${layout}" style="background:#${bg}">${inner}</div>` };
+}
+
 function drawPresent() {
   const slides = deckSlides();
   presentIdx = Math.max(0, Math.min(presentIdx, slides.length - 1));
   const s = slides[presentIdx];
-  const stage = $("#presentStage");
-  stage.innerHTML = `
-    <div class="present-slide">
-      <h1>${esc(s.title || "")}</h1>
-      ${s.subtitle ? `<div class="present-sub">${esc(s.subtitle)}</div>` : ""}
-      ${(s.bullets && s.bullets.length) ? `<ul>${s.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : ""}
-    </div>`;
+  const { bg, html } = presentSlideHTML(s, deckTheme());
+  const overlay = $("#present");
+  overlay.style.background = "#" + bg;
+  $("#presentStage").innerHTML = html;
   $("#presentCount").textContent = `${presentIdx + 1} / ${slides.length}`;
 }
 function presentKeys(e) {
