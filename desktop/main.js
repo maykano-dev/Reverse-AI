@@ -65,6 +65,14 @@ function waitForServer(port, timeoutMs = 40000) {
   });
 }
 
+// The bundled, frozen backend (PyInstaller) shipped with a packaged build, so
+// the user needs no system Python. Null in a dev checkout.
+function bundledBackend() {
+  const name = process.platform === "win32" ? "reverseai-server.exe" : "reverseai-server";
+  const p = path.join(process.resourcesPath || "", "backend", name);
+  try { return fs.existsSync(p) ? p : null; } catch (_) { return null; }
+}
+
 function startServer() {
   return new Promise(async (resolve, reject) => {
     let port;
@@ -78,17 +86,25 @@ function startServer() {
     const store = path.join(app.getPath("userData"), "jobs");
     try { fs.mkdirSync(store, { recursive: true }); } catch (_) {}
 
-    const args = ["-m", "reverseai", "serve", "--host", HOST,
-                  "--port", String(port), "--store", store];
+    const serveArgs = ["serve", "--host", HOST, "--port", String(port), "--store", store];
     const env = Object.assign({}, process.env, {
       PYTHONUNBUFFERED: "1",
       REVERSEAI_STORE: process.env.REVERSEAI_STORE || store,
     });
 
-    let lastErr = null;
+    // Prefer the bundled binary (no Python needed); fall back to a system
+    // Python running the source (dev checkout).
+    const candidates = [];
+    const bundled = bundledBackend();
+    if (bundled) candidates.push({ cmd: bundled, args: serveArgs });
     for (const exe of pythonCandidates()) {
+      candidates.push({ cmd: exe, args: ["-m", "reverseai", ...serveArgs] });
+    }
+
+    let lastErr = null;
+    for (const cand of candidates) {
       try {
-        const proc = spawn(exe, args, { cwd: root, env });
+        const proc = spawn(cand.cmd, cand.args, { cwd: root, env });
         let spawnFailed = false;
         proc.on("error", (err) => { spawnFailed = true; lastErr = err; });
         proc.stdout.on("data", (d) => pushLog(d));
@@ -118,7 +134,7 @@ function startServer() {
         lastErr = e;
       }
     }
-    reject(lastErr || new Error("could not launch the Python backend"));
+    reject(lastErr || new Error("could not launch the ReverseAI backend"));
   });
 }
 
@@ -182,7 +198,9 @@ function buildMenu() {
       label: "View",
       submenu: [
         { label: "Reload", accelerator: "CmdOrCtrl+R",
-          click: () => mainWindow && mainWindow.reload() },
+          click: () => mainWindow && mainWindow.webContents.reloadIgnoringCache() },
+        { label: "Force Reload", accelerator: "CmdOrCtrl+Shift+R",
+          click: () => mainWindow && mainWindow.webContents.reloadIgnoringCache() },
         { role: "toggleDevTools" },
         { type: "separator" },
         { role: "resetZoom" }, { role: "zoomIn" }, { role: "zoomOut" },

@@ -8,6 +8,7 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "build:backend": "python3 -m PyInstaller backend/reverseai-server.spec --noconfirm --clean --distpath backend/dist --workpath backend/build",
     "dist": "electron-builder",
     "dist:dir": "electron-builder --dir"
   },
@@ -22,13 +23,25 @@
     "files": ["main.js", "preload.js", "loading.html", "assets/**/*"],
     "extraResources": [
       {
-        "from": "..",
-        "to": "app-python",
-        "filter": ["reverseai/**/*", "!**/__pycache__/**", "!**/*.pyc"]
+        "from": "backend/dist",
+        "to": "backend",
+        "filter": ["reverseai-server", "reverseai-server.exe"]
       }
     ],
-    "linux": { "target": ["AppImage"], "category": "Development" },
-    "mac": { "target": ["dmg"], "category": "public.app-category.developer-tools" },
-    "win": { "target": ["nsis"] }
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Development",
+      "artifactName": "ReverseAI-${version}-${arch}.${ext}"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.developer-tools",
+      "artifactName": "ReverseAI-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": ["nsis"],
+      "artifactName": "ReverseAI-${version}-${arch}.${ext}"
+    },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
   }
 }

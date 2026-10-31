@@ -1,0 +1,71 @@
+name: Build desktop installers
+
+# Builds native installers for macOS, Windows, and Linux. The Python backend is
+# frozen with PyInstaller on each OS (so users need no Python), then packaged
+# into the Electron app with electron-builder.
+#
+# Run it from the Actions tab (workflow_dispatch) or by pushing a v* tag.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux
+          - os: macos-latest
+            name: macos
+          - os: windows-latest
+            name: windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Freeze the backend
+        working-directory: desktop/backend
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: pyinstaller reverseai-server.spec --noconfirm --clean --distpath dist --workpath build
+
+      - name: Install desktop deps
+        working-directory: desktop
+        run: npm install
+
+      - name: Build installer
+        working-directory: desktop
+        env:
+          # Unsigned builds - no signing certificates in CI.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --publish never
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReverseAI-${{ matrix.name }}
+          path: |
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+            desktop/dist/*.dmg
+            desktop/dist/*.zip
+            desktop/dist/*.exe
+          if-no-files-found: ignore

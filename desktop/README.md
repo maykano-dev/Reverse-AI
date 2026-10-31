@@ -29,17 +29,36 @@ If your Python is not `python3` on the PATH, point the shell at it:
 REVERSEAI_PYTHON=/path/to/python npm start
 ```
 
-## Build installers
+## Build installers (bundled Python - users need nothing pre-installed)
+
+The backend is frozen into a standalone executable with PyInstaller, then
+packaged into the app, so the installed app runs with **no separate Python**.
+
+Build locally (produces an installer for the OS you run it on):
 
 ```bash
 cd desktop
+pip install pyinstaller        # build-time only
 npm install
-npm run dist        # AppImage (Linux), dmg (macOS), or nsis (Windows)
+npm run build:backend          # freeze reverseai -> backend/dist/reverseai-server
+npm run dist                   # AppImage+deb (Linux), dmg+zip (macOS), nsis (Windows)
 ```
 
-`electron-builder` bundles the `reverseai/` Python sources into the app as
-resources. The user still needs a Python 3.11+ runtime available; packaging a
-full Python runtime is a later step (PyInstaller sidecar).
+### All three platforms at once (recommended)
+
+Installers for macOS, Windows, and Linux are built in CI: the
+**Build desktop installers** GitHub Actions workflow freezes the backend and
+runs electron-builder on each OS and uploads the installers. PyInstaller can't
+cross-compile, so each OS is built on its own runner - CI is how you ship to all
+devices.
+
+The workflow is staged at `docs/github-workflows/desktop-release.yml` (the repo
+convention, since pushing to `.github/workflows/` needs a token with the
+`workflow` scope). Copy it to `.github/workflows/` to activate it, then trigger
+it from the Actions tab or by pushing a `v*` tag.
+
+If the bundled backend is missing (a dev checkout without `npm run build:backend`),
+the app falls back to a system `python3` running the source.
 
 ## How it works
 
@@ -52,6 +71,6 @@ full Python runtime is a later step (PyInstaller sidecar).
 
 ## Not yet (honest scope)
 
-System tray + background daemon, a global quick-launch hotkey, and a bundled
-Python runtime are planned but not built here. This shell is the foundation they
-hang off.
+System tray + background daemon, a global quick-launch hotkey, and code-signed/
+notarized builds (CI currently produces unsigned installers) are planned but not
+built here.

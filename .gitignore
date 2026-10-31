@@ -48,3 +48,6 @@ corpora/
 # Electron desktop shell
 desktop/node_modules/
 desktop/dist/
+
+desktop/backend/dist/
+desktop/backend/build/

@@ -47,6 +47,7 @@ import hmac
 import json
 import os
 import re
+import sys
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -108,7 +109,16 @@ _STUDIO_EXPORT_PATH = re.compile(
     r"^/studio/(conv_[A-Za-z0-9]+)/([A-Za-z0-9._-]+)/export$")
 _STUDIO_IMAGE_PATH = re.compile(
     r"^/studio/(conv_[A-Za-z0-9]+)/([A-Za-z0-9._-]+)/image$")
-_STATIC_DIR = Path(__file__).parent / "static"
+def _static_dir() -> Path:
+    # When frozen by PyInstaller (the bundled desktop backend), data files live
+    # under sys._MEIPASS, not next to this source file.
+    base = getattr(sys, "_MEIPASS", None)
+    if getattr(sys, "frozen", False) and base:
+        return Path(base) / "reverseai" / "server" / "static"
+    return Path(__file__).parent / "static"
+
+
+_STATIC_DIR = _static_dir()
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
 _CSP = (
