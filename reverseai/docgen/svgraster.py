@@ -20,6 +20,28 @@ def available() -> bool:
                 or shutil.which("convert"))
 
 
+def _ensure_svg_attrs(svg: str) -> str:
+    """Add the attributes a rasterizer needs but a model often omits.
+
+    A missing ``xmlns`` makes LibreOffice/ImageMagick reject the file, and a
+    root with neither ``viewBox`` nor width/height has no intrinsic size - both
+    make the drawing silently fail. Fix both so model art actually renders.
+    """
+    m = re.search(r'<svg\b[^>]*>', svg, re.IGNORECASE)
+    if not m:
+        return svg
+    tag = m.group(0)
+    new = tag
+    if "xmlns" not in new:
+        new = new[:-1] + ' xmlns="http://www.w3.org/2000/svg">'
+    has_vb = re.search(r'\bviewBox="', new, re.IGNORECASE)
+    has_w = re.search(r'\bwidth="', new, re.IGNORECASE)
+    has_h = re.search(r'\bheight="', new, re.IGNORECASE)
+    if not has_vb and not (has_w and has_h):
+        new = new[:-1] + ' viewBox="0 0 1000 1000">'
+    return svg.replace(tag, new, 1) if new != tag else svg
+
+
 def _scale_svg(svg: str, target_w: int) -> str:
     """Nudge the SVG's width/height up to target_w (keeps aspect via viewBox)."""
     m = re.search(r'<svg\b[^>]*>', svg, re.IGNORECASE)
@@ -55,7 +77,8 @@ def svg_to_png(svg, target_w: int = 1400) -> bytes | None:
     """Return PNG bytes for an SVG string/bytes, or None if no rasterizer works."""
     if isinstance(svg, bytes):
         svg = svg.decode("utf-8", "replace")
-    svg = _scale_svg(svg.strip(), target_w)
+    svg = _ensure_svg_attrs(svg.strip())
+    svg = _scale_svg(svg, target_w)
     data = svg.encode("utf-8")
     soffice = shutil.which("soffice") or shutil.which("libreoffice")
     if soffice:

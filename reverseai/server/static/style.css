@@ -940,7 +940,9 @@ svg.icon { display: block; flex: none; }
 .artifact {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 11px;
+  row-gap: 9px;
   margin-top: 13px;
   padding: 11px 13px;
   background: var(--elev);
@@ -964,12 +966,13 @@ svg.icon { display: block; flex: none; }
   justify-content: center;
   flex: none;
 }
-.artifact .at { min-width: 0; }
+.artifact .at { flex: 1 1 150px; min-width: 0; }
 .artifact .at b { font-size: 13.5px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.artifact .at span { display: block; font-size: 11px; color: var(--dim); margin-top: 1px; }
+.artifact .at span { display: block; font-size: 11px; color: var(--dim); margin-top: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artifact .ad { margin-left: auto; color: var(--accent); flex: none; }
 .artifact { cursor: default; }
-.artifact .aacts { margin-left: auto; display: flex; gap: 6px; flex: none; }
+.artifact .aacts { margin-left: auto; display: flex; flex-wrap: wrap; gap: 6px; flex: none; }
 .artifact .abtn {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 6px 11px; border-radius: 9px; font-size: 12.5px; font-weight: 600;
