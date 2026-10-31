@@ -6,7 +6,7 @@
 // re-implementation of the product - the desktop app IS the product, framed.
 "use strict";
 
-const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, Menu, Tray, nativeImage, shell, dialog, ipcMain } = require("electron");
 const { spawn } = require("child_process");
 const http = require("http");
 const net = require("net");
@@ -17,6 +17,7 @@ const HOST = "127.0.0.1";
 let serverProc = null;
 let serverPort = 0;
 let mainWindow = null;
+let tray = null;
 let serverLog = [];
 
 // In a packaged build the Python sources are shipped under resources/app-python;
@@ -162,6 +163,38 @@ function stopServer() {
   } catch (_) {}
 }
 
+function showWindow() {
+  if (!mainWindow) {
+    if (serverPort) createWindow(serverPort);
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function createTray() {
+  if (tray) return;
+  const isMac = process.platform === "darwin";
+  const iconName = isMac ? "trayTemplate.png" : "tray.png";
+  const img = nativeImage.createFromPath(path.join(__dirname, "assets", iconName));
+  if (isMac) img.setTemplateImage(true);
+  try {
+    tray = new Tray(img);
+  } catch (_) {
+    return; // some minimal Linux desktops have no tray; not fatal
+  }
+  tray.setToolTip("ReverseAI");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Open ReverseAI", click: showWindow },
+    { label: "Open Project Folder…", click: () => { showWindow(); pickProjectFolder(); } },
+    { type: "separator" },
+    { label: "Quit ReverseAI", click: () => { app.isQuitting = true; app.quit(); } },
+  ]));
+  tray.on("click", showWindow);
+  tray.on("double-click", showWindow);
+}
+
 async function pickProjectFolder() {
   if (!mainWindow) return;
   const res = await dialog.showOpenDialog(mainWindow, {
@@ -230,6 +263,7 @@ function createWindow(port) {
     width: 1280, height: 860, minWidth: 720, minHeight: 540,
     backgroundColor: "#0e1526", show: false, autoHideMenuBar: true,
     title: "ReverseAI",
+    icon: path.join(__dirname, "assets", "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -249,6 +283,14 @@ function createWindow(port) {
   mainWindow.webContents.on("will-navigate", (e, url) => {
     if (!isLocal(url)) { e.preventDefault(); shell.openExternal(url); }
   });
+  // Closing the window hides to the tray (background daemon) instead of
+  // quitting; the app exits only via the tray/menu Quit.
+  mainWindow.on("close", (e) => {
+    if (!app.isQuitting && tray) {
+      e.preventDefault();
+      mainWindow.hide();
+    }
+  });
   mainWindow.on("closed", () => { mainWindow = null; });
 }
 
@@ -260,6 +302,7 @@ async function boot() {
   splash.loadFile(path.join(__dirname, "loading.html"));
   try {
     const port = await startServer();
+    createTray();
     createWindow(port);
     if (mainWindow) mainWindow.once("ready-to-show", () => { try { splash.close(); } catch (_) {} });
   } catch (e) {
