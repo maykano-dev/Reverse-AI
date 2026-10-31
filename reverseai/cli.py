@@ -272,6 +272,24 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
     return 0 if not problems else 1
 
 
+def _cmd_mcp_serve(args: argparse.Namespace) -> int:
+    from .agent.tools import Permission
+    from .mcp.server import MCPServer
+    from .security.capabilities import CapabilityDenied
+
+    perm = {"read": Permission.READ, "execute": Permission.EXECUTE,
+            "write": Permission.WRITE}[args.permission]
+    server = MCPServer(workspace=args.workspace, max_permission=perm)
+    try:
+        server.serve()
+    except CapabilityDenied as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        return 0
+    return 0
+
+
 def _cmd_hooks(args: argparse.Namespace) -> int:
     import json
     from .hooks.runner import HookManifest, verify_manifest
@@ -804,6 +822,14 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_validate.add_argument("manifest")
     mcp_validate.add_argument("--json", action="store_true")
     mcp_validate.set_defaults(func=_cmd_mcp)
+    mcp_serve = mcp_sub.add_parser(
+        "serve", help="expose ReverseAI's tools to an MCP client over stdio")
+    mcp_serve.add_argument("--workspace", default=".",
+                           help="project directory the tools operate on")
+    mcp_serve.add_argument("--permission", choices=["read", "execute", "write"],
+                           default="read",
+                           help="highest tool permission to expose (default: read-only)")
+    mcp_serve.set_defaults(func=_cmd_mcp_serve)
 
     hooks = sub.add_parser("hooks", help="hook manifest utilities")
     hooks_sub = hooks.add_subparsers(dest="hooks_cmd", required=True)

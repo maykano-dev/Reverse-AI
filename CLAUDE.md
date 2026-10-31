@@ -62,7 +62,8 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | Product/proof layer | **working** | specs, behaviour contracts, proof packages, independent verify |
 | Orchestration | **working** | model router, tool manifests, capability map, missions, trust |
 | Domain adapters | **foundation** | hardware, robotics, CAD, network, security contracts |
-| Remote/payment/MCP/hooks | **gated surface** | desktop broker, Telegram read-only, payment ledger/mock, MCP client, sandboxed hooks |
+| Remote/payment/MCP/hooks | **gated surface** | desktop broker, Telegram read-only, payment ledger/mock, MCP client + server (expose ReverseAI's tools, read-only by default), sandboxed hooks |
+| Native desktop app | **working** | Electron shell (`desktop/`) that launches the real server and wraps the UI |
 | Training/deployment | **gated surface** | verified traces, holdout pipeline, dry-run deployment, rollback, approvals |
 | Decompile | **working** | Ghidra headless + Java script for modern releases |
 | Clone | **working** | static fetch; opt-in headless render |
@@ -249,7 +250,7 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
   allowlists, mobile-first PWA with a thinking timeline, sources, artifacts,
   memory, routines, usage, feedback, notifications, and speech input.
 - **CLI:** `analyze`, `diff`, `cfg`, `xrefs`, `repo`, `caps`, `capabilities`,
-  `surfaces`, `mcp validate`, `hooks validate`, `readiness`, `sandbox run`,
+  `surfaces`, `mcp validate`, `mcp serve`, `hooks validate`, `readiness`, `sandbox run`,
   `verify`, `corpus capture|list|show`, `report verify|render`,
   `approvals grant|list`, `audit`, `agent run` (with
   `--mode ask|build|modify|optimize|autonomous`), `bench`, `serve`.

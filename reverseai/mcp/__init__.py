@@ -8,8 +8,10 @@ from .client import (
     FakeMCPTransport, MCPClient, MCPError, MCPManifest, MCPRegistry,
     StdioTransport,
 )
+from .server import MCPServer, server_tools
 
 __all__ = [
     "MCPClient", "MCPManifest", "MCPRegistry", "MCPError",
     "FakeMCPTransport", "StdioTransport",
+    "MCPServer", "server_tools",
 ]
