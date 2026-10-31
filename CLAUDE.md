@@ -64,6 +64,7 @@ User goal ─▶ Agent ─▶ Analysis ─▶ Modification ─▶ Sandbox/testin
 | Domain adapters | **foundation** | hardware, robotics, CAD, network, security contracts |
 | Remote/payment/MCP/hooks | **gated surface** | desktop broker, Telegram read-only, payment ledger/mock, MCP client + server (expose ReverseAI's tools, read-only by default), sandboxed hooks |
 | Native desktop app | **working** | Electron shell (`desktop/`) that launches the real server and wraps the UI |
+| Project workbook | **working** | bind a host folder (`set_project_folder`) + durable goal/plan (`reverseai/project.py`) injected into context each turn |
 | Training/deployment | **gated surface** | verified traces, holdout pipeline, dry-run deployment, rollback, approvals |
 | Decompile | **working** | Ghidra headless + Java script for modern releases |
 | Clone | **working** | static fetch; opt-in headless render |

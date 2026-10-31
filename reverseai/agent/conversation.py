@@ -243,6 +243,24 @@ class Conversation:
         ]
         return "\n".join(parts)
 
+    def _refresh_project_context(self) -> None:
+        """Fold the current project workbook into the system prompt (message 0).
+
+        Living in message 0 means compaction preserves it, so the goal and plan
+        stay in context for the whole task.
+        """
+        if getattr(self, "_base_system", None) is None:
+            self._base_system = (self.messages[0].content if self.messages
+                                 else self._system_prompt())
+        try:
+            from ..project import project_state_block
+            block = project_state_block(self.ctx.extra.get("project_dir"))
+        except Exception:
+            block = ""
+        content = self._base_system + (("\n\n" + block) if block else "")
+        if self.messages and self.messages[0].role == Role.SYSTEM:
+            self.messages[0] = Message(Role.SYSTEM, content)
+
     # ------------------------------------------------------------------
     # Turns
     # ------------------------------------------------------------------
@@ -283,6 +301,9 @@ class Conversation:
         self.turns += 1
         self.ctx.job_id = job.id
         self.ctx.goal = goal
+        # Keep the project workbook (goal + plan) in context every turn so a
+        # long, multi-turn build never loses its focus on the goal.
+        self._refresh_project_context()
         note = _attachment_note(attachments)
         self.ctx.extra["attachments"] = list(attachments or [])
         if self._first:

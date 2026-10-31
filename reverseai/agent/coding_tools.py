@@ -641,7 +641,8 @@ def coding_tools() -> list[Tool]:
     from .code_nav_tools import code_nav_tools
     from .git_tools import git_tools
     from .github_tools import github_tools
+    from .project_tools import project_tools
 
     return [ListDirTool(), ReadFileTool(), WriteFileTool(), EditFileTool(),
             RunCommandTool(), RunTestsTool(), *code_nav_tools(), *git_tools(),
-            *github_tools()]
+            *github_tools(), *project_tools()]
