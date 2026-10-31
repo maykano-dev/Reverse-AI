@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased: desktop app, agentic coding, document design, project memory
+
+### Added
+
+- **Native desktop app** (`desktop/`, Electron): launches the backend and wraps
+  the UI in a native window, with a native Open Project Folder picker. The
+  Python backend is frozen with PyInstaller so installed apps need no separate
+  Python; a staged GitHub Actions workflow builds macOS/Windows/Linux installers.
+- **Agentic coding**: `search_code` (ripgrep-style), `code_outline` (symbol map),
+  `run_tests` (auto-detected runner + verdict), local git (`git_status/diff/log/
+  branch/commit`), and gated GitHub (`open_pr`, `pr_status`).
+- **Project workbook**: `set_project_folder` binds a host folder (continue or
+  scaffold); a durable goal/next-steps/notes workbook under `.reverseai/` is
+  injected into context every turn. `update_project_plan`, `read_project_plan`.
+- **Document & deck design**: 14 themes (own colors + fonts, auto-varied),
+  card grids, 10 diagram styles, data-driven charts, generative backgrounds, and
+  bespoke SVG art; `render_document` self-check. SVG rasterization hardened so
+  model art with no xmlns/viewBox no longer silently vanishes.
+- **MCP server** (`reverseai mcp serve`): exposes analysis, code-navigation, and
+  git tools to any MCP client; gated and read-only by default.
+- Streaming tokens with model retries and a fallback-provider chain; Studio
+  present mode renders cards, charts, SVG art, and advanced diagrams; compact
+  surfaces dock above the composer with a one-line trace; UI responsive hardening.
+- 111 new tests; total 701.
+
 ## 0.9.0: interactive surfaces and a calmer workspace
 
 ### Added
