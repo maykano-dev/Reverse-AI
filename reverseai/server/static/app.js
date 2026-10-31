@@ -443,6 +443,8 @@ function newChat() {
   queue = [];
   renderQueue();
   resetCanvas();
+  const dock = document.getElementById("surfaceDock");
+  if (dock) dock.innerHTML = "";
   const inner = $("#threadInner");
   inner.innerHTML = "";
   inner.appendChild(welcomeNode());
@@ -1365,8 +1367,21 @@ async function submitSurface(card, surface, jobId, actionId, button) {
     card.classList.add("surface-submitted");
     buttons.forEach((b) => { b.disabled = true; });
     card.querySelectorAll("input, textarea, select").forEach((x) => { x.disabled = true; });
-    const note = el("div", "surface-note", "Sent to ReverseAI. Continuing…");
-    card.appendChild(note);
+    const dockedWrap = card.closest(".surface-wrap.docked");
+    if (dockedWrap && card._traceContainer) {
+      // Collapse the docked card and leave a compact, durable trace in the chat.
+      const trace = el("div", "surface-trace");
+      trace.appendChild(el("span", "surface-trace-tick", "✓"));
+      trace.appendChild(el("span", "surface-trace-text",
+        surfaceTraceText(card._surface || surface, value, other, actionId)));
+      card._traceContainer.appendChild(trace);
+      dockedWrap.classList.remove("in");
+      dockedWrap.classList.add("out");
+      setTimeout(() => dockedWrap.remove(), 220);
+    } else {
+      const note = el("div", "surface-note", "Sent to ReverseAI. Continuing…");
+      card.appendChild(note);
+    }
     if (body.job_id) {
       currentJobId = body.job_id;
       if (body.conversation_id) conversationId = body.conversation_id;
@@ -1380,6 +1395,37 @@ async function submitSurface(card, surface, jobId, actionId, button) {
     buttons.forEach((b) => { b.disabled = false; });
   }
 }
+// A surface is "dockable" (shown above the composer, collapsed on answer) when
+// it pauses for a quick answer AND is compact: a short question, approval, or
+// small form. Rich surfaces (image grids, tables, charts, diffs, dashboards)
+// stay inline in the transcript where they have room.
+const COMPACT_SURFACE_KINDS = new Set(["text", "markdown", "choice", "approval", "form"]);
+function surfaceIsDockable(surface) {
+  if (!surface || surface.status === "submitted") return false;
+  const blocks = surface.blocks || [];
+  if (!blocks.length) return false;
+  for (const b of blocks) {
+    if (!COMPACT_SURFACE_KINDS.has(b.kind)) return false;
+    if (b.kind === "form" && (b.fields || []).length > 6) return false;
+  }
+  const acts = surface.actions || [{ id: "submit" }];
+  return acts.some((a) => a.kind !== "cancel" && a.kind !== "dismiss");
+}
+function surfaceTraceText(surface, value, other, actionId) {
+  const parts = [];
+  for (const k in value) {
+    if (k.endsWith("_other")) continue;
+    const v = value[k];
+    if (v == null || v === "") continue;
+    parts.push(Array.isArray(v) ? v.join(", ") : String(v));
+  }
+  if (other) parts.push(other);
+  let txt = parts.join(" · ") || actionId || "answered";
+  if (txt.length > 120) txt = txt.slice(0, 119) + "…";
+  const title = surface.title || "Question";
+  return `${title}: ${txt}`;
+}
+
 function renderSurface(container, surface, jobId, ui) {
   if (!surface || !surface.id) return;
   if (ui && ui.surfaceIds.has(surface.id)) return;
@@ -1420,7 +1466,20 @@ function renderSurface(container, surface, jobId, ui) {
   }
   const wrap = el("div", "surface-wrap");
   wrap.appendChild(card);
-  container.appendChild(wrap);
+  // Dock compact, still-pending surfaces above the composer; keep a reference
+  // to the transcript so the answer can leave a one-line trace there.
+  const dock = document.getElementById("surfaceDock");
+  if (dock && ui && surfaceIsDockable(surface) && surface.status !== "submitted") {
+    wrap.classList.add("docked");
+    card._traceContainer = container;
+    card._surface = surface;
+    dock.appendChild(wrap);
+    requestAnimationFrame(() => wrap.classList.add("in"));
+    const focusable = card.querySelector("input, textarea, select, button");
+    if (focusable) try { focusable.focus({ preventScroll: true }); } catch (_) {}
+  } else {
+    container.appendChild(wrap);
+  }
   if (ui) ui.surfaces.push(surface);
 }
 function renderSurfaces(container, surfaces, jobId, ui) {
@@ -2037,6 +2096,8 @@ async function openConversation(jobId) {
   queue = [];
   renderQueue();
   clearAttachment();
+  const sdk = document.getElementById("surfaceDock");
+  if (sdk) sdk.innerHTML = "";
   conversationId = rec.conversation_id || null;
   pendingTarget = rec.target_path || null;
   currentJobId = jobId;
