@@ -1,0 +1,34 @@
+{
+  "name": "reverseai-desktop",
+  "productName": "ReverseAI",
+  "version": "0.9.0",
+  "description": "Native desktop app for ReverseAI - understand, modify, rebuild.",
+  "main": "main.js",
+  "author": "ReverseAI",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:dir": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "ai.reverse.desktop",
+    "productName": "ReverseAI",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "loading.html", "assets/**/*"],
+    "extraResources": [
+      {
+        "from": "..",
+        "to": "app-python",
+        "filter": ["reverseai/**/*", "!**/__pycache__/**", "!**/*.pyc"]
+      }
+    ],
+    "linux": { "target": ["AppImage"], "category": "Development" },
+    "mac": { "target": ["dmg"], "category": "public.app-category.developer-tools" },
+    "win": { "target": ["nsis"] }
+  }
+}

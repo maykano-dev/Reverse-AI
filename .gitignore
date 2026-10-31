@@ -44,3 +44,7 @@ data/
 *.log
 .reverseai-approvals/
 corpora/
+
+# Electron desktop shell
+desktop/node_modules/
+desktop/dist/

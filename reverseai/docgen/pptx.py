@@ -609,7 +609,12 @@ def _card(sid, x, y, w, h, t, card):
 
 
 def _cards_layout(cards, t, sid, area):
-    """A tidy responsive grid of cards (2 or 3 columns)."""
+    """A tidy responsive grid of cards (2 or 3 columns).
+
+    Cards are sized to their content (not stretched to fill the slide) and the
+    whole grid is centered vertically, so a few short cards don't read as big
+    empty boxes.
+    """
     left, top, w, h = area
     cards = [c for c in cards if isinstance(c, dict)][:6]
     n = len(cards)
@@ -619,11 +624,37 @@ def _cards_layout(cards, t, sid, area):
     rows = -(-n // cols)
     gx, gy = w * 0.03, h * 0.08
     cw = (w - (cols - 1) * gx) / cols
-    ch = (h - (rows - 1) * gy) / rows
+    full_ch = (h - (rows - 1) * gy) / rows
+
+    # Estimate the height each card actually needs from its text, so short
+    # cards stay compact. ~73152 EMU per character at body size; ~256032 EMU
+    # per text line; a number/label header adds a line.
+    pad = 240000
+    cpl = max(12, int((cw - 2 * pad) / 73152))
+    line_h = 256032
+
+    def _needed(c):
+        lines = 0
+        if c.get("num") not in (None, "") or c.get("label"):
+            lines += 2  # a prominent number/label plus its gap
+        title = str(c.get("title") or "")
+        if title:
+            lines += max(1, -(-len(title) // cpl))
+        text = str(c.get("text") or "")
+        if text:
+            lines += max(1, -(-len(text) // max(10, cpl - 2)))
+        return 2 * pad + max(1, lines) * line_h
+
+    need = max(_needed(c) for c in cards)
+    floor = int(1.35 * 914400)                 # a comfortable minimum card height
+    ch = int(min(full_ch, max(floor, need)))
+
+    block_h = rows * ch + (rows - 1) * gy
+    start_top = top + max(0, (h - block_h) / 2)  # center the grid vertically
     out = []
     for i, c in enumerate(cards):
         r, cc = divmod(i, cols)
-        out.append(_card(sid, left + cc * (cw + gx), top + r * (ch + gy), cw, ch, t, c))
+        out.append(_card(sid, left + cc * (cw + gx), start_top + r * (ch + gy), cw, ch, t, c))
     return "".join(out)
 
 
