@@ -85,6 +85,8 @@ _TOOL_ICON = {
     "git_log": "code",
     "git_branch": "code",
     "git_commit": "bookmark",
+    "open_pr": "globe",
+    "pr_status": "check",
     "web_search": "search",
     "web_read": "globe",
     "web_images": "search",
@@ -363,6 +365,12 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "git_commit":
         title = "Committing the change"
         detail = _short(a.get("message", ""), 90)
+    elif name == "open_pr":
+        title = "Opening a pull request"
+        detail = _short(a.get("title", ""), 90)
+    elif name == "pr_status":
+        title = "Checking the pull request"
+        detail = "Reading its state and CI checks."
     elif name == "web_search":
         title = "Searching the web"
         detail = f"Looking for: {_short(a.get('query', ''), 90)}"

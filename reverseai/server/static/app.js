@@ -1941,6 +1941,8 @@ const TOOL_LABELS = {
   git_log: "Reading the history",
   git_branch: "Working with branches",
   git_commit: "Committing the change",
+  open_pr: "Opening a pull request",
+  pr_status: "Checking the pull request",
   decompile: "Decompiling the code",
   read_text_from_image: "Reading text from an image",
   web_search: "Searching the web",
