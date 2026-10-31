@@ -157,6 +157,10 @@ Zero third-party dependencies required (stdlib + binutils; optional libs enhance
 - **Input boundaries:** question, form, and approval surfaces stop the turn with
   `status=awaiting_input`; the user's surface response starts the next turn. A
   dashboard or review surface does not pause.
+- **Deterministic reasoning:** `solve_constraints` handles exact integer and
+  bitwise constraints (Z3 when installed; finite bounded enumeration otherwise)
+  and refuses to claim an answer when the domain is too large. `search_plan`
+  runs deterministic MCTS over an explicit plan graph.
 - **Modify + verify:** byte patch on a copy + behavioral regression in the
   sandbox; LIEF structural edits when installed.
 - **Verified delivery gate:** `verify_modification` runs declared behavioral

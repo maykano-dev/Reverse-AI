@@ -23,10 +23,14 @@
 - **Interactive terminal** (`reverseai tui`): a zero-dependency Claude Code-style
   REPL with live plan/narration, and `/help`, `/clear`, `/cost`, `/compact`,
   `/undo`, `/doctor`, `/project`, `/mode` slash commands.
+- **Deterministic reasoning**: `solve_constraints` solves exact integer and
+  bitwise constraints with Z3 when available and a bounded, honest fallback
+  otherwise; `search_plan` runs Monte Carlo tree search over an explicit plan
+  graph instead of a single linear guess.
 - Streaming tokens with model retries and a fallback-provider chain; Studio
   present mode renders cards, charts, SVG art, and advanced diagrams; compact
   surfaces dock above the composer with a one-line trace; UI responsive hardening.
-- 124 new tests; total 714.
+- 134 new tests; total 724.
 
 ## 0.9.0: interactive surfaces and a calmer workspace
 

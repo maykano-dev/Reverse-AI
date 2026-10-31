@@ -1015,6 +1015,8 @@ def default_tools() -> list[Tool]:
     from .docgen_tools import CreateDocumentTool
     from .render_tools import RenderDocumentTool
     from .surface_tools import surface_tools
+    from .search_tools import search_tools
+    from .symbolic_tools import symbolic_tools
     from .verify_tools import (
         AssessTestStrengthTool, DifferentialFuzzTool, DifferentialTestTool,
         VerifyModificationTool,
@@ -1070,6 +1072,8 @@ def default_tools() -> list[Tool]:
         RenderDocumentTool(),
     ]
     tools.extend(intelligence_tools())
+    tools.extend(symbolic_tools())
+    tools.extend(search_tools())
     tools.extend(surface_tools())
     # Real decompilation when Ghidra is installed — a big capability upgrade.
     try:

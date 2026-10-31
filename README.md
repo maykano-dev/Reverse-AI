@@ -16,7 +16,7 @@
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
-  <img alt="tests" src="https://img.shields.io/badge/tests-714%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-724%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
   <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
@@ -67,7 +67,7 @@ safety rules.
 | **Document & deck design** | `create_document` generates real, downloadable, **designed** files: slide decks (PPTX), PDFs, Word, Excel, and markdown/html/svg - hand-written OOXML and a minimal PDF writer, zero dependencies. 14 themes (each with its own colors and fonts), auto-varied per deck, card grids, 10 diagram styles, data-driven charts (bar/line/area/donut as themed SVG), generative backgrounds, and bespoke SVG art rasterized and embedded. `render_document` renders the result to images so the agent sees how it actually looks and fixes layout before delivering. |
 | **MCP server** | ReverseAI can act as a **tool provider** for Claude Desktop/Code or any MCP client (`reverseai mcp serve`), exposing its analysis, code-navigation, and git tools over stdio JSON-RPC. Gated by the `mcp` capability and **read-only by default**; write/execute tools appear only when the operator raises the permission. |
 | **Streaming + resilience** | Tokens stream into the UI as they are written, with model retries and a configurable fallback-provider chain. |
-| **Studio + present mode** | Edit a generated deck/doc in a WYSIWYG Studio and present it full-screen, now rendering cards, charts, embedded SVG art, and advanced diagrams. |
+| **Deterministic reasoning** | `solve_constraints` solves exact integer/bitwise constraints with Z3 when available, and a bounded honest fallback otherwise. `search_plan` runs Monte Carlo tree search over branching plans. |
 
 ## What's new in 0.9.0
 

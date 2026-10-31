@@ -95,6 +95,8 @@ _TOOL_ICON = {
     "web_images": "search",
     "install_resource": "file",
     "inspect_image": "search",
+    "solve_constraints": "code",
+    "search_plan": "chart",
     "remember": "box",
     "recall": "search",
     "forget": "x",
@@ -213,6 +215,12 @@ def describe_tool(name: str, args: dict[str, Any] | None = None) -> dict[str, st
     elif name == "inspect_image":
         title = "Checking the image"
         detail = "Looking at the candidate image before placing it in the page."
+    elif name == "solve_constraints":
+        title = "Solving the exact constraints"
+        detail = "Using arithmetic and bitwise constraints instead of guessing."
+    elif name == "search_plan":
+        title = "Searching the plan tree"
+        detail = "Comparing branches by deterministic scores instead of a linear guess."
     elif name == "remember":
         title = "Saving a durable note"
         detail = "Keeping a decision or preference for a later conversation."

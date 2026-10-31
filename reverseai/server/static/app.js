@@ -1981,6 +1981,8 @@ const TOOL_LABELS = {
   web_images: "Looking for a real image",
   install_resource: "Adding a web resource",
   inspect_image: "Checking an image",
+  solve_constraints: "Solving constraints",
+  search_plan: "Searching the plan tree",
   build_world_model: "Building the system model",
   query_world_model: "Asking the system model",
   project_memory: "Consulting project memory",
