@@ -2411,3 +2411,26 @@ body {
 .stream-live::after { content: "▋"; color: var(--accent); margin-left: 1px;
   animation: blink 1s steps(2) infinite; }
 @keyframes blink { 0%,50% { opacity: 1; } 50.01%,100% { opacity: 0; } }
+
+/* ===========================================================================
+   Responsive hardening: no element busts the layout at any width, and wide
+   content (code, tables, media, long tokens) scrolls or wraps inside its box.
+   These are safety nets - later in the file so they win over earlier rules.
+   =========================================================================== */
+img, svg, video, canvas, iframe { max-width: 100%; }
+.answer img, .answer svg, .answer video,
+.surface-block img, .surface-block svg, .msg img { height: auto; }
+/* Long unbreakable tokens (paths, URLs, hashes) wrap instead of overflowing. */
+.answer, .msg, .usage-line, .surface-desc, .surface-block, .sb-label,
+.so-label, .so-desc, .surface-trace-text, .surface-note, .cot-detail,
+.plan-step, .st-sub, .source-card, .mem-text { overflow-wrap: anywhere; }
+/* Preformatted / tabular / drawn content scrolls within its own box. */
+.answer pre, .surface-code, .surface-diff, .stream-live { max-width: 100%; overflow-x: auto; }
+.answer table, .surface-table-wrap, .st-grid-wrap, .caps-grid { max-width: 100%; }
+.answer table { display: block; overflow-x: auto; }
+/* Docked surfaces: cap to the dynamic viewport so an on-screen keyboard or a
+   short landscape phone can never hide the composer. */
+.surface-dock .surface-wrap.docked { max-height: 46dvh; }
+@media (max-width: 620px) {
+  .surface-dock .surface-wrap.docked { max-height: 40dvh; }
+}

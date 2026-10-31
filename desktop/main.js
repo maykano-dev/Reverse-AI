@@ -146,6 +146,17 @@ function stopServer() {
   } catch (_) {}
 }
 
+async function pickProjectFolder() {
+  if (!mainWindow) return;
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: "Choose a project folder",
+    properties: ["openDirectory", "createDirectory"],
+  });
+  if (!res.canceled && res.filePaths.length) {
+    mainWindow.webContents.send("reverseai:open-folder", res.filePaths[0]);
+  }
+}
+
 function buildMenu() {
   const isMac = process.platform === "darwin";
   const template = [
@@ -153,6 +164,11 @@ function buildMenu() {
     {
       label: "File",
       submenu: [
+        {
+          label: "Open Project Folder…",
+          accelerator: "CmdOrCtrl+O",
+          click: () => pickProjectFolder(),
+        },
         {
           label: "Open job store folder",
           click: () => shell.openPath(path.join(app.getPath("userData"), "jobs")),
@@ -247,6 +263,15 @@ if (!app.requestSingleInstanceLock()) {
     if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus(); }
   });
   ipcMain.handle("reverseai:info", () => ({ port: serverPort, version: app.getVersion() }));
+  // Native folder picker: the renderer asks, we return a chosen directory.
+  ipcMain.handle("reverseai:pick-folder", async () => {
+    if (!mainWindow) return null;
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: "Choose a project folder",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    return (res.canceled || !res.filePaths.length) ? null : res.filePaths[0];
+  });
   app.whenReady().then(() => { buildMenu(); boot(); });
   app.on("activate", () => { if (!mainWindow && serverPort) createWindow(serverPort); });
 }

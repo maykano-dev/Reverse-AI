@@ -520,6 +520,33 @@ $("#collapseBtn").addEventListener("click", () => { $("#app").classList.add("col
 $("#themeBtn").addEventListener("click", cycleTheme);
 $("#settingsBtn").addEventListener("click", openSettings);
 $("#templateSelect").addEventListener("change", (e) => selectTemplate(e.target.value));
+
+// Desktop app: a native "Open folder" picker that binds the project folder.
+function bindProjectFolder(path) {
+  if (!path) return;
+  input.value = "Set the project folder to: " + path;
+  autosize();
+  submit();
+}
+(function initDesktopFolder() {
+  const d = window.reverseaiDesktop;
+  if (!d || !d.isDesktop) return;
+  try {
+    const tools = $(".ctools");
+    if (tools && !$("#projectFolderBtn")) {
+      const btn = document.createElement("button");
+      btn.className = "mini";
+      btn.id = "projectFolderBtn";
+      btn.title = "Open a project folder to work in";
+      btn.textContent = "Open folder";
+      btn.addEventListener("click", async () => {
+        try { bindProjectFolder(await d.pickFolder()); } catch (_) {}
+      });
+      tools.insertBefore(btn, $("#memoryQuick") || null);
+    }
+    if (d.onOpenFolder) d.onOpenFolder(bindProjectFolder);
+  } catch (_) {}
+})();
 $("#permissionSelect").addEventListener("change", (e) => {
   permission = e.target.value;
   try { localStorage.setItem("rvai-permission", permission); } catch (_) {}
