@@ -655,6 +655,19 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_tui(args: argparse.Namespace) -> int:
+    from .agent.providers.deepseek import ProviderError
+    from .tui import run_tui
+
+    try:
+        return run_tui(provider=args.provider, permission=args.permission,
+                       template=args.template, mode=args.mode or "",
+                       target=args.target, project_dir=args.project_dir)
+    except (ProviderError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
 def _cmd_agent_run(args: argparse.Namespace) -> int:
     import os
     from pathlib import Path
@@ -976,6 +989,15 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8077)
     serve.add_argument("--store", default="./jobs", help="job store directory")
     serve.set_defaults(func=_cmd_serve)
+
+    tui = sub.add_parser("tui", help="interactive terminal (Claude Code-style REPL)")
+    tui.add_argument("--provider", default="", help="deepseek|openai|anthropic|ollama|mock")
+    tui.add_argument("--permission", choices=["read", "execute", "write"], default="write")
+    tui.add_argument("--template", default="general", help="agent role/template")
+    tui.add_argument("--mode", default="", help="ask|build|modify|optimize|autonomous")
+    tui.add_argument("--target", default=None, help="a binary/app/archive to work on")
+    tui.add_argument("--project-dir", default=None, help="a project folder to work in")
+    tui.set_defaults(func=_cmd_tui)
 
     agent = sub.add_parser("agent", help="autonomous investigation agent")
     agent_sub = agent.add_subparsers(dest="agent_cmd", required=True)

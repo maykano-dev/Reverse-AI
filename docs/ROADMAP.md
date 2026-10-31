@@ -20,7 +20,7 @@ A living map of what exists and what comes next. Updated with v0.9.0.
   image inspection.
 - **Dev-server preview**: gated bubblewrap-backed `npm run dev`/local server
   launcher with a multi-tab preview browser.
-- **Tests**: 701; 62 tools contract-tested.
+- **Tests**: 714; 62 tools contract-tested.
 
 ### v0.8.0: gated dangerous surfaces and open-item closure
 

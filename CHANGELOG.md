@@ -20,10 +20,13 @@
   model art with no xmlns/viewBox no longer silently vanishes.
 - **MCP server** (`reverseai mcp serve`): exposes analysis, code-navigation, and
   git tools to any MCP client; gated and read-only by default.
+- **Interactive terminal** (`reverseai tui`): a zero-dependency Claude Code-style
+  REPL with live plan/narration, and `/help`, `/clear`, `/cost`, `/compact`,
+  `/undo`, `/doctor`, `/project`, `/mode` slash commands.
 - Streaming tokens with model retries and a fallback-provider chain; Studio
   present mode renders cards, charts, SVG art, and advanced diagrams; compact
   surfaces dock above the composer with a one-line trace; UI responsive hardening.
-- 111 new tests; total 701.
+- 124 new tests; total 714.
 
 ## 0.9.0: interactive surfaces and a calmer workspace
 
