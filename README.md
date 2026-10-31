@@ -16,7 +16,7 @@
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img alt="core zero dependencies" src="https://img.shields.io/badge/core-zero%20dependencies-success">
-  <img alt="tests" src="https://img.shields.io/badge/tests-590%2B%20passing-brightgreen">
+  <img alt="tests" src="https://img.shields.io/badge/tests-700%2B%20passing-brightgreen">
   <img alt="status" src="https://img.shields.io/badge/status-beta-orange">
   <a href="https://maykano-dev.github.io/Reverse-AI/"><img alt="landing page" src="https://img.shields.io/badge/landing-live-brightgreen"></a>
 </p>
@@ -52,11 +52,28 @@ Most "AI + reverse engineering" demos stop at describing a binary. ReverseAI clo
 - **A real working memory.** Durable notes, web research with citations, scheduled routines, specialist agents, and conversations that survive a reload or a server restart.
 - **Mobile first.** A PWA that works as a full chat app on a phone, with a drawer, safe areas, touch-sized controls, and an installable manifest.
 
+## What's new (latest)
+
+The agent is no longer only a reverse-engineer: it is a full engineering
+companion with a native app, a coding toolchain, a document designer, and a
+durable project memory. Everything below ships with tests and keeps the same
+safety rules.
+
+| Area | What landed |
+|---|---|
+| **Native desktop app** | A real cross-platform app in [`desktop/`](desktop/) (Electron) that launches the ReverseAI backend and wraps the UI in a native window - splash, app menu, single-instance, native **Open Project Folder** picker. The Python backend is frozen with **PyInstaller**, so installed apps need **no separate Python**; a GitHub Actions workflow builds **macOS (.dmg), Windows (.exe), and Linux (AppImage/.deb)** installers. |
+| **Agentic coding** | Navigate and change a real codebase like a developer: `search_code` (ripgrep-style literal/regex search), `code_outline` (a symbol map via `ast` + language patterns), `run_tests` (auto-detects pytest/unittest/npm/go/cargo, runs in the sandbox, reports a verdict), local git (`git_status/diff/log/branch/commit`), and GitHub (`open_pr`, `pr_status`) gated behind an operator opt-in. |
+| **Project workbook** | Point the agent at a folder with `set_project_folder` - it continues an existing project or scaffolds an empty one. A durable workbook (goal + next-steps + notes) is kept in `.reverseai/` and **folded into context every turn**, so a long, multi-step build keeps its focus on the goal instead of drifting. |
+| **Document & deck design** | `create_document` generates real, downloadable, **designed** files: slide decks (PPTX), PDFs, Word, Excel, and markdown/html/svg - hand-written OOXML and a minimal PDF writer, zero dependencies. 14 themes (each with its own colors and fonts), auto-varied per deck, card grids, 10 diagram styles, data-driven charts (bar/line/area/donut as themed SVG), generative backgrounds, and bespoke SVG art rasterized and embedded. `render_document` renders the result to images so the agent sees how it actually looks and fixes layout before delivering. |
+| **MCP server** | ReverseAI can act as a **tool provider** for Claude Desktop/Code or any MCP client (`reverseai mcp serve`), exposing its analysis, code-navigation, and git tools over stdio JSON-RPC. Gated by the `mcp` capability and **read-only by default**; write/execute tools appear only when the operator raises the permission. |
+| **Streaming + resilience** | Tokens stream into the UI as they are written, with model retries and a configurable fallback-provider chain. |
+| **Studio + present mode** | Edit a generated deck/doc in a WYSIWYG Studio and present it full-screen, now rendering cards, charts, embedded SVG art, and advanced diagrams. |
+
 ## What's new in 0.9.0
 
 | Area | What landed |
 |---|---|
-| **Interactive surfaces** | The agent can create questions, forms, tables, charts, graphs, diffs, code views, progress panels, approval cards, file drops, and sandboxed custom views inside the conversation. Choices include an **Other - type your own** option. |
+| **Interactive surfaces** | The agent can create questions, forms, tables, charts, graphs, diffs, code views, progress panels, approval cards, file drops, and sandboxed custom views inside the conversation. Choices include an **Other - type your own** option. Compact questions dock above the composer and leave a one-line trace in the chat; rich surfaces stay inline. |
 | **Surface actions** | Every surface records its interaction and can continue the same conversation with a structured decision. Surfaces persist in the Job and in archived chats. |
 | **New visual system** | Warm neutral palette, serif welcome, compact sidebar, context header, calmer suggestion cards, a more spacious composer, smooth transitions, and mobile adjustments. |
 | **Live preview** | Generated sites open in the Preview panel automatically, with a Preview card in the chat. The agent no longer says it cannot render a page. |
@@ -185,6 +202,24 @@ python3 -m reverseai serve         # open http://127.0.0.1:8077
 
 No third-party packages are needed for the core. Python 3.11+ and standard binutils are enough. Optional libraries make it stronger:
 
+### The desktop app
+
+A native app for macOS, Windows, and Linux lives in [`desktop/`](desktop/). In a
+dev checkout it uses your Python; packaged installers bundle a frozen backend so
+users need nothing pre-installed.
+
+```bash
+cd desktop
+npm install
+npm start                  # launches the backend + native window
+```
+
+Build installers with `npm run build:backend && npm run dist`, or let the
+**Build desktop installers** GitHub Actions workflow produce `.dmg`, `.exe`,
+AppImage, and `.deb` for all three platforms. See [`desktop/README.md`](desktop/README.md).
+
+### Optional libraries
+
 ```bash
 pip install -e ".[enhanced]"       # lief, capstone, pyelftools
 pip install -e ".[ocr]"            # pytesseract, pillow, pymupdf
@@ -216,6 +251,10 @@ python3 -m reverseai bench --list
 python3 -m reverseai surfaces --json
 python3 -m reverseai mcp validate mcp.json
 python3 -m reverseai hooks validate hook.json
+
+# Provide ReverseAI's tools to an MCP client (Claude Desktop/Code), read-only
+REVERSEAI_ENABLE_DANGEROUS_CAPABILITIES=1 REVERSEAI_ENABLE_MCP=1 \
+  python3 -m reverseai mcp serve --workspace .
 
 # What can this host do (sandbox backends, emulators, optional libs)?
 python3 -m reverseai caps
@@ -292,6 +331,9 @@ The included [`render.yaml`](render.yaml) creates a web service, a 1 GB data dis
 - **Modify + verify** byte patches and LIEF structural edits on a copy, then a declared behavioral test plus a differential corpus in the sandbox. A failed test withholds the artifact and can trigger a bounded repair attempt.
 - **Scope a change** with "change X, preserve everything else": targeted cases prove the intended delta and regression cases prove the rest of the program still behaves.
 - **Clone + rebuild websites** with a static fetch engine and an opt-in headless render engine, packaged as a working offline bundle with a clean-room guardrail.
+- **Write and fix code** across a real codebase: ripgrep-style search, a symbol map, precise edits, a run-tests verdict, local git, and gated GitHub pull requests - with a durable project workbook that keeps the goal in context every turn.
+- **Generate designed documents**: PPTX decks, PDFs, Word, Excel, and markdown/html/svg, with themes, card grids, charts, diagrams, and bespoke SVG art, then self-check the layout with `render_document` before handing it back.
+- **Run as a native app** on macOS, Windows, or Linux, or **provide its tools to other agents** over MCP.
 - **Research** the web with sources, read primary pages, and keep citations attached to the answer.
 - **Remember** stable preferences and decisions across chats.
 - **Schedule** recurring work with routines that run while the server is up.
